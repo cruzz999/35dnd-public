@@ -1,4 +1,3 @@
-.github/workflows/deploy.yml
 app.js
 data/slots.js
 expr/evaluator.js
