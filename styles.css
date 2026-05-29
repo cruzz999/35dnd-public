@@ -33,7 +33,74 @@ a{color:var(--accent);text-decoration:none}
 /* Progress */
 .progress{width:220px;height:8px;background:#f3f3f3;border-radius:6px;overflow:hidden}
 #progressBar{height:100%;width:0;background:linear-gradient(90deg,#000,#333);transition:width 180ms ease}
+/* General view: five-column ability grid (Total | Mod | Buffs | ASI | PointBuy) */
+.general-grid {
+  display: grid;
+  grid-template-columns: 1.2fr 0.8fr 1fr 0.8fr 1fr; /* relative widths tuned for readability */
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  max-width: var(--page-width);
+  margin: 8px 0;
+}
 
+/* Header row for labels */
+.general-grid .header {
+  font-weight:700;
+  color:var(--accent);
+  font-size:0.95rem;
+  padding:6px 8px;
+  border-bottom:1px solid var(--line);
+}
+
+/* Each ability row spans the same five columns */
+.ability-row {
+  display: contents; /* let grid place the children into the five columns */
+}
+
+/* Individual cell styling */
+.ability-cell {
+  padding:8px 10px;
+  border:1px solid transparent;
+  background:transparent;
+  min-height:36px;
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+
+/* Visual separators for e-ink clarity */
+.ability-cell.total { border-left:1px solid var(--line); border-right:1px solid var(--line); }
+.ability-cell.mod   { text-align:center; font-weight:600; color:var(--accent); }
+.ability-cell.buffs { font-size:0.95rem; color:var(--muted); }
+.ability-cell.asi   { text-align:center; }
+.ability-cell.pb    { text-align:center; color:var(--muted); }
+
+/* Input styles inside cells */
+.ability-cell input[type="text"], .ability-cell input[type="number"] {
+  width:100%;
+  padding:6px 8px;
+  border:1px solid var(--line);
+  border-radius:6px;
+  background:transparent;
+  font-size:0.98rem;
+  color:var(--muted);
+}
+
+/* Compact label on left (ability name) */
+.ability-name {
+  font-weight:600;
+  width:110px;
+  padding-left:6px;
+}
+
+/* Responsive fallback: collapse to two columns on narrow screens */
+@media (max-width:900px) {
+  .general-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .header:nth-child(n+3), .ability-cell:nth-child(n+3) { display:none; } /* hide extra columns on tiny screens */
+}
 /* Viewport and world */
 #viewport{position:relative;width:100%;height:calc(100vh - 64px);overflow:auto;background:var(--bg);display:flex;justify-content:center;align-items:flex-start;padding:18px}
 #world{position:relative;left:0;top:0;transform-origin:0 0;will-change:transform;}
