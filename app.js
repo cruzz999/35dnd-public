@@ -138,15 +138,18 @@ function applyWorldTransform() {
   el.world.style.transform = `translate(${state.pan.x}px, ${state.pan.y}px) scale(${state.zoom})`;
      // Keep the ink canvas visually and geometrically in sync with the world,
   // taking into account the canvas origin offset stored on state.
-  if (el.ink) {
+ if (el.ink) {
     el.ink.style.transformOrigin = "0 0";
-    const origin = state.canvasOrigin || { x: 0, y: 0 };
-    // Translate by pan + canvasOrigin so the canvas content lines up with world content,
-    // then scale by zoom (same order as world transform).
-    el.ink.style.transform = `translate(${state.pan.x + origin.x}px, ${state.pan.y + origin.y}px) scale(${state.zoom})`;
+    // Ensure canvasOrigin exists and is numeric
+    const origin = (state && state.canvasOrigin) ? state.canvasOrigin : { x: 0, y: 0 };
+    const ox = Number(origin.x) || 0;
+    const oy = Number(origin.y) || 0;
+    // Translate by pan + origin so canvas content lines up with world content, then scale
+    el.ink.style.transform = `translate(${state.pan.x + ox}px, ${state.pan.y + oy}px) scale(${state.zoom})`;
     el.ink.style.left = "0px";
     el.ink.style.top = "0px";
   }
+
 
 }
 
