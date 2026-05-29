@@ -1,0 +1,9 @@
+https://raw.githubusercontent.com/cruzz999/35dnd/main/.github/workflows/deploy.yml
+https://raw.githubusercontent.com/cruzz999/35dnd/main/app.js
+https://raw.githubusercontent.com/cruzz999/35dnd/main/data/slots.js
+https://raw.githubusercontent.com/cruzz999/35dnd/main/expr/evaluator.js
+https://raw.githubusercontent.com/cruzz999/35dnd/main/index.html
+https://raw.githubusercontent.com/cruzz999/35dnd/main/ink/tiler.js
+https://raw.githubusercontent.com/cruzz999/35dnd/main/persistence/idb.js
+https://raw.githubusercontent.com/cruzz999/35dnd/main/styles.css
+https://raw.githubusercontent.com/cruzz999/35dnd/main/xlsx.full.min.js
