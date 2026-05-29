@@ -3,80 +3,277 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>DnD 3.5 Ink Sheet</title>
+
+  <!-- Main stylesheet (e-ink friendly) -->
   <link rel="stylesheet" href="/35dnd/styles.css">
-  <title>DnD 3.5 Ink Sheet (MVP)</title>
 
-
+  <!-- Small page-level overrides (keeps CSS in one place; minimal here) -->
+  <style>
+    /* Ensure the world area centers the sheet and doesn't collapse */
+    #world { display:flex; justify-content:center; align-items:flex-start; }
+    /* Make sure the app container uses the sheet width */
+    #app { width: 100%; max-width: 980px; }
+  </style>
 </head>
 <body>
+  <!-- Top toolbar (IDs must match app.js) -->
   <header class="topbar" role="banner">
     <div class="left">
-      <input id="file" type="file" accept=".xlsx" />
-      <input id="gsUrl" type="text" placeholder="Paste Google Sheets URL" style="width:420px; max-width:40vw;" />
-      <button id="loadGs">Load Sheet</button>
-      <span id="status">Load your XLSX to begin.</span>
+      <input id="file" type="file" accept=".xlsx" aria-label="Upload XLSX" />
+      <input id="gsUrl" type="text" placeholder="Paste Google Sheets URL" aria-label="Google Sheets URL" style="width:420px; max-width:40vw;" />
+      <button id="loadGs" title="Load from Google Sheets">Load Sheet</button>
+      <span id="status" aria-live="polite">Ready</span>
       <div class="progress" aria-hidden="true"><div id="progressBar"></div></div>
     </div>
 
     <div class="right">
-      <button id="viewGeneral">General</button>
-      <button id="viewSpells">Spells</button>
-      <button id="viewSlots">Slots</button>
-      <button id="viewSkills">Skills</button>
+      <button id="viewGeneral" title="General view">General</button>
+      <button id="viewSpells" title="Spells view">Spells</button>
+      <button id="viewSlots" title="Slots view">Slots</button>
+      <button id="viewSkills" title="Skills view">Skills</button>
+
       <span class="sep" aria-hidden="true"></span>
-      <button id="zoomOut">−</button>
-      <button id="zoomReset">Reset</button>
-      <button id="zoomIn">+</button>
+
+      <button id="zoomOut" title="Zoom out">−</button>
+      <button id="zoomReset" title="Reset zoom">Reset</button>
+      <button id="zoomIn" title="Zoom in">+</button>
+
       <span class="sep" aria-hidden="true"></span>
-      <button id="penToggle">Pen: OFF</button>
-      <button id="eraser">Eraser</button>
-      <button id="undo">Undo</button>
-      <button id="clearInk">Clear</button>
+
+      <button id="penToggle" title="Toggle pen">Pen: OFF</button>
+      <button id="eraser" title="Toggle eraser">Eraser</button>
+      <button id="undo" title="Undo last stroke">Undo</button>
+      <button id="clearInk" title="Clear ink">Clear</button>
     </div>
   </header>
 
+  <!-- Viewport and world (paper) -->
   <div id="viewport" role="main" aria-label="Paper viewport">
     <div id="world" aria-hidden="false">
       <div id="app" class="app">
-        <!-- Example sheet content (keeps original structure hooks intact).
-             Your app.js will replace or populate this with the real sheet markup. -->
-        <div class="sheet" id="characterSheet">
-          <h1>Character Sheet (placeholder)</h1>
-          <div class="row">
-            <div class="col">
-              <label for="charName">Name</label>
-              <input id="charName" name="charName" type="text" value="(load a sheet)" />
+
+        <!-- ---------------- General view (five-column ability grid) ---------------- -->
+        <section id="generalView" class="sheet" aria-labelledby="generalTitle" role="region">
+          <h1 id="generalTitle">General</h1>
+
+          <!-- Ability grid header -->
+          <div class="general-grid" id="abilitiesGrid">
+            <div class="header">Ability</div>
+            <div class="header">Total</div>
+            <div class="header">Mod</div>
+            <div class="header">Buffs</div>
+            <div class="header">ASI</div>
+
+            <!-- STR -->
+            <div class="ability-name">STR</div>
+            <div class="ability-cell total">
+              <input id="str_total" name="str_total" type="number" inputmode="numeric" value="10" />
             </div>
-            <div class="col">
-              <label for="charClass">Class / Level</label>
-              <input id="charClass" name="charClass" type="text" value="" />
+            <div class="ability-cell mod">
+              <input id="str_mod" name="str_mod" type="text" readonly />
             </div>
-            <div class="col">
-              <label for="charRace">Race</label>
-              <input id="charRace" name="charRace" type="text" value="" />
+            <div class="ability-cell buffs">
+              <input id="str_buffs" name="str_buffs" type="text" />
+            </div>
+            <div class="ability-cell asi">
+              <input id="str_asi" name="str_asi" type="number" />
+            </div>
+
+            <!-- DEX -->
+            <div class="ability-name">DEX</div>
+            <div class="ability-cell total">
+              <input id="dex_total" name="dex_total" type="number" inputmode="numeric" value="10" />
+            </div>
+            <div class="ability-cell mod">
+              <input id="dex_mod" name="dex_mod" type="text" readonly />
+            </div>
+            <div class="ability-cell buffs">
+              <input id="dex_buffs" name="dex_buffs" type="text" />
+            </div>
+            <div class="ability-cell asi">
+              <input id="dex_asi" name="dex_asi" type="number" />
+            </div>
+
+            <!-- CON -->
+            <div class="ability-name">CON</div>
+            <div class="ability-cell total">
+              <input id="con_total" name="con_total" type="number" inputmode="numeric" value="10" />
+            </div>
+            <div class="ability-cell mod">
+              <input id="con_mod" name="con_mod" type="text" readonly />
+            </div>
+            <div class="ability-cell buffs">
+              <input id="con_buffs" name="con_buffs" type="text" />
+            </div>
+            <div class="ability-cell asi">
+              <input id="con_asi" name="con_asi" type="number" />
+            </div>
+
+            <!-- INT -->
+            <div class="ability-name">INT</div>
+            <div class="ability-cell total">
+              <input id="int_total" name="int_total" type="number" inputmode="numeric" value="10" />
+            </div>
+            <div class="ability-cell mod">
+              <input id="int_mod" name="int_mod" type="text" readonly />
+            </div>
+            <div class="ability-cell buffs">
+              <input id="int_buffs" name="int_buffs" type="text" />
+            </div>
+            <div class="ability-cell asi">
+              <input id="int_asi" name="int_asi" type="number" />
+            </div>
+
+            <!-- WIS -->
+            <div class="ability-name">WIS</div>
+            <div class="ability-cell total">
+              <input id="wis_total" name="wis_total" type="number" inputmode="numeric" value="10" />
+            </div>
+            <div class="ability-cell mod">
+              <input id="wis_mod" name="wis_mod" type="text" readonly />
+            </div>
+            <div class="ability-cell buffs">
+              <input id="wis_buffs" name="wis_buffs" type="text" />
+            </div>
+            <div class="ability-cell asi">
+              <input id="wis_asi" name="wis_asi" type="number" />
+            </div>
+
+            <!-- CHA -->
+            <div class="ability-name">CHA</div>
+            <div class="ability-cell total">
+              <input id="cha_total" name="cha_total" type="number" inputmode="numeric" value="10" />
+            </div>
+            <div class="ability-cell mod">
+              <input id="cha_mod" name="cha_mod" type="text" readonly />
+            </div>
+            <div class="ability-cell buffs">
+              <input id="cha_buffs" name="cha_buffs" type="text" />
+            </div>
+            <div class="ability-cell asi">
+              <input id="cha_asi" name="cha_asi" type="number" />
             </div>
           </div>
-        </div>
+
+          <!-- Derived stats area (HP / AC / Saves / Attacks) -->
+          <div class="hr-subtle" style="margin-top:12px;"></div>
+          <div class="row" style="margin-top:12px;">
+            <div class="col field-group">
+              <label>HP</label>
+              <div class="kv"><div>Current</div><div><input id="hp_current" name="hp_current" type="number" value="0" /></div></div>
+              <div class="kv"><div>Hit Dice</div><div><input id="hit_dice" name="hit_dice" type="text" value="0d4" /></div></div>
+            </div>
+
+            <div class="col field-group">
+              <label>AC</label>
+              <div class="kv"><div>Total</div><div><input id="ac_total" name="ac_total" type="number" value="10" /></div></div>
+              <div class="kv"><div>Touch</div><div><input id="ac_touch" name="ac_touch" type="number" value="10" /></div></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ---------------- Spells view (placeholder structure) ---------------- -->
+        <section id="spellsView" class="sheet" aria-labelledby="spellsTitle" role="region" style="display:none;">
+          <h1 id="spellsTitle">Spells</h1>
+          <div class="spell-list" id="spellList">
+            <!-- Example spell entry (app.js will populate real spells) -->
+            <div class="spell-entry">
+              <div>
+                <div class="spell-header">
+                  <div class="spell-name">Magic Missile</div>
+                  <div class="spell-meta">1st level — Evocation</div>
+                </div>
+                <div class="spell-details">A missile of magical energy darts forth...</div>
+              </div>
+              <div style="align-self:start;font-size:0.9rem;color:#666">V,S; 120 ft</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ---------------- Slots / Skills placeholders ---------------- -->
+        <section id="slotsView" class="sheet" style="display:none;">
+          <h1>Slots</h1>
+          <div id="slotsContent">Slot data will appear here.</div>
+        </section>
+
+        <section id="skillsView" class="sheet" style="display:none;">
+          <h1>Skills</h1>
+          <div id="skillsContent">Skills will appear here.</div>
+        </section>
+
       </div>
 
-      <canvas id="inkWorld" width="1600" height="1200"></canvas>
+      <!-- Ink canvas overlay -->
+      <canvas id="inkWorld" width="1600" height="1200" aria-hidden="true"></canvas>
     </div>
   </div>
 
-  <!-- SheetJS (used by app.js) -->
+  <!-- SheetJS (if your app uses it) -->
   <script src="/35dnd/xlsx.full.min.js"></script>
 
-  <!-- Main app script (must match the repo path/version you use) -->
+  <!-- Main app script as module (app.js uses imports) -->
   <script type="module" src="/35dnd/app.js"></script>
 
+  <!-- Small compatibility/wiring script
+       - Ensures the General container has the .general-grid class (if your render() doesn't add it)
+       - Adds a minimal ability-mod calculator if your app hasn't already wired it.
+       This script is intentionally minimal and safe; if your app already wires inputs it will be harmless.
+  -->
   <script>
-    // Small compatibility glue: ensure toolbar buttons exist and are focusable.
-    // This does not replace app.js handlers; it only prevents missing-element errors.
-    (function ensureElements() {
-      const ids = ["file","gsUrl","loadGs","status","progressBar","viewGeneral","viewSpells","viewSlots","viewSkills","zoomOut","zoomReset","zoomIn","penToggle","eraser","undo","clearInk","viewport","world","app","inkWorld"];
-      for (const id of ids) if (!document.getElementById(id)) {
-        const el = document.createElement('div'); el.id = id; el.style.display = 'none'; document.body.appendChild(el);
+    (function () {
+      // Ensure the grid class exists on the abilities container
+      const abilitiesGrid = document.getElementById('abilitiesGrid');
+      if (abilitiesGrid && !abilitiesGrid.classList.contains('general-grid')) {
+        abilitiesGrid.classList.add('general-grid');
       }
+
+      // Minimal ability mod calculator (only if mod fields are empty)
+      function computeAbilityMod(score) {
+        const n = Number(score) || 0;
+        return Math.floor((n - 10) / 2);
+      }
+      function updateModsForAll() {
+        const abilities = ["str","dex","con","int","wis","cha"];
+        for (const a of abilities) {
+          const totalEl = document.getElementById(`${a}_total`);
+          const modEl = document.getElementById(`${a}_mod`);
+          if (!totalEl || !modEl) continue;
+          const mod = computeAbilityMod(totalEl.value);
+          modEl.value = (mod >= 0 ? "+" : "") + mod;
+        }
+      }
+      function wireAbilityInputs() {
+        const abilities = ["str","dex","con","int","wis","cha"];
+        for (const a of abilities) {
+          const totalEl = document.getElementById(`${a}_total`);
+          if (!totalEl) continue;
+          totalEl.addEventListener('input', updateModsForAll, { passive: true });
+        }
+        // initial compute
+        updateModsForAll();
+      }
+
+      // Run after DOM ready
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', wireAbilityInputs);
+      } else {
+        wireAbilityInputs();
+      }
+
+      // Small helper to show/hide views when toolbar buttons are clicked.
+      // If your app.js already handles view switching, this will be harmless.
+      function showView(id) {
+        ['generalView','spellsView','slotsView','skillsView'].forEach(v => {
+          const el = document.getElementById(v);
+          if (!el) return;
+          el.style.display = (v === id) ? '' : 'none';
+        });
+      }
+      document.getElementById('viewGeneral')?.addEventListener('click', () => showView('generalView'));
+      document.getElementById('viewSpells')?.addEventListener('click', () => showView('spellsView'));
+      document.getElementById('viewSlots')?.addEventListener('click', () => showView('slotsView'));
+      document.getElementById('viewSkills')?.addEventListener('click', () => showView('skillsView'));
     })();
   </script>
 </body>
