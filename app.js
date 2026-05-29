@@ -74,6 +74,8 @@ const state = {
     spells: { sorc: [], wiz: [], meta: null },
   },
 };
+window.state = state;
+
 
 /* ------------------------------ Progress ------------------------------- */
 function setProgress(pct, text) {
