@@ -4,24 +4,46 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>DnD 3.5 Ink Sheet (MVP)</title>
-  <link rel="stylesheet" href="/35dnd/styles.css?v=20260528b" />
-  <!-- SheetJS from CDN (works offline too if you download it locally later) -->
-  <script src="/35dnd/xlsx.full.min.js"></script>
-</head>
 
+  <style>
+    :root { --toolbar-height: 64px; --bg:#f6f6f6; --panel:#fff; --muted:#666; }
+    html,body { height:100%; margin:0; font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial; background:var(--bg); color:#111; }
+    .topbar { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:8px 12px; background:var(--panel); border-bottom:1px solid #e6e6e6; box-sizing:border-box; height:var(--toolbar-height); }
+    .topbar .left, .topbar .right { display:flex; align-items:center; gap:8px; }
+    .topbar input[type="text"] { padding:6px 8px; border:1px solid #ccc; border-radius:4px; font-size:14px; }
+    .topbar input[type="file"] { font-size:13px; }
+    .topbar button { padding:6px 10px; border:1px solid #cfcfcf; background:#fafafa; border-radius:4px; cursor:pointer; }
+    .topbar .sep { width:1px; height:28px; background:#eee; margin:0 6px; }
+
+    /* progress */
+    .progress { width:220px; height:8px; background:#eee; border-radius:4px; overflow:hidden; margin-left:8px; }
+    #progressBar { height:100%; width:0%; background:linear-gradient(90deg,#4caf50,#2e7d32); transition:width 200ms ease; }
+
+    /* viewport/world/ink */
+    #viewport { position:relative; width:100%; height:calc(100vh - var(--toolbar-height)); overflow:hidden; background:linear-gradient(#fff,#fafafa); }
+    #world { position:absolute; left:0; top:0; transform-origin:0 0; will-change:transform; }
+    #app { position:relative; min-width:900px; box-sizing:border-box; }
+    #inkWorld { position:absolute; left:0; top:0; pointer-events:none; touch-action:none; z-index:20; display:block; }
+
+    /* small helpers for sheet content */
+    .sheet { width:900px; margin:28px; padding:18px; background:#fff; border:1px solid #e0e0e0; box-shadow:0 2px 6px rgba(0,0,0,0.04); }
+    .sheet h1 { margin:0 0 12px 0; font-size:18px; }
+    .row { display:flex; gap:12px; margin-bottom:8px; }
+    .col { flex:1; min-width:120px; }
+    label { display:block; font-size:12px; color:var(--muted); margin-bottom:4px; }
+    input[type="text"], select, textarea { width:100%; padding:6px 8px; border:1px solid #ccc; border-radius:4px; font-size:14px; box-sizing:border-box; }
+
+    @media print { #inkWorld { display:none !important; } }
+  </style>
+</head>
 <body>
-  <header class="topbar">
+  <header class="topbar" role="banner">
     <div class="left">
       <input id="file" type="file" accept=".xlsx" />
-      <input id="gsUrl" type="text"
-       placeholder="Paste Google Sheets URL"
-       value="https://docs.google.com/spreadsheets/d/1P_Vslp-rxiTcntUZVLR2BjJrdeQqdWfPLeigs2Gnx_U/edit?usp=sharing"
-       style="width:420px; max-width:100%;">
+      <input id="gsUrl" type="text" placeholder="Paste Google Sheets URL" style="width:420px; max-width:40vw;" />
       <button id="loadGs">Load Sheet</button>
       <span id="status">Load your XLSX to begin.</span>
-      <div class="progress">
-        <div id="progressBar"></div>
-      </div>
+      <div class="progress" aria-hidden="true"><div id="progressBar"></div></div>
     </div>
 
     <div class="right">
@@ -29,15 +51,11 @@
       <button id="viewSpells">Spells</button>
       <button id="viewSlots">Slots</button>
       <button id="viewSkills">Skills</button>
-
-      <span class="sep"></span>
-
+      <span class="sep" aria-hidden="true"></span>
       <button id="zoomOut">−</button>
       <button id="zoomReset">Reset</button>
       <button id="zoomIn">+</button>
-
-      <span class="sep"></span>
-
+      <span class="sep" aria-hidden="true"></span>
       <button id="penToggle">Pen: OFF</button>
       <button id="eraser">Eraser</button>
       <button id="undo">Undo</button>
@@ -45,13 +63,49 @@
     </div>
   </header>
 
-  <!-- Paper viewport (no page scroll). Everything is panned/zoomed inside this. -->
-  <div id="viewport">
-    <div id="world">
-      <div id="app" class="app"></div>
-      <canvas id="inkWorld"></canvas>
+  <div id="viewport" role="main" aria-label="Paper viewport">
+    <div id="world" aria-hidden="false">
+      <div id="app" class="app">
+        <!-- Example sheet content (keeps original structure hooks intact).
+             Your app.js will replace or populate this with the real sheet markup. -->
+        <div class="sheet" id="characterSheet">
+          <h1>Character Sheet (placeholder)</h1>
+          <div class="row">
+            <div class="col">
+              <label for="charName">Name</label>
+              <input id="charName" name="charName" type="text" value="(load a sheet)" />
+            </div>
+            <div class="col">
+              <label for="charClass">Class / Level</label>
+              <input id="charClass" name="charClass" type="text" value="" />
+            </div>
+            <div class="col">
+              <label for="charRace">Race</label>
+              <input id="charRace" name="charRace" type="text" value="" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <canvas id="inkWorld" width="1600" height="1200"></canvas>
     </div>
   </div>
-  <script src="/35dnd/app.js?v=20260528b"></script>
+
+  <!-- SheetJS (used by app.js) -->
+  <script src="/35dnd/xlsx.full.min.js"></script>
+
+  <!-- Main app script (must match the repo path/version you use) -->
+  <script src="/35dnd/app.js"></script>
+
+  <script>
+    // Small compatibility glue: ensure toolbar buttons exist and are focusable.
+    // This does not replace app.js handlers; it only prevents missing-element errors.
+    (function ensureElements() {
+      const ids = ["file","gsUrl","loadGs","status","progressBar","viewGeneral","viewSpells","viewSlots","viewSkills","zoomOut","zoomReset","zoomIn","penToggle","eraser","undo","clearInk","viewport","world","app","inkWorld"];
+      for (const id of ids) if (!document.getElementById(id)) {
+        const el = document.createElement('div'); el.id = id; el.style.display = 'none'; document.body.appendChild(el);
+      }
+    })();
+  </script>
 </body>
 </html>
