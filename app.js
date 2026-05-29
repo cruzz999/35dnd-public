@@ -851,19 +851,34 @@ function renderGeneral() {
     return;
   }
 
-  // Ensure structure
+  // Ensure structure and defaults
   g.abilities = g.abilities || {};
   for (const k of ["str","dex","con","int","wis","cha"]) {
     g.abilities[k] = g.abilities[k] || { pointBuy: 0, asi: 0, items: 0, buffs: 0, total: 0 };
   }
   g.feats = Array.isArray(g.feats) ? g.feats : [];
   g.ac = g.ac || { armor: 0, shield: 0, size: 0, natural: 0, deflect: 0, misc: 0, miscTouch: 0 };
+  g.buffs = g.buffs || { mageArmor: 0, shieldSpell: 0 };
 
-  // Recompute derived values using your existing helper
+  // Derived values
   const derived = computeGeneralDerived(g);
   const abilities = ["str","dex","con","int","wis","cha"];
 
-  // Build rows: compute total = pointBuy + asi + items + buffs
+  // Header (character metadata)
+  const headerHtml = `
+    <div class="sheet-header" style="display:flex;gap:18px;align-items:flex-end;margin-bottom:10px;">
+      <div style="flex:1 1 320px;">
+        <div style="font-size:1.1rem;font-weight:700">${escapeHtml(g.characterName || "")}</div>
+        <div style="color:var(--muted);font-size:0.9rem">${escapeHtml(g.classLine || "")} • ${escapeHtml(g.race || "")}</div>
+      </div>
+      <div style="min-width:220px;text-align:right;">
+        <div><strong>Player</strong> ${escapeHtml(g.playerName || "")}</div>
+        <div><strong>XP</strong> ${escapeHtml(String(g.xp || ""))}</div>
+      </div>
+    </div>
+  `;
+
+  // Build rows: pointBuy column + computed total
   const rowsHtml = abilities.map(a => {
     const ab = g.abilities[a];
     const pointBuy = Number(ab.pointBuy || 0);
@@ -871,11 +886,14 @@ function renderGeneral() {
     const items = Number(ab.items || 0);
     const buffs = Number(ab.buffs || 0);
     const total = pointBuy + asi + items + buffs;
-    // store computed total for display and for any other logic
     ab.total = total;
     const mod = abilityMod(total);
     return `
       <div class="ability-name">${a.toUpperCase()}</div>
+
+      <div class="ability-cell pointbuy">
+        <input id="${a}_pointbuy" name="${a}_pointbuy" type="number" inputmode="numeric" value="${pointBuy}" />
+      </div>
 
       <div class="ability-cell total">
         <input id="${a}_total" name="${a}_total" type="number" inputmode="numeric" value="${total}" readonly />
@@ -900,67 +918,70 @@ function renderGeneral() {
     ? `<ul class="feats-list">${g.feats.map(f => `<li>${f.url ? `<a href="${escapeHtml(f.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(f.label||f)}</a>` : escapeHtml(f.label||f)}</li>`).join("")}</ul>`
     : `<div class="hint">No feats listed.</div>`;
 
-  // AC / Saves display (use derived values)
+  // AC / Saves display
   const acTotal = derived.acTotal ?? 10;
   const touch = derived.touch ?? 10;
   const flat = derived.flat ?? 10;
   const saves = derived.saves || { fort: 0, ref: 0, will: 0 };
 
-  // Compose final HTML
+  // Compose final HTML (six columns: Ability | PointBuy | Total | Mod | Buffs | ASI)
   const html = `
     <section id="generalView" class="sheet">
-      <h1>General</h1>
+      ${headerHtml}
 
-      <div class="general-grid" id="abilitiesGrid" style="grid-template-columns: 1.2fr 0.9fr 0.8fr 1fr 0.8fr;">
-        <div class="header">Ability</div>
-        <div class="header">Total</div>
-        <div class="header">Mod</div>
-        <div class="header">Buffs</div>
-        <div class="header">ASI</div>
+      <div style="display:flex;gap:18px;align-items:flex-start;">
+        <div style="flex:1 1 640px;">
+          <div class="general-grid" id="abilitiesGrid" style="grid-template-columns: 1.0fr 0.9fr 0.9fr 0.8fr 1.0fr 0.8fr; gap:10px;">
+            <div class="header">Ability</div>
+            <div class="header">PointBuy</div>
+            <div class="header">Total</div>
+            <div class="header">Mod</div>
+            <div class="header">Buffs</div>
+            <div class="header">ASI</div>
 
-        ${rowsHtml}
-      </div>
-
-      <div class="hr-subtle" style="margin-top:12px;"></div>
-
-      <div class="row" style="margin-top:12px; gap:18px; align-items:flex-start;">
-        <div class="col field-group" style="flex:1 1 320px;">
-          <label>HP</label>
-          <div class="kv"><div>Current</div><div><input id="hp_current" type="number" value="${Number(g.hp_current||0)}" /></div></div>
-          <div class="kv"><div>Hit Dice</div><div><input id="hit_dice" type="text" value="${escapeHtml(g.hit_dice||'0d4')}" /></div></div>
-
-          <div style="margin-top:10px;">
-            <label>AC</label>
-            <div class="kv"><div>Total</div><div><input id="ac_total" type="number" value="${Number(acTotal)}" readonly /></div></div>
-            <div class="kv"><div>Touch</div><div><input id="ac_touch" type="number" value="${Number(touch)}" readonly /></div></div>
-            <div class="kv"><div>Flat</div><div><input id="ac_flat" type="number" value="${Number(flat)}" readonly /></div></div>
+            ${rowsHtml}
           </div>
         </div>
 
-        <div class="col field-group" style="flex:1 1 240px;">
-          <label>Saves</label>
-          <div class="kv"><div>Fortitude</div><div><input id="save_fort" type="text" value="${fmtSign(saves.fort)}" readonly /></div></div>
-          <div class="kv"><div>Reflex</div><div><input id="save_ref" type="text" value="${fmtSign(saves.ref)}" readonly /></div></div>
-          <div class="kv"><div>Will</div><div><input id="save_will" type="text" value="${fmtSign(saves.will)}" readonly /></div></div>
+        <div style="flex:0 0 320px;">
+          <div class="panel" style="padding:10px;">
+            <h3 style="margin:0 0 8px 0;">Derived</h3>
+            <div class="kv"><div>AC</div><div><input id="ac_total" type="number" value="${Number(acTotal)}" readonly /></div></div>
+            <div class="kv"><div>Touch</div><div><input id="ac_touch" type="number" value="${Number(touch)}" readonly /></div></div>
+            <div class="kv"><div>Flat</div><div><input id="ac_flat" type="number" value="${Number(flat)}" readonly /></div></div>
 
-          <div style="margin-top:12px;">
-            <label>Feats & Special Abilities</label>
-            ${featsHtml}
+            <div style="margin-top:8px;display:flex;gap:8px;">
+              <button id="btnMageArmor" class="btn small">${g.buffs.mageArmor ? 'Mage Armor ✓' : 'Mage Armor'}</button>
+              <button id="btnShieldSpell" class="btn small">${g.buffs.shieldSpell ? 'Shield ✓' : 'Shield'}</button>
+            </div>
+
+            <div style="margin-top:12px;">
+              <label>Saves</label>
+              <div class="kv"><div>Fort</div><div><input id="save_fort" type="text" value="${fmtSign(saves.fort)}" readonly /></div></div>
+              <div class="kv"><div>Ref</div><div><input id="save_ref" type="text" value="${fmtSign(saves.ref)}" readonly /></div></div>
+              <div class="kv"><div>Will</div><div><input id="save_will" type="text" value="${fmtSign(saves.will)}" readonly /></div></div>
+            </div>
+
+            <div style="margin-top:12px;">
+              <label>Feats</label>
+              ${featsHtml}
+            </div>
           </div>
         </div>
       </div>
     </section>
   `;
 
-  // Render into app
+  // Render
   if (el.app) el.app.innerHTML = html;
 
   // Ensure grid class exists
   const grid = $('abilitiesGrid');
   if (grid && !grid.classList.contains('general-grid')) grid.classList.add('general-grid');
 
-  // Wire listeners: ASI and Buffs update stored values and recompute totals/mods
+  // Wiring: when pointBuy/asi/buffs change, recompute total and derived values
   abilities.forEach(a => {
+    const pbEl = $(`${a}_pointbuy`);
     const asiEl = $(`${a}_asi`);
     const buffsEl = $(`${a}_buffs`);
     const totalEl = $(`${a}_total`);
@@ -968,19 +989,18 @@ function renderGeneral() {
 
     function recompute() {
       const ab = g.abilities[a];
+      ab.pointBuy = Number(pbEl?.value || 0);
       ab.asi = Number(asiEl?.value || 0);
       ab.buffs = Number(buffsEl?.value || 0);
-      // recompute total from pointBuy + asi + items + buffs
-      const pointBuy = Number(ab.pointBuy || 0);
       const items = Number(ab.items || 0);
-      const total = pointBuy + (ab.asi || 0) + (items || 0) + (ab.buffs || 0);
+      const total = (ab.pointBuy || 0) + (ab.asi || 0) + (items || 0) + (ab.buffs || 0);
       ab.total = total;
       if (totalEl) totalEl.value = total;
       const m = abilityMod(total);
       if (modEl) modEl.value = (m >= 0 ? '+' : '') + m;
-      // persist into state
+      // persist
       state.data.general.abilities[a] = ab;
-      // update derived AC/saves display
+      // recompute derived and update AC/saves
       const newDerived = computeGeneralDerived(state.data.general);
       if ($('ac_total')) $('ac_total').value = Number(newDerived.acTotal || 10);
       if ($('ac_touch')) $('ac_touch').value = Number(newDerived.touch || 10);
@@ -988,15 +1008,37 @@ function renderGeneral() {
       if ($('save_fort')) $('save_fort').value = fmtSign(newDerived.saves?.fort || 0);
       if ($('save_ref')) $('save_ref').value = fmtSign(newDerived.saves?.ref || 0);
       if ($('save_will')) $('save_will').value = fmtSign(newDerived.saves?.will || 0);
-      // redraw ink if present
       if (ink && ink.redraw) ink.redraw();
     }
 
-    if (asiEl) asiEl.addEventListener('input', recompute, { passive: true });
-    if (buffsEl) buffsEl.addEventListener('input', recompute, { passive: true });
+    [pbEl, asiEl, buffsEl].forEach(elm => { if (elm) elm.addEventListener('input', recompute, { passive: true }); });
   });
 
-  // Wire derived field persistence
+  // Mage Armor and Shield buttons
+  const btnMage = $('btnMageArmor'), btnShield = $('btnShieldSpell');
+  if (btnMage) {
+    btnMage.onclick = () => {
+      g.buffs.mageArmor = g.buffs.mageArmor ? 0 : 1;
+      btnMage.textContent = g.buffs.mageArmor ? 'Mage Armor ✓' : 'Mage Armor';
+      // recompute derived
+      const nd = computeGeneralDerived(g);
+      if ($('ac_total')) $('ac_total').value = Number(nd.acTotal || 10);
+      if ($('ac_touch')) $('ac_touch').value = Number(nd.touch || 10);
+      if (ink && ink.redraw) ink.redraw();
+    };
+  }
+  if (btnShield) {
+    btnShield.onclick = () => {
+      g.buffs.shieldSpell = g.buffs.shieldSpell ? 0 : 1;
+      btnShield.textContent = g.buffs.shieldSpell ? 'Shield ✓' : 'Shield';
+      const nd = computeGeneralDerived(g);
+      if ($('ac_total')) $('ac_total').value = Number(nd.acTotal || 10);
+      if ($('ac_touch')) $('ac_touch').value = Number(nd.touch || 10);
+      if (ink && ink.redraw) ink.redraw();
+    };
+  }
+
+  // Derived field persistence (HP, hit dice) if present
   const hpEl = $('hp_current'), hdEl = $('hit_dice');
   if (hpEl) hpEl.addEventListener('input', () => { g.hp_current = Number(hpEl.value) || 0; }, { passive: true });
   if (hdEl) hdEl.addEventListener('input', () => { g.hit_dice = hdEl.value || '0d4'; }, { passive: true });
