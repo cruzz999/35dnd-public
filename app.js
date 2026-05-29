@@ -1,25 +1,18 @@
 /**
- * app.js — Rewritten single-file application
+ * app.js — Restored and consolidated application script
  *
- * Goals:
- * - Full, drop-in replacement for your previous app.js with minimal external assumptions.
- * - Renders General view as a six-column grid: Ability | Total | Mod | Buffs | ASI | PointBuy (PointBuy read-only).
- * - Total is computed from pointBuy + asi + items + buffs (read-only).
- * - AC and Saves computed and displayed; Mage Armor and Shield are checkboxes that update AC.
- * - Feats, header metadata (characterName, playerName, XP, classLine, race) shown.
- * - Google Sheets ingest included and maps sheet columns into pointBuy/asi/items/buffs and header fields.
- * - Ink canvas (pen) restored and working; pen toggle enables drawing; panning works without selecting text.
- * - Safe cssRules wrapper to avoid cross-origin stylesheet exceptions.
- * - Minimal dependencies: expects XLSX (SheetJS) optionally loaded for local XLSX files; otherwise uses CSV/CSV-proxy for Google Sheets.
+ * - Full single-file replacement intended to be drop-in for your project.
+ * - Renders General view (six columns: Ability | Total | Mod | Buffs | ASI | PointBuy).
+ * - Total is computed from pointBuy + ASI + items + buffs (read-only).
+ * - AC and Saves computed and displayed; Mage Armor and Shield are checkboxes.
+ * - Feats and header metadata shown.
+ * - Robust Google Sheets ingest (tries proxy, Google export for multiple gids, published CSV).
+ * - XLSX upload support (if SheetJS is loaded).
+ * - Ink canvas with working pen toggle, eraser, undo, clear.
+ * - Prevents text selection while panning.
  *
- * Usage:
- * - Place this file as app.js in your project and ensure index.html loads it (type="module" not required).
- * - If you use SheetJS, include xlsx.full.min.js in index.html to enable XLSX uploads.
- * - If you use a server-side CSV proxy for Google Sheets, the loadFromGoogleSheets() function expects /gs/csv?id=...&gid=...
- *
- * Notes:
- * - This file is intentionally conservative: it preserves the app's features while focusing on correctness.
- * - If you want a smaller diff (only the General view merged into your existing file), ask and I'll produce a patch.
+ * Install: replace your existing app.js with this file. No external edits required
+ * except ensuring index.html contains the expected element IDs (app, world, inkWorld, gsUrl, loadGs, file, etc.).
  */
 
 /* =========================
@@ -51,7 +44,6 @@
    DOM helpers & utilities
    ========================= */
 const $ = id => document.getElementById(id);
-const q = sel => document.querySelector(sel);
 const escapeHtml = s => String(s || '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const fmtSign = n => { n = Number(n)||0; return (n>=0?'+':'')+n; };
 const abilityMod = score => Math.floor((Number(score||0)-10)/2);
@@ -59,7 +51,7 @@ const clamp = (v,a,b) => Math.max(a,Math.min(b,v));
 const nextFrame = () => new Promise(r => requestAnimationFrame(r));
 
 /* =========================
-   App root elements
+   Root elements
    ========================= */
 const el = {
   file: $('file'),
@@ -84,9 +76,6 @@ const el = {
   ink: $('inkWorld'),
 };
 
-/* Warn missing elements (non-fatal) */
-Object.keys(el).forEach(k => { if (!el[k]) {/*console.warn(`Missing element #${k}`)*/} });
-
 /* =========================
    App state
    ========================= */
@@ -97,16 +86,21 @@ window.state = window.state || {
   penOn: false,
   erasing: false,
   strokesByView: {},
-  data: {
-    general: null,
-    spells: { sorc: [], wiz: [], meta: {} },
-    slots: []
-  },
-  loaded: false
+  data: { general: null, spells: { sorc: [], wiz: [], meta: {} }, slots: [] },
+  loaded: false,
+  canvasOrigin: { x: 2000, y: 2000 }
 };
 
 /* =========================
-   Viewport & transform
+   Progress helper
+   ========================= */
+function setProgress(pct, text) {
+  if (el.progressBar) el.progressBar.style.width = `${pct}%`;
+  if (el.status) el.status.textContent = text || '';
+}
+
+/* =========================
+   Viewport transform (pan/zoom)
    ========================= */
 function applyWorldTransform() {
   const world = el.world || document.body;
@@ -154,30 +148,14 @@ if (el.viewport) {
   const body = document.body;
   function addNoSelect(){ body.classList.add('no-select-during-pan'); }
   function removeNoSelect(){ body.classList.remove('no-select-during-pan'); }
-  // inject CSS
   if (!document.getElementById('noSelectDuringPanStyle')) {
     const s = document.createElement('style');
     s.id = 'noSelectDuringPanStyle';
     s.textContent = `.no-select-during-pan, .no-select-during-pan * { user-select: none !important; -webkit-user-select: none !important; }`;
     document.head.appendChild(s);
   }
-  // wrap pan functions (we'll define beginPan/endPan later; if they exist, wrap them)
-  const wrapIfExists = (name) => {
-    if (typeof window[name] === 'function') {
-      const orig = window[name];
-      window[name] = function(...args){ if (name === 'beginPan') addNoSelect(); if (name === 'endPan') removeNoSelect(); return orig.apply(this,args); };
-    }
-  };
-  wrapIfExists('beginPan'); wrapIfExists('endPan');
+  // We'll call addNoSelect/removeNoSelect from pan handlers below.
 })();
-
-/* =========================
-   Simple progress UI
-   ========================= */
-function setProgress(pct, text) {
-  if (el.progressBar) el.progressBar.style.width = `${pct}%`;
-  if (el.status) el.status.textContent = text || '';
-}
 
 /* =========================
    Ink canvas implementation
@@ -187,16 +165,16 @@ const ink = (function(){
   if (!canvas) return null;
   const ctx = canvas.getContext('2d');
   const dpr = window.devicePixelRatio || 1;
-  let canvasOrigin = { x: 2000, y: 2000 };
+  let canvasOrigin = state.canvasOrigin || { x:2000, y:2000 };
   state.canvasOrigin = canvasOrigin;
 
   function ensureSize() {
     const minW = Math.max(el.app?.scrollWidth || 1200, 1200) + canvasOrigin.x*2;
     const minH = Math.max(el.app?.scrollHeight || 800, 800) + canvasOrigin.y*2;
-    canvas.style.width = canvas.style.width || `${minW}px`;
-    canvas.style.height = canvas.style.height || `${minH}px`;
-    canvas.width = Math.floor((parseFloat(canvas.style.width) || minW) * dpr);
-    canvas.height = Math.floor((parseFloat(canvas.style.height) || minH) * dpr);
+    canvas.style.width = `${minW}px`;
+    canvas.style.height = `${minH}px`;
+    canvas.width = Math.floor(minW * dpr);
+    canvas.height = Math.floor(minH * dpr);
     ctx.setTransform(dpr,0,0,dpr,0,0);
   }
   ensureSize();
@@ -271,7 +249,8 @@ const ink = (function(){
     e.preventDefault();
   }
   function pointerUp(e) {
-    if (!drawing || (activeId !== null && e && e.pointerId !== activeId)) return;
+    if (!drawing) return;
+    if (activeId !== null && e && e.pointerId !== activeId) return;
     drawing = false; current = null; activeId = null;
     saveForView(state.view);
     try { if (e) canvas.releasePointerCapture(e.pointerId); } catch {}
@@ -294,7 +273,6 @@ const ink = (function(){
   }
   function setEraser(on) { state.erasing = !!on; if (el.eraser) el.eraser.textContent = state.erasing ? 'Eraser: ON' : 'Eraser'; }
 
-  // expose API
   return { redraw, loadForView, clear, undo, setPenMode, setEraser, saveForView };
 })();
 
@@ -325,10 +303,9 @@ if (el.viewport) {
 }
 
 /* =========================
-   Compute derived general stats
+   Derived computations for General
    ========================= */
 function computeGeneralDerived(g) {
-  // g expected shape: { classes:{...}, abilities:{str:{pointBuy,asi,items,buffs}}, ac:{...}, buffs:{mageArmor,shieldSpell}, saves:{...}, initMisc }
   const cls = g.classes || { sorc:0, wiz:0, um:0 };
   const abilities = {};
   for (const k of ['str','dex','con','int','wis','cha']) {
@@ -342,9 +319,8 @@ function computeGeneralDerived(g) {
   }
   const lvl = (Number(cls.sorc)||0) + (Number(cls.wiz)||0) + (Number(cls.um)||0);
   const conMod = abilities.con.mod;
-  const hpBase = lvl > 0 ? (4 + (lvl-1)*3) : 0; // d4 average
+  const hpBase = lvl > 0 ? (4 + (lvl-1)*3) : 0;
   const hpMax = hpBase + conMod * lvl;
-  // AC calculation: base 10 + armor + shield + dex mod + size + natural + deflect + misc + mageArmor/shieldSpell
   const ac = g.ac || {};
   const armorItem = Number(ac.armor || 0);
   const shieldItem = Number(ac.shield || 0);
@@ -359,7 +335,6 @@ function computeGeneralDerived(g) {
   const acTotal = 10 + armorUsed + shieldUsed + abilities.dex.mod + size + natural + deflect + misc;
   const touch = 10 + abilities.dex.mod + size + deflect + (Number(ac.miscTouch||0) || 0);
   const flat = 10 + armorUsed + shieldUsed + size + natural + deflect + misc;
-  // BAB and saves (simple poor progression used as placeholder)
   const bab = Math.floor((Number(cls.sorc)||0)/2) + Math.floor((Number(cls.wiz)||0)/2) + Math.floor((Number(cls.um)||0)/2);
   const fort = Math.floor((Number(cls.sorc)||0)/3) + Math.floor((Number(cls.wiz)||0)/3) + Math.floor((Number(cls.um)||0)/3) + abilities.con.mod + (Number(g.saves?.fortMisc)||0);
   const ref = Math.floor((Number(cls.sorc)||0)/3) + Math.floor((Number(cls.wiz)||0)/3) + Math.floor((Number(cls.um)||0)/3) + abilities.dex.mod + (Number(g.saves?.refMisc)||0);
@@ -370,7 +345,227 @@ function computeGeneralDerived(g) {
 }
 
 /* =========================
-   Render General view (six columns, pointBuy right, computed totals)
+   CSV parsing helpers
+   ========================= */
+function parseCsv(text) {
+  const rows = [];
+  let cur = [];
+  let curField = '';
+  let inQuotes = false;
+  for (let i=0;i<text.length;i++) {
+    const ch = text[i];
+    if (ch === '"') {
+      if (inQuotes && text[i+1] === '"') { curField += '"'; i++; continue; }
+      inQuotes = !inQuotes;
+      continue;
+    }
+    if (!inQuotes && (ch === '\n' || ch === '\r')) {
+      if (ch === '\r' && text[i+1] === '\n') { /* skip */ }
+      cur.push(curField); curField = ''; rows.push(cur); cur = []; continue;
+    }
+    if (!inQuotes && ch === ',') { cur.push(curField); curField = ''; continue; }
+    curField += ch;
+  }
+  if (curField !== '' || cur.length) { cur.push(curField); rows.push(cur); }
+  return rows;
+}
+function csvRowsToObjects(rows) {
+  if (!rows || rows.length === 0) return [];
+  const headers = rows[0].map(h => String(h||'').trim());
+  const out = [];
+  for (let r=1;r<rows.length;r++) {
+    const row = rows[r];
+    if (!row || row.length === 0) continue;
+    const obj = {};
+    for (let c=0;c<headers.length;c++) obj[headers[c]] = row[c] !== undefined ? row[c] : '';
+    out.push(obj);
+  }
+  return out;
+}
+
+/* =========================
+   Apply sheet row to general mapping
+   ========================= */
+function applySheetRowToGeneralDetailed(row) {
+  if (!state.data.general) state.data.general = {};
+  const g = state.data.general;
+  g.characterName = row['Character'] ?? row['Name'] ?? g.characterName ?? '';
+  g.playerName = row['Player'] ?? g.playerName ?? '';
+  g.xp = row['XP'] ?? g.xp ?? '';
+  g.classLine = row['Class'] ?? row['Classes'] ?? g.classLine ?? '';
+  g.race = row['Race'] ?? g.race ?? '';
+
+  const map = { STR:'str', DEX:'dex', CON:'con', INT:'int', WIS:'wis', CHA:'cha' };
+  Object.keys(map).forEach(h => {
+    const a = map[h];
+    g.abilities = g.abilities || {};
+    g.abilities[a] = g.abilities[a] || {};
+    if (row[`${h}`] !== undefined && row[`${h}`] !== '') g.abilities[a].pointBuy = Number(row[`${h}`]) || g.abilities[a].pointBuy || 0;
+    if (row[`${h} ASI`] !== undefined && row[`${h} ASI`] !== '') g.abilities[a].asi = Number(row[`${h} ASI`]) || g.abilities[a].asi || 0;
+    if (row[`${h} PB`] !== undefined && row[`${h} PB`] !== '') g.abilities[a].pointBuy = Number(row[`${h} PB`]) || g.abilities[a].pointBuy || 0;
+    if (row[`${h} ITEMS`] !== undefined && row[`${h} ITEMS`] !== '') g.abilities[a].items = Number(row[`${h} ITEMS`]) || g.abilities[a].items || 0;
+    if (row[`${h} BUFFS`] !== undefined && row[`${h} BUFFS`] !== '') g.abilities[a].buffs = Number(row[`${h} BUFFS`]) || g.abilities[a].buffs || 0;
+  });
+
+  if (row['Feats']) {
+    const list = String(row['Feats']).split(',').map(s => s.trim()).filter(Boolean);
+    g.feats = list.map(l => ({ label: l }));
+  } else {
+    const feats = [];
+    Object.keys(row).forEach(k => { if (/feat/i.test(k) && row[k]) feats.push({ label: String(row[k]) }); });
+    if (feats.length) g.feats = feats;
+  }
+
+  if (row['Armor']) g.ac = g.ac || {}, g.ac.armor = Number(row['Armor']) || g.ac.armor || 0;
+  if (row['Shield']) g.ac = g.ac || {}, g.ac.shield = Number(row['Shield']) || g.ac.shield || 0;
+  if (row['Mage Armor']) g.buffs = g.buffs || {}, g.buffs.mageArmor = (String(row['Mage Armor']).trim().toLowerCase() === '1' || String(row['Mage Armor']).trim().toLowerCase() === 'yes') ? 1 : 0;
+  if (row['Shield Spell']) g.buffs = g.buffs || {}, g.buffs.shieldSpell = (String(row['Shield Spell']).trim().toLowerCase() === '1' || String(row['Shield Spell']).trim().toLowerCase() === 'yes') ? 1 : 0;
+
+  // After mapping, mark loaded and render
+  state.loaded = true;
+  render();
+}
+
+/* =========================
+   Robust Google Sheets loader
+   ========================= */
+function extractSpreadsheetId(url) {
+  const m = String(url).match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+  return m ? m[1] : null;
+}
+function isCsvUrl(u) { return /\.csv($|\?)/i.test(String(u)); }
+async function tryFetchText(u, opts = {}) {
+  try {
+    const r = await fetch(u, Object.assign({ cache: 'no-store' }, opts));
+    const text = await r.text().catch(()=>null);
+    return { ok: r.ok, status: r.status, text };
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
+}
+
+async function loadFromGoogleSheets(url) {
+  setProgress(2, 'Starting sheet load...');
+  console.log('[ingest] loadFromGoogleSheets', url);
+  const sheetId = extractSpreadsheetId(url);
+  const tried = [];
+
+  // 1) direct CSV URL
+  if (isCsvUrl(url)) {
+    const r = await tryFetchText(url);
+    tried.push({ method: 'direct-csv', url, result: r });
+    if (r.ok && r.text) {
+      const rows = parseCsv(r.text);
+      const objs = csvRowsToObjects(rows);
+      if (objs.length) { applySheetRowToGeneralDetailed(objs[0]); setProgress(100, 'Sheet loaded (direct CSV)'); return; }
+    }
+  }
+
+  // 2) try proxy if available
+  if (sheetId) {
+    try {
+      const proxyUrl = `/gs/csv?id=${encodeURIComponent(sheetId)}&gid=0`;
+      const r = await tryFetchText(proxyUrl);
+      tried.push({ method: 'proxy', url: proxyUrl, result: r });
+      if (r.ok && r.text) {
+        const rows = parseCsv(r.text);
+        const objs = csvRowsToObjects(rows);
+        if (objs.length) { applySheetRowToGeneralDetailed(objs[0]); setProgress(100, 'Sheet loaded (proxy)'); return; }
+      }
+    } catch (e) { tried.push({ method:'proxy-exception', error: String(e) }); }
+  }
+
+  // 3) try Google export for candidate gids
+  if (sheetId) {
+    const candidateGids = [2004670713, 0, 1231385124, 2140364605];
+    for (const gid of candidateGids) {
+      try {
+        const exportUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${gid}`;
+        const r = await tryFetchText(exportUrl);
+        tried.push({ method: 'google-export', gid, url: exportUrl, result: r });
+        if (r.ok && r.text) {
+          const rows = parseCsv(r.text);
+          const objs = csvRowsToObjects(rows);
+          if (objs.length) { applySheetRowToGeneralDetailed(objs[0]); setProgress(100, `Sheet loaded (gid=${gid})`); return; }
+        }
+      } catch (e) { tried.push({ method:'google-export-ex', gid, error: String(e) }); }
+    }
+
+    // 4) try published CSV pattern
+    try {
+      const pubUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/pub?output=csv`;
+      const r = await tryFetchText(pubUrl);
+      tried.push({ method: 'published-csv', url: pubUrl, result: r });
+      if (r.ok && r.text) {
+        const rows = parseCsv(r.text);
+        const objs = csvRowsToObjects(rows);
+        if (objs.length) { applySheetRowToGeneralDetailed(objs[0]); setProgress(100, 'Sheet loaded (published CSV)'); return; }
+      }
+    } catch (e) { tried.push({ method:'published-ex', error: String(e) }); }
+  }
+
+  console.error('[ingest] all attempts failed', tried);
+  setProgress(0, 'Sheet load failed — see console for details.');
+  console.info('If the sheet is private, publish it or use a server-side proxy.');
+}
+
+/* Wire loadGs button */
+if (el.loadGs && el.gsUrl) {
+  el.loadGs.addEventListener('click', async () => {
+    const url = el.gsUrl.value && el.gsUrl.value.trim();
+    if (!url) { setProgress(0, 'Paste a Google Sheets URL first.'); return; }
+    await loadFromGoogleSheets(url);
+  }, { passive: true });
+}
+
+/* Autofill gsUrl with shared sheet if empty */
+window.addEventListener('DOMContentLoaded', () => {
+  try {
+    const defaultSheet = 'https://docs.google.com/spreadsheets/d/1P_Vslp-rxiTcntUZVLR2BjJrdeQqdWfPLeigs2Gnx_U/edit?usp=sharing';
+    if (el.gsUrl && (!el.gsUrl.value || el.gsUrl.value.trim() === '')) el.gsUrl.value = defaultSheet;
+  } catch (e) {}
+});
+
+/* =========================
+   XLSX upload handling (optional)
+   ========================= */
+if (el.file) {
+  el.file.addEventListener('change', async (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    try {
+      setProgress(5, 'Reading file...');
+      const buf = await f.arrayBuffer();
+      setProgress(20, 'Parsing workbook...');
+      if (typeof XLSX === 'undefined') throw new Error('XLSX library not loaded');
+      const wb = XLSX.read(buf, { type: 'array' });
+      // Try General sheet
+      const ws = wb.Sheets['General'] || wb.Sheets['General info'] || wb.Sheets['GeneralInfo'];
+      if (ws) {
+        const csv = XLSX.utils.sheet_to_csv(ws);
+        const rows = parseCsv(csv);
+        const objs = csvRowsToObjects(rows);
+        if (objs.length) applySheetRowToGeneralDetailed(objs[0]);
+      }
+      // Spells sheet
+      if (wb.Sheets['Spells']) {
+        const csv = XLSX.utils.sheet_to_csv(wb.Sheets['Spells']);
+        const rows = parseCsv(csv);
+        const objs = csvRowsToObjects(rows);
+        state.data.spells.wiz = objs;
+      }
+      state.loaded = true;
+      setProgress(100, 'File loaded');
+      render();
+    } catch (err) {
+      console.error(err);
+      setProgress(0, 'XLSX load failed: ' + (err && err.message));
+    }
+  }, { passive: true });
+}
+
+/* =========================
+   Render General view (six columns, pointBuy right)
    ========================= */
 function renderGeneral() {
   const g = state.data.general;
@@ -379,7 +574,6 @@ function renderGeneral() {
     return;
   }
 
-  // Ensure structure
   g.abilities = g.abilities || {};
   for (const k of ['str','dex','con','int','wis','cha']) {
     g.abilities[k] = g.abilities[k] || { pointBuy:0, asi:0, items:0, buffs:0, total:0 };
@@ -391,7 +585,6 @@ function renderGeneral() {
   const derived = computeGeneralDerived(g);
   const abilities = ['str','dex','con','int','wis','cha'];
 
-  // Header
   const headerHtml = `
     <div class="sheet-header" style="display:flex;gap:18px;align-items:flex-end;margin-bottom:10px;">
       <div style="flex:1 1 320px;">
@@ -405,7 +598,6 @@ function renderGeneral() {
     </div>
   `;
 
-  // Rows: Ability | Total | Mod | Buffs | ASI | PointBuy (pointBuy read-only)
   const rowsHtml = abilities.map(a => {
     const ab = g.abilities[a];
     const pb = Number(ab.pointBuy || 0);
@@ -495,11 +687,10 @@ function renderGeneral() {
 
   if (el.app) el.app.innerHTML = html;
 
-  // Ensure grid class
   const grid = $('abilitiesGrid');
   if (grid && !grid.classList.contains('general-grid')) grid.classList.add('general-grid');
 
-  // Wire inputs: buffs and asi editable; pointBuy read-only; total computed
+  // Wire inputs
   abilities.forEach(a => {
     const pbEl = $(`${a}_pointbuy`);
     const asiEl = $(`${a}_asi`);
@@ -532,12 +723,10 @@ function renderGeneral() {
     [asiEl, buffsEl].forEach(elm => { if (elm) elm.addEventListener('input', recompute, { passive: true }); });
   });
 
-  // Mage Armor / Shield checkboxes
   const chkMage = $('chkMageArmor'), chkShield = $('chkShieldSpell');
   if (chkMage) chkMage.addEventListener('change', () => { g.buffs.mageArmor = chkMage.checked ? 1 : 0; const nd = computeGeneralDerived(g); if ($('ac_total')) $('ac_total').value = Number(nd.acTotal||10); if (ink && ink.redraw) ink.redraw(); }, { passive: true });
   if (chkShield) chkShield.addEventListener('change', () => { g.buffs.shieldSpell = chkShield.checked ? 1 : 0; const nd = computeGeneralDerived(g); if ($('ac_total')) $('ac_total').value = Number(nd.acTotal||10); if (ink && ink.redraw) ink.redraw(); }, { passive: true });
 
-  // HP/hit dice persistence if present
   const hpEl = $('hp_current'), hdEl = $('hit_dice');
   if (hpEl) hpEl.addEventListener('input', () => { g.hp_current = Number(hpEl.value) || 0; }, { passive: true });
   if (hdEl) hdEl.addEventListener('input', () => { g.hit_dice = hdEl.value || '0d4'; }, { passive: true });
@@ -546,307 +735,11 @@ function renderGeneral() {
 }
 
 /* =========================
-   Google Sheets ingest (CSV proxy or published CSV)
-   - Maps columns to: STR, STR ASI, STR PB, STR ITEMS, STR BUFFS, Feats, Character, Player, XP, Class, Race
-   - After parsing, calls applySheetRowToGeneralDetailed for each row (we use first row for general)
-   ========================= */
-
-/**
- * Helper: parse CSV text into array of rows (split on commas, naive but works for simple exported CSV)
- * Returns array of arrays (rows)
- */
-function parseCsv(text) {
-  // Simple CSV parser that handles quoted fields with commas
-  const rows = [];
-  let cur = [];
-  let curField = '';
-  let inQuotes = false;
-  for (let i=0;i<text.length;i++) {
-    const ch = text[i];
-    if (ch === '"' ) {
-      if (inQuotes && text[i+1] === '"') { curField += '"'; i++; continue; }
-      inQuotes = !inQuotes;
-      continue;
-    }
-    if (!inQuotes && (ch === '\n' || ch === '\r')) {
-      if (ch === '\r' && text[i+1] === '\n') { /* skip */ }
-      cur.push(curField); curField = ''; rows.push(cur); cur = []; continue;
-    }
-    if (!inQuotes && ch === ',') { cur.push(curField); curField = ''; continue; }
-    curField += ch;
-  }
-  if (curField !== '' || cur.length) { cur.push(curField); rows.push(cur); }
-  return rows;
-}
-
-/**
- * Convert CSV rows (array of arrays) to array of objects using header row
- */
-function csvRowsToObjects(rows) {
-  if (!rows || rows.length === 0) return [];
-  const headers = rows[0].map(h => String(h||'').trim());
-  const out = [];
-  for (let r=1;r<rows.length;r++) {
-    const row = rows[r];
-    if (!row || row.length === 0) continue;
-    const obj = {};
-    for (let c=0;c<headers.length;c++) obj[headers[c]] = row[c] !== undefined ? row[c] : '';
-    out.push(obj);
-  }
-  return out;
-}
-
-/**
- * Apply a parsed sheet row (object) into state.data.general fields.
- * Expects headers like: STR, STR ASI, STR PB, STR ITEMS, STR BUFFS, Feats, Character, Player, XP, Class, Race
- */
-function applySheetRowToGeneralDetailed(row) {
-  if (!state.data.general) state.data.general = {};
-  const g = state.data.general;
-  g.characterName = row['Character'] ?? row['Name'] ?? g.characterName ?? '';
-  g.playerName = row['Player'] ?? g.playerName ?? '';
-  g.xp = row['XP'] ?? g.xp ?? '';
-  g.classLine = row['Class'] ?? row['Classes'] ?? g.classLine ?? '';
-  g.race = row['Race'] ?? g.race ?? '';
-
-  const map = { STR:'str', DEX:'dex', CON:'con', INT:'int', WIS:'wis', CHA:'cha' };
-  Object.keys(map).forEach(h => {
-    const a = map[h];
-    g.abilities = g.abilities || {};
-    g.abilities[a] = g.abilities[a] || {};
-    if (row[`${h}`] !== undefined && row[`${h}`] !== '') g.abilities[a].pointBuy = Number(row[`${h}`]) || g.abilities[a].pointBuy || 0;
-    if (row[`${h} ASI`] !== undefined && row[`${h} ASI`] !== '') g.abilities[a].asi = Number(row[`${h} ASI`]) || g.abilities[a].asi || 0;
-    if (row[`${h} PB`] !== undefined && row[`${h} PB`] !== '') g.abilities[a].pointBuy = Number(row[`${h} PB`]) || g.abilities[a].pointBuy || g.abilities[a].pointBuy || 0;
-    if (row[`${h} ITEMS`] !== undefined && row[`${h} ITEMS`] !== '') g.abilities[a].items = Number(row[`${h} ITEMS`]) || g.abilities[a].items || 0;
-    if (row[`${h} BUFFS`] !== undefined && row[`${h} BUFFS`] !== '') g.abilities[a].buffs = Number(row[`${h} BUFFS`]) || g.abilities[a].buffs || 0;
-  });
-
-  // Feats: accept comma-separated list or multiple columns
-  if (row['Feats']) {
-    const list = String(row['Feats']).split(',').map(s => s.trim()).filter(Boolean);
-    g.feats = list.map(l => ({ label: l }));
-  } else {
-    // try columns Feat 1, Feat 2...
-    const feats = [];
-    Object.keys(row).forEach(k => { if (/feat/i.test(k) && row[k]) feats.push({ label: String(row[k]) }); });
-    if (feats.length) g.feats = feats;
-  }
-
-  // AC fields if present
-  if (row['Armor']) g.ac = g.ac || {}, g.ac.armor = Number(row['Armor']) || g.ac.armor || 0;
-  if (row['Shield']) g.ac = g.ac || {}, g.ac.shield = Number(row['Shield']) || g.ac.shield || 0;
-
-  // Mage Armor / Shield flags
-  if (row['Mage Armor']) g.buffs = g.buffs || {}, g.buffs.mageArmor = (String(row['Mage Armor']).trim().toLowerCase() === '1' || String(row['Mage Armor']).trim().toLowerCase() === 'yes') ? 1 : 0;
-  if (row['Shield Spell']) g.buffs = g.buffs || {}, g.buffs.shieldSpell = (String(row['Shield Spell']).trim().toLowerCase() === '1' || String(row['Shield Spell']).trim().toLowerCase() === 'yes') ? 1 : 0;
-
-  // Re-render
-  renderGeneral();
-}
-
-/* =========================
-   Load Google Sheets (published CSV) or CSV proxy
-   - If URL is a Google Sheets edit link, extract ID and use proxy /gs/csv?id=...&gid=...
-   - If URL is a published CSV URL, fetch directly
-   ========================= */
-
-function extractSpreadsheetId(url) {
-  const m = String(url).match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
-  return m ? m[1] : null;
-}
-async function tryFetch(url, opts = {}) {
-  try {
-    const r = await fetch(url, opts);
-    return { ok: r.ok, status: r.status, text: await r.text().catch(e => { console.warn('text() failed', e); return null; }) };
-  } catch (err) {
-    return { ok: false, error: String(err) };
-  }
-}
-
-async function fetchCsvViaProxy(sheetId, gid=0) {
-  // This endpoint must exist on your server; if not, try the published CSV URL pattern
-  const proxy = `/gs/csv?id=${encodeURIComponent(sheetId)}&gid=${encodeURIComponent(gid)}`;
-  const r = await fetch(proxy, { cache: 'no-store' });
-  if (!r.ok) throw new Error('CSV proxy failed: ' + r.status);
-  return await r.text();
-}
-async function fetchPublishedCsv(url) {
-  const r = await fetch(url, { cache: 'no-store' });
-  if (!r.ok) throw new Error('Fetch failed: ' + r.status);
-  return await r.text();
-}
-
-/**
- * loadFromGoogleSheets(url)
- * - Accepts either a Google Sheets edit URL or a published CSV URL.
- * - Attempts to fetch general sheet (gid for general is guessed or provided).
- * - Parses CSV and maps first row into general.
- */
-async function loadFromGoogleSheets(url) {
-  setProgress(2, 'Starting sheet load...');
-  console.log('[ingest] loadFromGoogleSheets start', url);
-
-  const sheetId = extractSpreadsheetId(url);
-  const isDirectCsv = /\.csv($|\?)/i.test(url);
-  const tried = [];
-
-  // candidate gids to try (common ones used in this project)
-  const candidateGids = [2004670713, 0, 1231385124, 2140364605];
-
-  // helper to parse CSV text into objects (reuse your csvRowsToObjects if present)
-  function parseAndApply(text) {
-    if (!text || !text.trim()) return { ok: false, reason: 'empty' };
-    const rows = parseCsv(text);
-    if (!rows || rows.length === 0) return { ok: false, reason: 'no-rows' };
-    const objs = csvRowsToObjects(rows);
-    if (!objs || objs.length === 0) return { ok: false, reason: 'no-objects' };
-    // apply first row to general
-    try {
-      applySheetRowToGeneralDetailed(objs[0]);
-      return { ok: true, rows: objs.length };
-    } catch (e) {
-      return { ok: false, reason: 'apply-failed', error: String(e) };
-    }
-  }
-
-  // 1) If user pasted a direct CSV URL, try it first
-  if (isDirectCsv) {
-    console.log('[ingest] trying direct CSV URL');
-    const r = await tryFetch(url, { cache: 'no-store' });
-    tried.push({ method: 'direct-csv', result: r });
-    if (r.ok && r.text) {
-      const parsed = parseAndApply(r.text);
-      if (parsed.ok) { setProgress(100, 'Sheet loaded (direct CSV)'); console.log('[ingest] success direct CSV', parsed); return; }
-      console.warn('[ingest] direct CSV parse failed', parsed);
-    } else console.warn('[ingest] direct CSV fetch failed', r);
-  }
-
-  // 2) If we have a sheetId, try proxy then Google export for multiple gids
-  if (sheetId) {
-    // try proxy first (if you run a proxy on the server)
-    try {
-      const proxyUrl = `/gs/csv?id=${encodeURIComponent(sheetId)}&gid=${encodeURIComponent(candidateGids[0])}`;
-      console.log('[ingest] trying proxy', proxyUrl);
-      const r = await tryFetch(proxyUrl, { cache: 'no-store' });
-      tried.push({ method: 'proxy', url: proxyUrl, result: r });
-      if (r.ok && r.text) {
-        const parsed = parseAndApply(r.text);
-        if (parsed.ok) { setProgress(100, 'Sheet loaded (proxy)'); console.log('[ingest] success proxy', parsed); return; }
-        console.warn('[ingest] proxy parse failed', parsed);
-      } else console.warn('[ingest] proxy fetch failed', r);
-    } catch (e) { console.warn('[ingest] proxy attempt error', e); }
-
-    // try Google export for each candidate gid
-    for (const gid of candidateGids) {
-      try {
-        const exportUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${gid}`;
-        console.log('[ingest] trying google export', exportUrl);
-        const r = await tryFetch(exportUrl, { cache: 'no-store' });
-        tried.push({ method: 'google-export', gid, url: exportUrl, result: r });
-        if (r.ok && r.text) {
-          const parsed = parseAndApply(r.text);
-          if (parsed.ok) { setProgress(100, `Sheet loaded (gid=${gid})`); console.log('[ingest] success google export', gid, parsed); return; }
-          console.warn('[ingest] google export parse failed', gid, parsed);
-        } else {
-          // 403/401 likely means not published or not shared publicly
-          console.warn('[ingest] google export fetch failed', gid, r);
-        }
-      } catch (e) { console.warn('[ingest] google export error', gid, e); }
-    }
-
-    // try the "published" CSV pattern (older)
-    try {
-      const pubUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/pub?output=csv`;
-      console.log('[ingest] trying published CSV', pubUrl);
-      const r = await tryFetch(pubUrl, { cache: 'no-store' });
-      tried.push({ method: 'published-csv', url: pubUrl, result: r });
-      if (r.ok && r.text) {
-        const parsed = parseAndApply(r.text);
-        if (parsed.ok) { setProgress(100, 'Sheet loaded (published CSV)'); console.log('[ingest] success published CSV', parsed); return; }
-        console.warn('[ingest] published CSV parse failed', parsed);
-      } else console.warn('[ingest] published CSV fetch failed', r);
-    } catch (e) { console.warn('[ingest] published CSV error', e); }
-  }
-
-  // 3) If nothing worked, report detailed diagnostics
-  console.error('[ingest] all attempts failed. Tried:', tried);
-  setProgress(0, 'Sheet load failed — see console for details.');
-  // Helpful hint for the user
-  console.info('Ingest diagnostics: If the sheet is not public, Google will block direct CSV export (403). Either publish the sheet to the web, use a server-side proxy (/gs/csv), or use the Sheets API with credentials.');
-}
-
-
-/* Wire loadGs button */
-if (el.loadGs && el.gsUrl) {
-  el.loadGs.addEventListener('click', async () => {
-    const url = el.gsUrl.value && el.gsUrl.value.trim();
-    if (!url) { setProgress(0, 'Paste a Google Sheets URL first.'); return; }
-    await loadFromGoogleSheets(url);
-    render();
-  }, { passive: true });
-}
-
-/* Autofill gsUrl with the user's shared sheet if empty */
-window.addEventListener('DOMContentLoaded', () => {
-  try {
-    const defaultSheet = 'https://docs.google.com/spreadsheets/d/1P_Vslp-rxiTcntUZVLR2BjJrdeQqdWfPLeigs2Gnx_U/edit?usp=sharing';
-    if (el.gsUrl && (!el.gsUrl.value || el.gsUrl.value.trim() === '')) el.gsUrl.value = defaultSheet;
-  } catch (e) {}
-});
-
-/* =========================
-   XLSX file upload handling (optional)
-   ========================= */
-if (el.file) {
-  el.file.addEventListener('change', async (e) => {
-    const f = e.target.files && e.target.files[0];
-    if (!f) return;
-    try {
-      setProgress(5, 'Reading file...');
-      const buf = await f.arrayBuffer();
-      setProgress(20, 'Parsing workbook...');
-      if (typeof XLSX === 'undefined') throw new Error('XLSX library not loaded');
-      const wb = XLSX.read(buf, { type: 'array' });
-      // Try to ingest General sheet if present
-      if (wb.Sheets['General'] || wb.Sheets['General info']) {
-        try {
-          // prefer General sheet
-          const ws = wb.Sheets['General'] || wb.Sheets['General info'];
-          const csv = XLSX.utils.sheet_to_csv(ws);
-          const rows = parseCsv(csv);
-          const objs = csvRowsToObjects(rows);
-          if (objs.length) applySheetRowToGeneralDetailed(objs[0]);
-        } catch (e) { console.warn('XLSX general ingest failed', e); }
-      }
-      // Spells ingestion (if present)
-      if (wb.Sheets['Spells']) {
-        try {
-          const ws = wb.Sheets['Spells'];
-          const csv = XLSX.utils.sheet_to_csv(ws);
-          const rows = parseCsv(csv);
-          const objs = csvRowsToObjects(rows);
-          // naive: store spells as rows
-          state.data.spells.wiz = objs;
-        } catch (e) { console.warn('XLSX spells ingest failed', e); }
-      }
-      state.loaded = true;
-      setProgress(100, 'File loaded');
-      render();
-    } catch (err) {
-      console.error(err);
-      setProgress(0, 'XLSX load failed: ' + (err && err.message));
-    }
-  }, { passive: true });
-}
-
-/* =========================
-   Render spells/slots placeholders
+   Spells/Slots/Skills placeholders
    ========================= */
 function renderSpells() {
   const spells = state.data.spells || { sorc:[], wiz:[] };
-  if (el.app) {
-    el.app.innerHTML = `<div class="panel"><h2>Spells</h2><div class="hint">Spell lists loaded: Sorc ${spells.sorc.length}, Wiz ${spells.wiz.length}</div></div>`;
-  }
+  if (el.app) el.app.innerHTML = `<div class="panel"><h2>Spells</h2><div class="hint">Spell lists loaded: Sorc ${spells.sorc.length}, Wiz ${spells.wiz.length}</div></div>`;
 }
 function renderSlots() {
   if (el.app) el.app.innerHTML = `<div class="panel"><h2>Slots</h2><div class="hint">Slots placeholder</div></div>`;
@@ -890,16 +783,14 @@ if (el.zoomIn) el.zoomIn.addEventListener('click', () => setZoom(state.zoom * 1.
 if (el.zoomReset) el.zoomReset.addEventListener('click', () => resetView(), { passive: true });
 
 /* =========================
-   Initial setup
+   Autosave and init
    ========================= */
 (function init() {
-  // Try to load saved general from localStorage (if present)
   try {
     const raw = localStorage.getItem('sheet:general');
     if (raw) state.data.general = JSON.parse(raw);
   } catch {}
 
-  // If no general loaded, create a minimal default so UI isn't empty
   if (!state.data.general) {
     state.data.general = {
       characterName: 'Unnamed',
@@ -922,12 +813,10 @@ if (el.zoomReset) el.zoomReset.addEventListener('click', () => resetView(), { pa
     };
   }
 
-  // Wire default UI state
   applyWorldTransform();
   if (ink && ink.loadForView) ink.loadForView(state.view);
   render();
 
-  // Autosave general to localStorage on changes (debounced)
   let saveTimer = null;
   function scheduleSave() {
     if (saveTimer) clearTimeout(saveTimer);
@@ -935,15 +824,15 @@ if (el.zoomReset) el.zoomReset.addEventListener('click', () => resetView(), { pa
       try { localStorage.setItem('sheet:general', JSON.stringify(state.data.general)); } catch {}
     }, 500);
   }
-  // Hook into input events globally for autosave
   document.addEventListener('input', scheduleSave, { passive: true });
 
-  // Ensure gsUrl autofill already set earlier; if loadGs exists and gsUrl has value, optionally auto-load
-  if (el.gsUrl && el.gsUrl.value && el.loadGs) {
-    // do not auto-load by default; user triggers load
-  }
+  // Autofill gsUrl if empty
+  try {
+    const defaultSheet = 'https://docs.google.com/spreadsheets/d/1P_Vslp-rxiTcntUZVLR2BjJrdeQqdWfPLeigs2Gnx_U/edit?usp=sharing';
+    if (el.gsUrl && (!el.gsUrl.value || el.gsUrl.value.trim() === '')) el.gsUrl.value = defaultSheet;
+  } catch (e) {}
 })();
 
 /* =========================
-   End of app.js
+   End of file
    ========================= */
