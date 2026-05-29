@@ -3,158 +3,55 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>3.5e Character Sheet — Ink Overlay</title>
-
-  <style>
-    /* Basic layout */
-    html,body { height:100%; margin:0; font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial; background:#f6f6f6; color:#111; }
-    #app { position:relative; width:100%; height:100%; overflow:hidden; display:flex; flex-direction:column; }
-
-    /* Top toolbar */
-    #toolbar { display:flex; gap:8px; padding:8px; background:#fff; border-bottom:1px solid #e3e3e3; align-items:center; z-index:10000; }
-    #toolbar button { padding:6px 10px; border:1px solid #ccc; background:#fafafa; cursor:pointer; border-radius:4px; }
-    #toolbar button.active { background:#222; color:#fff; border-color:#111; }
-
-    /* Viewport and world */
-    #viewport { position:relative; flex:1; display:block; overflow:hidden; background:linear-gradient(#fff,#f8f8f8); }
-    #world { position:absolute; left:0; top:0; transform-origin:0 0; will-change:transform; /* your sheet HTML goes here */ }
-
-    /* Ink canvas overlay */
-    #inkWorld {
-      position:absolute;
-      left:0;
-      top:0;
-      display:block;
-      pointer-events:none; /* toggled by script when pen is ON */
-      touch-action:none;
-      z-index:20;
-    }
-
-    /* Simple sheet styling for the example content */
-    .sheet { width:900px; margin:40px; padding:24px; background:#fff; border:1px solid #ddd; box-shadow:0 2px 6px rgba(0,0,0,0.04); }
-    .sheet h1 { margin:0 0 12px 0; font-size:20px; }
-    .row { display:flex; gap:12px; margin-bottom:8px; }
-    .col { flex:1; min-width:120px; }
-    label { display:block; font-size:12px; color:#444; margin-bottom:4px; }
-    input[type="text"], select, textarea { width:100%; padding:6px 8px; border:1px solid #ccc; border-radius:4px; font-size:14px; box-sizing:border-box; }
-
-    /* Print: hide ink overlay by default */
-    @media print { #inkWorld { display:none !important; } }
-  </style>
+  <title>DnD 3.5 Ink Sheet (MVP)</title>
+  <link rel="stylesheet" href="/35dnd/styles.css?v=20260528b" />
+  <!-- SheetJS from CDN (works offline too if you download it locally later) -->
+  <script src="/35dnd/xlsx.full.min.js"></script>
 </head>
+
 <body>
-  <div id="app">
-    <div id="toolbar" role="toolbar" aria-label="Ink controls">
+  <header class="topbar">
+    <div class="left">
+      <input id="file" type="file" accept=".xlsx" />
+      <input id="gsUrl" type="text"
+       placeholder="Paste Google Sheets URL"
+       value="https://docs.google.com/spreadsheets/d/1P_Vslp-rxiTcntUZVLR2BjJrdeQqdWfPLeigs2Gnx_U/edit?usp=sharing"
+       style="width:420px; max-width:100%;">
+      <button id="loadGs">Load Sheet</button>
+      <span id="status">Load your XLSX to begin.</span>
+      <div class="progress">
+        <div id="progressBar"></div>
+      </div>
+    </div>
+
+    <div class="right">
+      <button id="viewGeneral">General</button>
+      <button id="viewSpells">Spells</button>
+      <button id="viewSlots">Slots</button>
+      <button id="viewSkills">Skills</button>
+
+      <span class="sep"></span>
+
+      <button id="zoomOut">−</button>
+      <button id="zoomReset">Reset</button>
+      <button id="zoomIn">+</button>
+
+      <span class="sep"></span>
+
       <button id="penToggle">Pen: OFF</button>
       <button id="eraser">Eraser</button>
       <button id="undo">Undo</button>
       <button id="clearInk">Clear</button>
-      <div style="flex:1"></div>
-      <button id="zoomOut">Zoom −</button>
-      <button id="zoomIn">Zoom +</button>
     </div>
+  </header>
 
-    <div id="viewport">
-      <div id="world" aria-label="Character sheet container">
-        <!-- Example character sheet content. Replace with your full 3.5e sheet HTML -->
-        <div class="sheet" id="characterSheet">
-          <h1>3.5e Character Sheet</h1>
-
-          <div class="row">
-            <div class="col">
-              <label for="charName">Name</label>
-              <input id="charName" name="charName" type="text" value="Johan Example" />
-            </div>
-            <div class="col">
-              <label for="charClass">Class / Level</label>
-              <input id="charClass" name="charClass" type="text" value="Fighter 5" />
-            </div>
-            <div class="col">
-              <label for="charRace">Race</label>
-              <input id="charRace" name="charRace" type="text" value="Human" />
-            </div>
-          </div>
-
-          <div class="row">
-            <div class="col">
-              <label for="str">STR</label>
-              <input id="str" name="str" type="text" value="16" />
-            </div>
-            <div class="col">
-              <label for="dex">DEX</label>
-              <input id="dex" name="dex" type="text" value="12" />
-            </div>
-            <div class="col">
-              <label for="con">CON</label>
-              <input id="con" name="con" type="text" value="14" />
-            </div>
-            <div class="col">
-              <label for="int">INT</label>
-              <input id="int" name="int" type="text" value="10" />
-            </div>
-            <div class="col">
-              <label for="wis">WIS</label>
-              <input id="wis" name="wis" type="text" value="11" />
-            </div>
-            <div class="col">
-              <label for="cha">CHA</label>
-              <input id="cha" name="cha" type="text" value="13" />
-            </div>
-          </div>
-
-          <div style="margin-top:18px;">
-            <label for="notes">Notes</label>
-            <textarea id="notes" name="notes" rows="6">Background and notes go here.</textarea>
-          </div>
-        </div>
-      </div>
-
+  <!-- Paper viewport (no page scroll). Everything is panned/zoomed inside this. -->
+  <div id="viewport">
+    <div id="world">
+      <div id="app" class="app"></div>
       <canvas id="inkWorld"></canvas>
     </div>
   </div>
-
-  <script>
-    // Minimal glue to wire the toolbar zoom buttons to the app API if present
-    function safe(fn) { try { return fn(); } catch (e) { console.warn(e); } }
-    document.getElementById('zoomIn').addEventListener('click', () => safe(() => window.appAPI && window.appAPI.setZoom(Math.min(4, (window.state.zoom || 1) * 1.1))));
-    document.getElementById('zoomOut').addEventListener('click', () => safe(() => window.appAPI && window.appAPI.setZoom(Math.max(0.2, (window.state.zoom || 1) / 1.1))));
-  </script>
-
-  <!-- Your app script. Replace path if needed -->
-  <script src="app.js"></script>
-
-  <script>
-    // Connect toolbar buttons to the app API once app.js has initialized
-    (function attachControls() {
-      const pen = document.getElementById('penToggle');
-      const eraser = document.getElementById('eraser');
-      const undo = document.getElementById('undo');
-      const clearInk = document.getElementById('clearInk');
-
-      function updatePenLabel() {
-        if (window.state && pen) pen.textContent = `Pen: ${window.state.penOn ? 'ON' : 'OFF'}`;
-      }
-
-      pen.addEventListener('click', () => {
-        if (window.appAPI && window.appAPI.inkRedraw) {
-          const newMode = !(window.state && window.state.penOn);
-          safe(() => window.appAPI && window.appAPI.ink && window.appAPI.ink.setPenMode ? window.appAPI.ink.setPenMode(newMode) : window.appAPI.setPan && window.appAPI.setPan(0,0));
-        }
-        updatePenLabel();
-      });
-
-      eraser.addEventListener('click', () => {
-        if (window.appAPI && window.appAPI.ink) {
-          safe(() => window.appAPI.ink.setEraser ? window.appAPI.ink.setEraser(!(window.state && window.state.erasing)) : null);
-        }
-      });
-
-      undo.addEventListener('click', () => safe(() => window.appAPI && window.appAPI.ink && window.appAPI.ink.undo ? window.appAPI.ink.undo() : null));
-      clearInk.addEventListener('click', () => safe(() => window.appAPI && window.appAPI.ink && window.appAPI.ink.clear ? window.appAPI.ink.clear() : null));
-
-      // Keep label in sync if state is exposed
-      setTimeout(updatePenLabel, 500);
-    })();
-  </script>
+  <script src="/35dnd/app.js?v=20260528b"></script>
 </body>
 </html>
