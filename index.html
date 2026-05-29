@@ -8,12 +8,13 @@
   <!-- Main stylesheet (e-ink friendly) -->
   <link rel="stylesheet" href="/35dnd/styles.css">
 
-  <!-- Small page-level overrides (keeps CSS in one place; minimal here) -->
+  <!-- Minimal page-level overrides -->
   <style>
-    /* Ensure the world area centers the sheet and doesn't collapse */
+    /* Keep world centered and prevent collapse */
     #world { display:flex; justify-content:center; align-items:flex-start; }
-    /* Make sure the app container uses the sheet width */
-    #app { width: 100%; max-width: 980px; }
+    #app { width:100%; max-width:980px; box-sizing:border-box; }
+    /* Ensure the abilities grid is visible even before app.js runs */
+    .general-grid { visibility: visible; }
   </style>
 </head>
 <body>
@@ -58,100 +59,100 @@
           <h1 id="generalTitle">General</h1>
 
           <!-- Ability grid header -->
-          <div class="general-grid" id="abilitiesGrid">
-            <div class="header">Ability</div>
-            <div class="header">Total</div>
-            <div class="header">Mod</div>
-            <div class="header">Buffs</div>
-            <div class="header">ASI</div>
+          <div class="general-grid" id="abilitiesGrid" role="table" aria-label="Ability scores">
+            <div class="header" role="columnheader">Ability</div>
+            <div class="header" role="columnheader">Total</div>
+            <div class="header" role="columnheader">Mod</div>
+            <div class="header" role="columnheader">Buffs</div>
+            <div class="header" role="columnheader">ASI</div>
 
             <!-- STR -->
-            <div class="ability-name">STR</div>
-            <div class="ability-cell total">
+            <div class="ability-name" role="rowheader">STR</div>
+            <div class="ability-cell total" role="cell">
               <input id="str_total" name="str_total" type="number" inputmode="numeric" value="10" />
             </div>
-            <div class="ability-cell mod">
+            <div class="ability-cell mod" role="cell">
               <input id="str_mod" name="str_mod" type="text" readonly />
             </div>
-            <div class="ability-cell buffs">
+            <div class="ability-cell buffs" role="cell">
               <input id="str_buffs" name="str_buffs" type="text" />
             </div>
-            <div class="ability-cell asi">
+            <div class="ability-cell asi" role="cell">
               <input id="str_asi" name="str_asi" type="number" />
             </div>
 
             <!-- DEX -->
-            <div class="ability-name">DEX</div>
-            <div class="ability-cell total">
+            <div class="ability-name" role="rowheader">DEX</div>
+            <div class="ability-cell total" role="cell">
               <input id="dex_total" name="dex_total" type="number" inputmode="numeric" value="10" />
             </div>
-            <div class="ability-cell mod">
+            <div class="ability-cell mod" role="cell">
               <input id="dex_mod" name="dex_mod" type="text" readonly />
             </div>
-            <div class="ability-cell buffs">
+            <div class="ability-cell buffs" role="cell">
               <input id="dex_buffs" name="dex_buffs" type="text" />
             </div>
-            <div class="ability-cell asi">
+            <div class="ability-cell asi" role="cell">
               <input id="dex_asi" name="dex_asi" type="number" />
             </div>
 
             <!-- CON -->
-            <div class="ability-name">CON</div>
-            <div class="ability-cell total">
+            <div class="ability-name" role="rowheader">CON</div>
+            <div class="ability-cell total" role="cell">
               <input id="con_total" name="con_total" type="number" inputmode="numeric" value="10" />
             </div>
-            <div class="ability-cell mod">
+            <div class="ability-cell mod" role="cell">
               <input id="con_mod" name="con_mod" type="text" readonly />
             </div>
-            <div class="ability-cell buffs">
+            <div class="ability-cell buffs" role="cell">
               <input id="con_buffs" name="con_buffs" type="text" />
             </div>
-            <div class="ability-cell asi">
+            <div class="ability-cell asi" role="cell">
               <input id="con_asi" name="con_asi" type="number" />
             </div>
 
             <!-- INT -->
-            <div class="ability-name">INT</div>
-            <div class="ability-cell total">
+            <div class="ability-name" role="rowheader">INT</div>
+            <div class="ability-cell total" role="cell">
               <input id="int_total" name="int_total" type="number" inputmode="numeric" value="10" />
             </div>
-            <div class="ability-cell mod">
+            <div class="ability-cell mod" role="cell">
               <input id="int_mod" name="int_mod" type="text" readonly />
             </div>
-            <div class="ability-cell buffs">
+            <div class="ability-cell buffs" role="cell">
               <input id="int_buffs" name="int_buffs" type="text" />
             </div>
-            <div class="ability-cell asi">
+            <div class="ability-cell asi" role="cell">
               <input id="int_asi" name="int_asi" type="number" />
             </div>
 
             <!-- WIS -->
-            <div class="ability-name">WIS</div>
-            <div class="ability-cell total">
+            <div class="ability-name" role="rowheader">WIS</div>
+            <div class="ability-cell total" role="cell">
               <input id="wis_total" name="wis_total" type="number" inputmode="numeric" value="10" />
             </div>
-            <div class="ability-cell mod">
+            <div class="ability-cell mod" role="cell">
               <input id="wis_mod" name="wis_mod" type="text" readonly />
             </div>
-            <div class="ability-cell buffs">
+            <div class="ability-cell buffs" role="cell">
               <input id="wis_buffs" name="wis_buffs" type="text" />
             </div>
-            <div class="ability-cell asi">
+            <div class="ability-cell asi" role="cell">
               <input id="wis_asi" name="wis_asi" type="number" />
             </div>
 
             <!-- CHA -->
-            <div class="ability-name">CHA</div>
-            <div class="ability-cell total">
+            <div class="ability-name" role="rowheader">CHA</div>
+            <div class="ability-cell total" role="cell">
               <input id="cha_total" name="cha_total" type="number" inputmode="numeric" value="10" />
             </div>
-            <div class="ability-cell mod">
+            <div class="ability-cell mod" role="cell">
               <input id="cha_mod" name="cha_mod" type="text" readonly />
             </div>
-            <div class="ability-cell buffs">
+            <div class="ability-cell buffs" role="cell">
               <input id="cha_buffs" name="cha_buffs" type="text" />
             </div>
-            <div class="ability-cell asi">
+            <div class="ability-cell asi" role="cell">
               <input id="cha_asi" name="cha_asi" type="number" />
             </div>
           </div>
@@ -160,13 +161,13 @@
           <div class="hr-subtle" style="margin-top:12px;"></div>
           <div class="row" style="margin-top:12px;">
             <div class="col field-group">
-              <label>HP</label>
+              <label for="hp_current">HP</label>
               <div class="kv"><div>Current</div><div><input id="hp_current" name="hp_current" type="number" value="0" /></div></div>
               <div class="kv"><div>Hit Dice</div><div><input id="hit_dice" name="hit_dice" type="text" value="0d4" /></div></div>
             </div>
 
             <div class="col field-group">
-              <label>AC</label>
+              <label for="ac_total">AC</label>
               <div class="kv"><div>Total</div><div><input id="ac_total" name="ac_total" type="number" value="10" /></div></div>
               <div class="kv"><div>Touch</div><div><input id="ac_touch" name="ac_touch" type="number" value="10" /></div></div>
             </div>
@@ -176,9 +177,9 @@
         <!-- ---------------- Spells view (placeholder structure) ---------------- -->
         <section id="spellsView" class="sheet" aria-labelledby="spellsTitle" role="region" style="display:none;">
           <h1 id="spellsTitle">Spells</h1>
-          <div class="spell-list" id="spellList">
+          <div class="spell-list" id="spellList" role="list">
             <!-- Example spell entry (app.js will populate real spells) -->
-            <div class="spell-entry">
+            <div class="spell-entry" role="listitem">
               <div>
                 <div class="spell-header">
                   <div class="spell-name">Magic Missile</div>
@@ -216,9 +217,9 @@
   <script type="module" src="/35dnd/app.js"></script>
 
   <!-- Small compatibility/wiring script
-       - Ensures the General container has the .general-grid class (if your render() doesn't add it)
-       - Adds a minimal ability-mod calculator if your app hasn't already wired it.
-       This script is intentionally minimal and safe; if your app already wires inputs it will be harmless.
+       - Ensures the General container has the .general-grid class
+       - Adds a minimal ability-mod calculator if app.js hasn't already wired it.
+       - Shows General view by default.
   -->
   <script>
     (function () {
@@ -254,15 +255,7 @@
         updateModsForAll();
       }
 
-      // Run after DOM ready
-      if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', wireAbilityInputs);
-      } else {
-        wireAbilityInputs();
-      }
-
-      // Small helper to show/hide views when toolbar buttons are clicked.
-      // If your app.js already handles view switching, this will be harmless.
+      // Show/hide views helper (harmless if app.js already manages views)
       function showView(id) {
         ['generalView','spellsView','slotsView','skillsView'].forEach(v => {
           const el = document.getElementById(v);
@@ -270,10 +263,22 @@
           el.style.display = (v === id) ? '' : 'none';
         });
       }
+
+      // Wire toolbar view buttons if app.js hasn't already
       document.getElementById('viewGeneral')?.addEventListener('click', () => showView('generalView'));
       document.getElementById('viewSpells')?.addEventListener('click', () => showView('spellsView'));
       document.getElementById('viewSlots')?.addEventListener('click', () => showView('slotsView'));
       document.getElementById('viewSkills')?.addEventListener('click', () => showView('skillsView'));
+
+      // Wire ability inputs on DOM ready
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', wireAbilityInputs);
+      } else {
+        wireAbilityInputs();
+      }
+
+      // Show General by default
+      showView('generalView');
     })();
   </script>
 </body>
