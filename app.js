@@ -534,74 +534,150 @@ if (canvas) {
   let currentStroke = null;
   let activePointerId = null;
 
-  function pointerDown(e) {
-    if (!state.penOn || !canvas) return;
-    if (e.pointerType === "touch") return;
+// --- Safety caps and pending expansion state (place near top of IIFE if not present) ---
+const MAX_CANVAS_CSS = 10000; // maximum CSS pixels for width/height to avoid runaway memory
+let pendingExpansion = null; // { minX, minY, maxX, maxY } in CSS coords, applied on pointerup
 
-    // compute world point and corresponding CSS coords
-    const pWorld = screenToWorld(e.clientX, e.clientY);
-    const cssPt = worldToCanvasCss(pWorld.x, pWorld.y);
+// --- pointerDown: ensure canvas is ready, draw initial dot, do NOT expand canvas here ---
+function pointerDown(e) {
+  if (!state.penOn || !canvas) return;
+  if (e.pointerType === "touch") return;
 
-    // Expand canvas if needed (supports left/top/right/bottom)
-    expandCanvasToIncludePoint(cssPt.x, cssPt.y);
-    ensureCanvasSize();
+  // Ensure canvas is at least the base size (cheap no-op after first call)
+  ensureCanvasSize();
 
-    drawing = true;
-    activePointerId = e.pointerId;
-    currentStroke = { erase: state.erasing, pts: [pWorld] };
-    getStrokesForView(state.view).push(currentStroke);
+  drawing = true;
+  activePointerId = e.pointerId;
 
-    // Draw initial tiny dot (so very short strokes are visible)
-    const cssStart = worldToCanvasCss(pWorld.x, pWorld.y);
-    drawStrokeSegment(cssStart, cssStart, currentStroke);
+  const pWorld = screenToWorld(e.clientX, e.clientY);
+  currentStroke = { erase: state.erasing, pts: [pWorld] };
+  getStrokesForView(state.view).push(currentStroke);
 
-    try { canvas.setPointerCapture(e.pointerId); } catch {}
-    e.preventDefault();
+  // Draw initial dot incrementally (convert to CSS coords)
+  const cssStart = worldToCanvasCss(pWorld.x, pWorld.y);
+  drawStrokeSegment(cssStart, cssStart, currentStroke);
+
+  // If the pointer is outside the current CSS canvas area, record pending expansion
+  const { cssW, cssH } = getCssSize();
+  if (cssStart.x < 0 || cssStart.y < 0 || cssStart.x > cssW || cssStart.y > cssH) {
+    pendingExpansion = {
+      minX: Math.min(0, cssStart.x),
+      minY: Math.min(0, cssStart.y),
+      maxX: Math.max(cssW, cssStart.x),
+      maxY: Math.max(cssH, cssStart.y)
+    };
+  } else {
+    pendingExpansion = null;
   }
 
-  function pointerMove(e) {
-    if (!state.penOn || !drawing || !currentStroke) return;
-    if (activePointerId !== null && e.pointerId !== activePointerId) return;
-    if (e.pointerType === "touch") return;
+  try { canvas.setPointerCapture(e.pointerId); } catch {}
+  e.preventDefault();
+}
 
-    const pWorld = screenToWorld(e.clientX, e.clientY);
-    const cssPt = worldToCanvasCss(pWorld.x, pWorld.y);
+// --- pointerMove: draw incrementally, mark pending expansion but DO NOT resize backing store here ---
+function pointerMove(e) {
+  if (!state.penOn || !drawing || !currentStroke) return;
+  if (activePointerId !== null && e.pointerId !== activePointerId) return;
+  if (e.pointerType === "touch") return;
 
-    // Expand canvas if needed before drawing
-    expandCanvasToIncludePoint(cssPt.x, cssPt.y);
-    ensureCanvasSize();
+  const pWorld = screenToWorld(e.clientX, e.clientY);
+  const last = currentStroke.pts[currentStroke.pts.length - 1];
+  const dx = pWorld.x - last.x;
+  const dy = pWorld.y - last.y;
+  if ((dx * dx + dy * dy) < 0.0004) return; // small threshold in world units
 
-    // Throttle small moves in world-space to reduce point density
-    const last = currentStroke.pts[currentStroke.pts.length - 1];
-    const dx = pWorld.x - last.x;
-    const dy = pWorld.y - last.y;
-    if ((dx * dx + dy * dy) < 0.0004) return; // small threshold in world units
+  // Convert to CSS coords for immediate incremental drawing
+  const prevCss = worldToCanvasCss(last.x, last.y);
+  const nextCss = worldToCanvasCss(pWorld.x, pWorld.y);
 
-    // Draw the new segment incrementally in CSS pixel space
-    const prevCss = worldToCanvasCss(last.x, last.y);
-    const nextCss = worldToCanvasCss(pWorld.x, pWorld.y);
-    drawStrokeSegment(prevCss, nextCss, currentStroke);
-
-    currentStroke.pts.push(pWorld);
-    e.preventDefault();
-  }
-
-  function endStroke(e) {
-    if (!state.penOn) return;
-    if (e && activePointerId !== null && e.pointerId !== activePointerId) return;
-
-    drawing = false;
-    currentStroke = null;
-
-    if (canvas && e) {
-      try { canvas.releasePointerCapture(e.pointerId); } catch {}
+  // If next point is outside current CSS canvas, record pending expansion instead of resizing now
+  const { cssW, cssH } = getCssSize();
+  if (nextCss.x < 0 || nextCss.y < 0 || nextCss.x > cssW || nextCss.y > cssH) {
+    // expand pending box to include this point
+    if (!pendingExpansion) {
+      pendingExpansion = { minX: Math.min(0, nextCss.x), minY: Math.min(0, nextCss.y), maxX: Math.max(cssW, nextCss.x), maxY: Math.max(cssH, nextCss.y) };
+    } else {
+      pendingExpansion.minX = Math.min(pendingExpansion.minX, nextCss.x);
+      pendingExpansion.minY = Math.min(pendingExpansion.minY, nextCss.y);
+      pendingExpansion.maxX = Math.max(pendingExpansion.maxX, nextCss.x);
+      pendingExpansion.maxY = Math.max(pendingExpansion.maxY, nextCss.y);
     }
-    activePointerId = null;
-
-    saveForView(state.view);
-    // schedule a full redraw to normalize any incremental artifacts
-    scheduleFullRedraw();
+    // Clip the incremental draw to the current canvas bounds to avoid drawing off-canvas
+    const clippedPrev = { x: Math.max(0, Math.min(cssW, prevCss.x)), y: Math.max(0, Math.min(cssH, prevCss.y)) };
+    const clippedNext = { x: Math.max(0, Math.min(cssW, nextCss.x)), y: Math.max(0, Math.min(cssH, nextCss.y)) };
+    drawStrokeSegment(clippedPrev, clippedNext, currentStroke);
+  } else {
+    // Normal fast incremental draw
+    drawStrokeSegment(prevCss, nextCss, currentStroke);
   }
+
+  currentStroke.pts.push(pWorld);
+  e.preventDefault();
+}
+
+// --- endStroke: finalize stroke, apply pending expansion once, then schedule full redraw/save ---
+function endStroke(e) {
+  if (!state.penOn) return;
+  if (e && activePointerId !== null && e.pointerId !== activePointerId) return;
+
+  drawing = false;
+  currentStroke = null;
+
+  if (canvas && e) {
+    try { canvas.releasePointerCapture(e.pointerId); } catch {}
+  }
+  activePointerId = null;
+
+  // If we recorded a pending expansion, apply it now (single resize)
+  if (pendingExpansion) {
+    try {
+      // Compute new CSS size with margin and cap to MAX_CANVAS_CSS
+      const margin = 80;
+      let newCssW = Math.ceil(Math.min(MAX_CANVAS_CSS, Math.max(pendingExpansion.maxX + margin, getCssSize().cssW)));
+      let newCssH = Math.ceil(Math.min(MAX_CANVAS_CSS, Math.max(pendingExpansion.maxY + margin, getCssSize().cssH)));
+
+      // If negative min values exist (drawing left/top), we avoid complex origin shifts here.
+      // Instead, clamp min to 0 to keep implementation simple and safe.
+      // (If you need negative-world drawing, we can implement origin shifting later.)
+      pendingExpansion = null;
+
+      // Only resize if it actually grows
+      const { cssW: curW, cssH: curH, dpr } = getCssSize();
+      if (newCssW > curW || newCssH > curH) {
+        // Preserve existing content
+        const oldW = canvas.width;
+        const oldH = canvas.height;
+        const oldCssW = curW;
+        const oldCssH = curH;
+        const off = document.createElement("canvas");
+        off.width = oldW || 1;
+        off.height = oldH || 1;
+        const offCtx = off.getContext("2d");
+        if (oldW && oldH) offCtx.drawImage(canvas, 0, 0);
+
+        // Apply new CSS/backing sizes
+        canvas.style.width = `${newCssW}px`;
+        canvas.style.height = `${newCssH}px`;
+        canvas.width = Math.floor(newCssW * dpr);
+        canvas.height = Math.floor(newCssH * dpr);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+        // Redraw preserved content at same origin (no origin shift)
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        if (oldW && oldH) {
+          ctx.drawImage(off, 0, 0, oldW, oldH, Math.floor(canvasOrigin?.x || 0), Math.floor(canvasOrigin?.y || 0), Math.floor(oldCssW * dpr), Math.floor(oldCssH * dpr));
+        }
+      }
+    } catch (err) {
+      console.warn("Canvas expansion failed, skipping:", err);
+      pendingExpansion = null;
+    }
+  }
+
+  // Save and schedule a full redraw to normalize incremental segments
+  saveForView(state.view);
+  scheduleFullRedraw();
+}
 
   if (canvas) {
     canvas.addEventListener("pointerdown", pointerDown);
