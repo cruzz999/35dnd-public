@@ -1,193 +1,238 @@
-/* styles.css — e-ink friendly, minimal UI for 3.5e sheet
-   - readable type, larger hit targets
-   - General view: multi-column layout (not a single thin column)
-   - Spells view: framed entries with subtle separators
-   - Keeps ink overlay (#inkWorld) on top and non-blocking when pen is off
-*/
-
-:root{
+:root {
   --bg: #ffffff;
-  --panel: #ffffff;
-  --muted: #333333;
-  --accent: #000000;
-  --line: #dcdcdc;
-  --page-width: 980px;      /* target sheet width */
-  --gutter: 18px;
-  --font-sans: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, "Roboto Mono", monospace;
-  --base-size: 16px;
+  --fg: #000000;
+  --border: #000000;
+  --muted: #444444;
+  --radius: 6px;
+  --pad: 10px;
+  --font: 17px;
+  --line: 1.35;
 }
 
-/* Reset / base */
-html,body{height:100%;margin:0;background:var(--bg);color:var(--muted);font-family:var(--font-sans);-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;}
-*{box-sizing:border-box}
-a{color:var(--accent);text-decoration:none}
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: system-ui, Arial, sans-serif;
+  font-size: var(--font);
+  line-height: var(--line);
+  /* Paper mode: no page scroll */
+  overflow: hidden;
+}
 
-/* Topbar (keeps same height as JS expects) */
-.topbar{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--panel);border-bottom:1px solid var(--line);height:64px}
-.topbar .left,.topbar .right{display:flex;align-items:center;gap:10px}
-.topbar input[type="text"]{padding:8px 10px;border:1px solid var(--line);border-radius:6px;font-size:0.95rem}
-.topbar button{padding:8px 10px;border:1px solid var(--line);background:#fff;border-radius:6px;font-size:0.95rem;cursor:pointer}
-.topbar button:active{transform:translateY(1px)}
-
-/* Progress */
-.progress{width:220px;height:8px;background:#f3f3f3;border-radius:6px;overflow:hidden}
-#progressBar{height:100%;width:0;background:linear-gradient(90deg,#000,#333);transition:width 180ms ease}
-/* General view: five-column ability grid (Total | Mod | Buffs | ASI | PointBuy) */
-.general-grid {
-  display: grid;
-  grid-template-columns: 1.2fr 0.8fr 1fr 0.8fr 1fr; /* relative widths tuned for readability */
+/* ---------------- Top bar ---------------- */
+.topbar {
+  display: flex;
+  justify-content: space-between;
   gap: 10px;
+  padding: 8px 10px;
+  border-bottom: 2px solid var(--border);
+  background: var(--bg);
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+}
+
+.topbar .left,
+.topbar .right {
+  display: flex;
   align-items: center;
-  width: 100%;
-  max-width: var(--page-width);
-  margin: 8px 0;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
-/* Header row for labels */
-.general-grid .header {
-  font-weight:700;
-  color:var(--accent);
-  font-size:0.95rem;
-  padding:6px 8px;
-  border-bottom:1px solid var(--line);
+.topbar button {
+  border: 2px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+  padding: 8px 10px;
+  border-radius: var(--radius);
+  font-size: 16px;
 }
 
-/* Each ability row spans the same five columns */
-.ability-row {
-  display: contents; /* let grid place the children into the five columns */
+.topbar input[type="file"] {
+  font-size: 14px;
 }
 
-/* Individual cell styling */
-.ability-cell {
-  padding:8px 10px;
-  border:1px solid transparent;
-  background:transparent;
-  min-height:36px;
-  display:flex;
-  align-items:center;
-  gap:8px;
+.topbar input[type="text"] {
+  border: 2px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+  padding: 6px 8px;
+  border-radius: var(--radius);
+  font-size: 16px;
+  width: 420px;
+  max-width: 100%;
 }
 
-/* Visual separators for e-ink clarity */
-.ability-cell.total { border-left:1px solid var(--line); border-right:1px solid var(--line); }
-.ability-cell.mod   { text-align:center; font-weight:600; color:var(--accent); }
-.ability-cell.buffs { font-size:0.95rem; color:var(--muted); }
-.ability-cell.asi   { text-align:center; }
-.ability-cell.pb    { text-align:center; color:var(--muted); }
-
-/* Input styles inside cells */
-.ability-cell input[type="text"], .ability-cell input[type="number"] {
-  width:100%;
-  padding:6px 8px;
-  border:1px solid var(--line);
-  border-radius:6px;
-  background:transparent;
-  font-size:0.98rem;
-  color:var(--muted);
+.sep {
+  display: inline-block;
+  width: 1px;
+  height: 22px;
+  background: #999;
+  margin: 0 8px;
 }
 
-/* Compact label on left (ability name) */
-.ability-name {
-  font-weight:600;
-  width:110px;
-  padding-left:6px;
+.progress {
+  width: 220px;
+  height: 12px;
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
 }
 
-/* Responsive fallback: collapse to two columns on narrow screens */
-@media (max-width:900px) {
-  .general-grid {
-    grid-template-columns: 1fr 1fr;
+#progressBar {
+  height: 100%;
+  width: 0%;
+  background: var(--fg);
+  transition: width 0.15s linear;
+}
+
+/* ---------------- Paper viewport ---------------- */
+#viewport {
+  position: relative;
+  width: 100vw;
+  height: calc(100vh - 64px); /* JS can override to true topbar height */
+  overflow: hidden;
+  background: var(--bg);
+
+  /* Stylus stability: prevent browser gesture stealing */
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+#world {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+  touch-action: none;
+}
+
+.app {
+  padding: var(--pad);
+  max-width: none; /* wide content is fine; pan/zoom reveals it */
+}
+
+/* ---------------- Panels & layout ---------------- */
+.panel {
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--pad);
+  margin: 10px 0;
+}
+
+.hint {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+@media (max-width: 900px) {
+  .grid {
+    grid-template-columns: 1fr;
   }
-  .header:nth-child(n+3), .ability-cell:nth-child(n+3) { display:none; } /* hide extra columns on tiny screens */
-}
-/* Viewport and world */
-#viewport{position:relative;width:100%;height:calc(100vh - 64px);overflow:auto;background:var(--bg);display:flex;justify-content:center;align-items:flex-start;padding:18px}
-#world{position:relative;left:0;top:0;transform-origin:0 0;will-change:transform;}
-
-/* App container and sheet */
-#app{min-width:var(--page-width);max-width:calc(var(--page-width) + 2 * var(--gutter));margin:0 auto}
-.sheet{background:var(--panel);border:1px solid var(--line);padding:18px;margin:18px 0;color:var(--muted);box-shadow:none}
-
-/* Typography tuned for e-ink */
-body, input, textarea, select, button{font-size:var(--base-size);line-height:1.45;color:var(--muted)}
-h1,h2,h3{color:var(--accent);margin:0 0 8px 0;font-weight:600}
-h1{font-size:1.15rem}
-label{display:block;font-size:0.85rem;color:var(--muted);margin-bottom:6px}
-
-/* General view layout: multi-column grid */
-.general-grid{
-  display:grid;
-  grid-template-columns: 1fr 1fr; /* two columns on tablet/landscape */
-  gap:16px;
-  align-items:start;
 }
 
-/* For narrow screens, collapse to single column */
-@media (max-width:980px){
-  .general-grid{grid-template-columns:1fr}
-  #app{min-width:unset;padding:0 12px}
+/* ---------------- Tables ---------------- */
+.table {
+  border-collapse: collapse;
+  width: max-content;  /* don’t squash; pan/zoom instead */
+  min-width: 980px;
+  font-size: 15px;
 }
 
-/* Field groups inside general view */
-.field-group{background:transparent;border:1px solid var(--line);padding:10px;border-radius:6px}
-.field-row{display:flex;gap:10px;align-items:center}
-.field-row .col{flex:1;min-width:80px}
-
-/* Inputs */
-input[type="text"], textarea, select{
-  width:100%;padding:8px;border:1px solid var(--line);border-radius:6px;background:transparent;color:var(--muted);
-  font-size:0.98rem;
-}
-textarea{min-height:80px;resize:vertical}
-
-/* Spells view styling */
-.spells-container{display:flex;flex-direction:column;gap:12px;padding:6px}
-.spell-entry{
-  border:1px solid var(--line);
-  border-radius:8px;
-  padding:10px;
-  background:linear-gradient(#fff,#fbfbfb);
-  display:grid;
-  grid-template-columns: 1fr auto;
-  gap:8px;
-  align-items:start;
-  box-shadow:none;
+.table th,
+.table td {
+  border: 2px solid var(--border);
+  padding: 6px 8px;
+  vertical-align: top;
 }
 
-/* Spell header row: name, level/school on right */
-.spell-header{display:flex;align-items:center;justify-content:space-between;gap:8px}
-.spell-name{font-weight:600;font-size:1rem;color:var(--accent)}
-.spell-meta{font-size:0.9rem;color:var(--muted);white-space:nowrap;margin-left:8px}
-
-/* Spell details: description, components, range, etc. */
-.spell-details{margin-top:8px;font-size:0.95rem;color:var(--muted);line-height:1.4}
-.spell-line{display:flex;gap:12px;flex-wrap:wrap;font-size:0.92rem;color:var(--muted)}
-.spell-line .label{font-weight:600;color:var(--accent);min-width:72px}
-
-/* Compact list variant (for long lists) */
-.spell-list{display:flex;flex-direction:column;gap:8px;max-height:60vh;overflow:auto;padding-right:6px}
-
-/* Small visual separators for readability */
-.hr-subtle{height:1px;background:var(--line);margin:8px 0;border-radius:2px}
-
-/* Ink canvas overlay rules */
-#inkWorld{position:absolute;left:0;top:0;pointer-events:none;touch-action:none;z-index:9999;image-rendering:optimizeSpeed}
-#inkWorld.pen-active{pointer-events:auto;z-index:10001}
-
-/* Buttons and controls: larger touch targets for tablet */
-button{min-height:36px;min-width:44px}
-.topbar button{min-height:40px}
-
-/* Print: hide UI chrome and ink by default */
-@media print{
-  .topbar{display:none}
-  #inkWorld{display:none !important}
-  #viewport{padding:0}
-  #app{margin:0}
+.table th {
+  font-weight: 700;
+  background: #fff;
 }
 
-/* Utility helpers */
-.kv{display:flex;justify-content:space-between;gap:8px}
-.small-muted{font-size:0.9rem;color:#666}
-.center{display:flex;align-items:center;justify-content:center}
+/* Empty prep box intended for ink */
+.prep-box {
+  width: 7ch;
+  height: 1.6em;
+  border: 2px solid var(--border);
+  border-radius: 4px;
+  display: inline-block;
+  background: #fff;
+}
+
+/* ---------------- Ability breakdown grid (important) ---------------- */
+/* Wrapper used in renderGeneral(): <div class="ability-breakdown-grid"> */
+.ability-breakdown-grid {
+  display: grid;
+  grid-template-columns: 70px 110px 70px 80px 120px 70px 60px;
+  gap: 8px;
+  align-items: center;
+  max-width: 100%;
+}}
+
+.ability-breakdown-grid .hdr {
+  font-weight: 700;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.ability-breakdown-grid .val {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Older/simple ability grid (if still used anywhere) */
+.ability-grid {
+  display: grid;
+  grid-template-columns: 80px 90px 70px;
+  gap: 8px;
+  align-items: center;
+}
+
+.ability-grid .hdr {
+  font-weight: 700;
+}
+
+.ability-grid .val {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* ---------------- Ink canvas ---------------- */
+#inkWorld {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 20;
+  pointer-events: none; /* JS toggles this */
+  touch-action: none;
+}
+
+
+.ability-breakdown-grid input[type="number"]{
+  width: 100%;
+  box-sizing: border-box /* CRITICAL: border+padding included in width */
+  padding: 2px 4px;
+  font-size: 16px;
+  line-height: 1.1;
+  border: 2px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--fg);
+  text-align: right;
+  min-width: 0;                /* allow grid to constrain it */
+}
