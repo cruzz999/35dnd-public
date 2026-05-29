@@ -1,8 +1,0 @@
-https://raw.githubusercontent.com/cruzz999/35dnd-public/48d5cac070423034780db9b5453e56b9b3583f65/app.js
-https://raw.githubusercontent.com/cruzz999/35dnd-public/48d5cac070423034780db9b5453e56b9b3583f65/data/slots.js
-https://raw.githubusercontent.com/cruzz999/35dnd-public/48d5cac070423034780db9b5453e56b9b3583f65/expr/evaluator.js
-https://raw.githubusercontent.com/cruzz999/35dnd-public/48d5cac070423034780db9b5453e56b9b3583f65/index.html
-https://raw.githubusercontent.com/cruzz999/35dnd-public/48d5cac070423034780db9b5453e56b9b3583f65/ink/tiler.js
-https://raw.githubusercontent.com/cruzz999/35dnd-public/48d5cac070423034780db9b5453e56b9b3583f65/persistence/idb.js
-https://raw.githubusercontent.com/cruzz999/35dnd-public/48d5cac070423034780db9b5453e56b9b3583f65/styles.css
-https://raw.githubusercontent.com/cruzz999/35dnd-public/48d5cac070423034780db9b5453e56b9b3583f65/xlsx.full.min.js
