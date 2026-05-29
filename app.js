@@ -136,17 +136,20 @@ function applyWorldTransform() {
   if (!el.world) return;
   el.world.style.transformOrigin = "0 0";
   el.world.style.transform = `translate(${state.pan.x}px, ${state.pan.y}px) scale(${state.zoom})`;
-}
-  // Keep the ink canvas visually and geometrically in sync with the world.
-  // This prevents the "floating" effect when panning/zooming.
+     // Keep the ink canvas visually and geometrically in sync with the world,
+  // taking into account the canvas origin offset stored on state.
   if (el.ink) {
     el.ink.style.transformOrigin = "0 0";
-    el.ink.style.transform = el.world.style.transform;
-    // Ensure the canvas is positioned relative to the same origin as the world
-    // so CSS left/top remain 0 and the transform handles movement/scale.
+    const origin = state.canvasOrigin || { x: 0, y: 0 };
+    // Translate by pan + canvasOrigin so the canvas content lines up with world content,
+    // then scale by zoom (same order as world transform).
+    el.ink.style.transform = `translate(${state.pan.x + origin.x}px, ${state.pan.y + origin.y}px) scale(${state.zoom})`;
     el.ink.style.left = "0px";
     el.ink.style.top = "0px";
   }
+
+}
+
 
 
 function clampZoom(z) {
@@ -281,6 +284,7 @@ if (canvas) {
   // Canvas origin offset in CSS pixels: how many CSS pixels the world origin is shifted
   // from the canvas top-left. This allows expansion to the left/top by shifting content.
   let canvasOrigin = { x: 0, y: 0 };
+   state.canvasOrigin = canvasOrigin;
 
   function getStrokesForView(view) {
     state.strokesByView[view] ||= [];
