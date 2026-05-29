@@ -300,6 +300,124 @@ const ink =(() => {
       y: (vy - state.pan.y) / state.zoom,
     };
   }
+  // --- helper: convert world coords to canvas CSS coords (not device pixels) ---
+  function worldToCanvasCss(worldX, worldY) {
+    // worldX/worldY are in world coordinates (same as stored stroke pts)
+    // Convert to viewport client coords then to canvas CSS coords (relative to canvas top-left)
+    const vr = el.viewport?.getBoundingClientRect();
+    if (!vr) return { x: worldX, y: worldY };
+    // world -> viewport pixels: vx = worldX*zoom + pan.x
+    const vx = worldX * state.zoom + state.pan.x;
+    const vy = worldY * state.zoom + state.pan.y;
+    // canvas is positioned at 0,0 relative to world container; canvas CSS coords = vx
+    return { x: vx, y: vy };
+  }
+
+  // --- expand canvas CSS size (and backing store) to include a CSS point ---
+  function expandCanvasToIncludePoint(cssX, cssY) {
+    if (!canvas || !ctx) return;
+    // current CSS size
+    const cssW = parseFloat(canvas.style.width) || canvas.width / (window.devicePixelRatio || 1);
+    const cssH = parseFloat(canvas.style.height) || canvas.height / (window.devicePixelRatio || 1);
+
+    // margin so we don't resize on tiny moves
+    const MARGIN = 80;
+
+    let needResize = false;
+    let newCssW = cssW;
+    let newCssH = cssH;
+
+    if (cssX < 0) {
+      // if drawing left of 0, shift everything right by expanding width and translating existing content
+      // For simplicity we clamp to 0 (do not support negative CSS origin); prefer large initial canvas if you need negative coords.
+      // If you need negative world coords, consider offsetting world origin or using a larger initial canvas.
+      // Here we just ensure cssX >= 0 by ignoring negative expansion.
+    } else if (cssX > cssW - MARGIN) {
+      newCssW = Math.max(cssW * 1.5, Math.ceil(cssX + MARGIN));
+      needResize = true;
+    }
+
+    if (cssY > cssH - MARGIN) {
+      newCssH = Math.max(cssH * 1.5, Math.ceil(cssY + MARGIN));
+      needResize = true;
+    }
+
+    if (!needResize) return;
+
+    // Preserve existing drawing by copying to an offscreen canvas
+    const dpr = window.devicePixelRatio || 1;
+    const oldW = canvas.width;
+    const oldH = canvas.height;
+    const oldCssW = cssW;
+    const oldCssH = cssH;
+
+    // Create offscreen copy of current backing store
+    const off = document.createElement("canvas");
+    off.width = oldW;
+    off.height = oldH;
+    const offCtx = off.getContext("2d");
+    offCtx.drawImage(canvas, 0, 0);
+
+    // Apply new CSS sizes and backing store sizes
+    canvas.style.width = `${newCssW}px`;
+    canvas.style.height = `${newCssH}px`;
+    canvas.width = Math.floor(newCssW * dpr);
+    canvas.height = Math.floor(newCssH * dpr);
+
+    // Reset transform for new DPR
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    // Clear and draw preserved content
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(off, 0, 0, oldW, oldH, 0, 0, Math.floor(oldCssW * dpr), Math.floor(oldCssH * dpr));
+  }
+
+   
+  // --- ensureCanvasSize: initialize or grow to at least app size (keeps previous behavior) ---
+  function ensureCanvasSize() {
+    if (!canvas || !ctx) return;
+    const minW = Math.max(el.app?.scrollWidth || 0, 1200);
+    const minH = Math.max(el.app?.scrollHeight || 0, 800);
+    const dpr = window.devicePixelRatio || 1;
+
+    // current CSS size
+    const curCssW = parseFloat(canvas.style.width) || (canvas.width / dpr) || 0;
+    const curCssH = parseFloat(canvas.style.height) || (canvas.height / dpr) || 0;
+
+    const targetCssW = Math.max(curCssW, minW);
+    const targetCssH = Math.max(curCssH, minH);
+
+    // If already large enough, just ensure transform is correct
+
+       if (Math.floor(canvas.width) === Math.floor(targetCssW * dpr) && Math.floor(canvas.height) === Math.floor(targetCssH * dpr)) {
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      canvas.style.touchAction = "none";
+      return;
+    }
+
+
+    const oldW = canvas.width;
+    const oldH = canvas.height;
+    const oldCssW = curCssW || (oldW / dpr);
+    const oldCssH = curCssH || (oldH / dpr);
+
+    const off = document.createElement("canvas");
+    off.width = oldW || 1;
+    off.height = oldH || 1;
+    const offCtx = off.getContext("2d");
+    if (oldW && oldH) offCtx.drawImage(canvas, 0, 0);
+
+    canvas.style.width = `${targetCssW}px`;
+    canvas.style.height = `${targetCssH}px`;
+    canvas.width = Math.floor(targetCssW * dpr);
+    canvas.height = Math.floor(targetCssH * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (oldW && oldH) {
+      ctx.drawImage(off, 0, 0, oldW, oldH, 0, 0, Math.floor(oldCssW * dpr), Math.floor(oldCssH * dpr));
+    }
+    canvas.style.touchAction = "none";
+  }
 
   function drawStroke(stroke) {
     if (!ctx) return;
@@ -328,14 +446,15 @@ const ink =(() => {
     ctx.restore();
   }
 
+
   function redraw() {
     if (!canvas || !ctx) return;
     ensureCanvasSize();
-    // clear using CSS size (canvas.width/height are device pixels)
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     const strokes = getStrokesForView(state.view);
     for (const stroke of strokes) drawStroke(stroke);
   }
+
 
   function clear() {
     state.strokesByView[state.view] = [];
@@ -357,15 +476,16 @@ const ink =(() => {
 
   function pointerDown(e) {
     if (!state.penOn || !canvas) return;
-
-    // ignore finger/palm touches in pen mode
     if (e.pointerType === "touch") return;
+
+    // compute world point and corresponding CSS coords
+    const pWorld = screenToWorld(e.clientX, e.clientY);
+    const cssPt = worldToCanvasCss(pWorld.x, pWorld.y);
+    expandCanvasToIncludePoint(cssPt.x, cssPt.y);
 
     drawing = true;
     activePointerId = e.pointerId;
-
-    const p = screenToWorld(e.clientX, e.clientY);
-    currentStroke = { erase: state.erasing, pts: [p] };
+    currentStroke = { erase: state.erasing, pts: [pWorld] };
     getStrokesForView(state.view).push(currentStroke);
 
     try { canvas.setPointerCapture(e.pointerId); } catch {}
@@ -373,22 +493,27 @@ const ink =(() => {
     redraw();
   }
 
+   
   function pointerMove(e) {
     if (!state.penOn || !drawing || !currentStroke) return;
     if (activePointerId !== null && e.pointerId !== activePointerId) return;
     if (e.pointerType === "touch") return;
 
-    // Throttle small moves to reduce point density (keeps memory reasonable)
-    const last = currentStroke.pts[currentStroke.pts.length - 1];
-    const next = screenToWorld(e.clientX, e.clientY);
-    const dx = next.x - last.x;
-    const dy = next.y - last.y;
-    if ((dx * dx + dy * dy) < 0.25) return; // skip tiny moves
+    const pWorld = screenToWorld(e.clientX, e.clientY);
+    const cssPt = worldToCanvasCss(pWorld.x, pWorld.y);
+    expandCanvasToIncludePoint(cssPt.x, cssPt.y);
 
-    currentStroke.pts.push(next);
+    // Throttle small moves to reduce point density
+    const last = currentStroke.pts[currentStroke.pts.length - 1];
+    const dx = pWorld.x - last.x;
+    const dy = pWorld.y - last.y;
+    if ((dx * dx + dy * dy) < 0.0004) return; // world-space threshold (small)
+
+    currentStroke.pts.push(pWorld);
     e.preventDefault();
     redraw();
   }
+
 
   function endStroke(e) {
     if (!state.penOn) return;
