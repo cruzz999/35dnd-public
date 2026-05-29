@@ -263,6 +263,11 @@ if (el.viewport) {
 /* ------------------------------ Ink layer ------------------------------ */
 /* ------------------------------ Ink layer ------------------------------ */
 const ink = (() => {
+   // Preallocate a safe drawing origin so canvas and world math stay aligned
+const PREALLOC_MARGIN = 2000; 
+let canvasOrigin = { x: PREALLOC_MARGIN, y: PREALLOC_MARGIN };
+state.canvasOrigin = canvasOrigin;
+
   const canvas = el.ink;
   const ctx = canvas ? canvas.getContext("2d") : null;
 // --- Ensure canvas is positioned and initially non-interactive ---
