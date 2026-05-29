@@ -246,7 +246,27 @@ if (el.viewport) {
 const ink = (() => {
   const canvas = el.ink;
   const ctx = canvas ? canvas.getContext("2d") : null;
+// --- Ensure canvas is positioned and initially non-interactive ---
+// This makes the canvas visible, on top, and prevents it from blocking UI until pen mode is enabled.
+if (canvas) {
+  // Basic positioning and sensible defaults (keeps existing width/height if already set)
+  canvas.style.position = canvas.style.position || "absolute";
+  canvas.style.left = canvas.style.left || "0px";
+  canvas.style.top = canvas.style.top || "0px";
+  canvas.style.width = canvas.style.width || `${Math.max(el.app?.scrollWidth || 1200, 1200)}px`;
+  canvas.style.height = canvas.style.height || `${Math.max(el.app?.scrollHeight || 800, 800)}px`;
 
+  // Start non-interactive; setPenMode will toggle this to "auto" when pen is ON
+  canvas.style.pointerEvents = "none";
+  canvas.style.touchAction = "none";
+
+  // Keep canvas above most UI by default; setPenMode will raise it further when active
+  // Use a modest default so other overlays can still appear if needed
+  canvas.style.zIndex = canvas.style.zIndex || "20";
+
+  // Ensure the canvas has an explicit CSS display so layout is predictable
+  if (!canvas.style.display) canvas.style.display = "block";
+}
   // Canvas origin offset in CSS pixels: how many CSS pixels the world origin is shifted
   // from the canvas top-left. This allows expansion to the left/top by shifting content.
   let canvasOrigin = { x: 0, y: 0 };
@@ -582,17 +602,24 @@ const ink = (() => {
     canvas.style.pointerEvents = "none";
     canvas.style.touchAction = "none";
   }
+function setPenMode(on) {
+  state.penOn = !!on;
+  if (el.penToggle) el.penToggle.textContent = `Pen: ${state.penOn ? "ON" : "OFF"}`;
 
-  function setPenMode(on) {
-    state.penOn = !!on;
-    if (el.penToggle) el.penToggle.textContent = `Pen: ${state.penOn ? "ON" : "OFF"}`;
-    if (canvas) canvas.style.pointerEvents = state.penOn ? "auto" : "none";
-    if (!state.penOn) {
-      drawing = false;
-      currentStroke = null;
-      activePointerId = null;
-    }
+  // Allow the canvas to receive pointer events only when pen is ON
+  if (canvas) {
+    canvas.style.pointerEvents = state.penOn ? "auto" : "none";
+    // Keep canvas visually on top while pen is active
+    canvas.style.zIndex = state.penOn ? "9999" : "20";
   }
+
+  if (!state.penOn) {
+    drawing = false;
+    currentStroke = null;
+    activePointerId = null;
+  }
+}
+
 
   function setEraser(on) {
     state.erasing = !!on;
