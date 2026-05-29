@@ -137,6 +137,17 @@ function applyWorldTransform() {
   el.world.style.transformOrigin = "0 0";
   el.world.style.transform = `translate(${state.pan.x}px, ${state.pan.y}px) scale(${state.zoom})`;
 }
+  // Keep the ink canvas visually and geometrically in sync with the world.
+  // This prevents the "floating" effect when panning/zooming.
+  if (el.ink) {
+    el.ink.style.transformOrigin = "0 0";
+    el.ink.style.transform = el.world.style.transform;
+    // Ensure the canvas is positioned relative to the same origin as the world
+    // so CSS left/top remain 0 and the transform handles movement/scale.
+    el.ink.style.left = "0px";
+    el.ink.style.top = "0px";
+  }
+
 
 function clampZoom(z) {
   return Math.max(0.5, Math.min(3.0, z));
