@@ -649,10 +649,20 @@ function applySheetRowToGeneralDetailed(row) {
    - If URL is a Google Sheets edit link, extract ID and use proxy /gs/csv?id=...&gid=...
    - If URL is a published CSV URL, fetch directly
    ========================= */
+
 function extractSpreadsheetId(url) {
   const m = String(url).match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
   return m ? m[1] : null;
 }
+async function tryFetch(url, opts = {}) {
+  try {
+    const r = await fetch(url, opts);
+    return { ok: r.ok, status: r.status, text: await r.text().catch(e => { console.warn('text() failed', e); return null; }) };
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
+}
+
 async function fetchCsvViaProxy(sheetId, gid=0) {
   // This endpoint must exist on your server; if not, try the published CSV URL pattern
   const proxy = `/gs/csv?id=${encodeURIComponent(sheetId)}&gid=${encodeURIComponent(gid)}`;
@@ -673,36 +683,98 @@ async function fetchPublishedCsv(url) {
  * - Parses CSV and maps first row into general.
  */
 async function loadFromGoogleSheets(url) {
-  try {
-    setProgress(5, 'Loading sheet...');
-    let text = null;
-    const id = extractSpreadsheetId(url);
-    if (id) {
-      // try proxy first (recommended)
-      try {
-        text = await fetchCsvViaProxy(id, 2004670713); // try general gid used previously
-      } catch (e) {
-        // fallback: try published CSV export (public sheet must be published)
-        const pub = `https://docs.google.com/spreadsheets/d/${id}/export?format=csv&gid=2004670713`;
-        text = await fetchPublishedCsv(pub);
-      }
-    } else {
-      // assume url is direct CSV
-      text = await fetchPublishedCsv(url);
-    }
-    setProgress(40, 'Parsing CSV...');
+  setProgress(2, 'Starting sheet load...');
+  console.log('[ingest] loadFromGoogleSheets start', url);
+
+  const sheetId = extractSpreadsheetId(url);
+  const isDirectCsv = /\.csv($|\?)/i.test(url);
+  const tried = [];
+
+  // candidate gids to try (common ones used in this project)
+  const candidateGids = [2004670713, 0, 1231385124, 2140364605];
+
+  // helper to parse CSV text into objects (reuse your csvRowsToObjects if present)
+  function parseAndApply(text) {
+    if (!text || !text.trim()) return { ok: false, reason: 'empty' };
     const rows = parseCsv(text);
+    if (!rows || rows.length === 0) return { ok: false, reason: 'no-rows' };
     const objs = csvRowsToObjects(rows);
-    if (objs.length === 0) { setProgress(0, 'No rows found in sheet'); return; }
-    // Use first row for general mapping
-    applySheetRowToGeneralDetailed(objs[0]);
-    state.loaded = true;
-    setProgress(100, 'Sheet loaded');
-  } catch (err) {
-    console.error('loadFromGoogleSheets failed', err);
-    setProgress(0, 'Sheet load failed: ' + (err && err.message));
+    if (!objs || objs.length === 0) return { ok: false, reason: 'no-objects' };
+    // apply first row to general
+    try {
+      applySheetRowToGeneralDetailed(objs[0]);
+      return { ok: true, rows: objs.length };
+    } catch (e) {
+      return { ok: false, reason: 'apply-failed', error: String(e) };
+    }
   }
+
+  // 1) If user pasted a direct CSV URL, try it first
+  if (isDirectCsv) {
+    console.log('[ingest] trying direct CSV URL');
+    const r = await tryFetch(url, { cache: 'no-store' });
+    tried.push({ method: 'direct-csv', result: r });
+    if (r.ok && r.text) {
+      const parsed = parseAndApply(r.text);
+      if (parsed.ok) { setProgress(100, 'Sheet loaded (direct CSV)'); console.log('[ingest] success direct CSV', parsed); return; }
+      console.warn('[ingest] direct CSV parse failed', parsed);
+    } else console.warn('[ingest] direct CSV fetch failed', r);
+  }
+
+  // 2) If we have a sheetId, try proxy then Google export for multiple gids
+  if (sheetId) {
+    // try proxy first (if you run a proxy on the server)
+    try {
+      const proxyUrl = `/gs/csv?id=${encodeURIComponent(sheetId)}&gid=${encodeURIComponent(candidateGids[0])}`;
+      console.log('[ingest] trying proxy', proxyUrl);
+      const r = await tryFetch(proxyUrl, { cache: 'no-store' });
+      tried.push({ method: 'proxy', url: proxyUrl, result: r });
+      if (r.ok && r.text) {
+        const parsed = parseAndApply(r.text);
+        if (parsed.ok) { setProgress(100, 'Sheet loaded (proxy)'); console.log('[ingest] success proxy', parsed); return; }
+        console.warn('[ingest] proxy parse failed', parsed);
+      } else console.warn('[ingest] proxy fetch failed', r);
+    } catch (e) { console.warn('[ingest] proxy attempt error', e); }
+
+    // try Google export for each candidate gid
+    for (const gid of candidateGids) {
+      try {
+        const exportUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${gid}`;
+        console.log('[ingest] trying google export', exportUrl);
+        const r = await tryFetch(exportUrl, { cache: 'no-store' });
+        tried.push({ method: 'google-export', gid, url: exportUrl, result: r });
+        if (r.ok && r.text) {
+          const parsed = parseAndApply(r.text);
+          if (parsed.ok) { setProgress(100, `Sheet loaded (gid=${gid})`); console.log('[ingest] success google export', gid, parsed); return; }
+          console.warn('[ingest] google export parse failed', gid, parsed);
+        } else {
+          // 403/401 likely means not published or not shared publicly
+          console.warn('[ingest] google export fetch failed', gid, r);
+        }
+      } catch (e) { console.warn('[ingest] google export error', gid, e); }
+    }
+
+    // try the "published" CSV pattern (older)
+    try {
+      const pubUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/pub?output=csv`;
+      console.log('[ingest] trying published CSV', pubUrl);
+      const r = await tryFetch(pubUrl, { cache: 'no-store' });
+      tried.push({ method: 'published-csv', url: pubUrl, result: r });
+      if (r.ok && r.text) {
+        const parsed = parseAndApply(r.text);
+        if (parsed.ok) { setProgress(100, 'Sheet loaded (published CSV)'); console.log('[ingest] success published CSV', parsed); return; }
+        console.warn('[ingest] published CSV parse failed', parsed);
+      } else console.warn('[ingest] published CSV fetch failed', r);
+    } catch (e) { console.warn('[ingest] published CSV error', e); }
+  }
+
+  // 3) If nothing worked, report detailed diagnostics
+  console.error('[ingest] all attempts failed. Tried:', tried);
+  setProgress(0, 'Sheet load failed — see console for details.');
+  // Helpful hint for the user
+  console.info('Ingest diagnostics: If the sheet is not public, Google will block direct CSV export (403). Either publish the sheet to the web, use a server-side proxy (/gs/csv), or use the Sheets API with credentials.');
 }
+
 
 /* Wire loadGs button */
 if (el.loadGs && el.gsUrl) {
