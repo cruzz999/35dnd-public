@@ -7,6 +7,14 @@
         B) Google Sheets via NAS proxy endpoint: /gs/csv?id=...&gid=...
    - Implemented views: General, Spells,more comment commit damnit,test 2,3
    ========================================================================== */
+// app.js (top) — add these imports (requires index.html to load app.js as type="module")
+import { evaluateExpression } from './expr/evaluator.js';
+import { slotsModel, ingestSlotsCsv } from './data/slots.js';
+import { openDb, idbPut, idbGetAll } from './persistence/idb.js';
+import { initTiler } from './ink/tiler.js';
+
+// Optional: expose evaluateExpression for debugging in console (safe wrapper)
+window.__evaluateExpression = evaluateExpression;
 
 /* ----------------------------- DOM helpers ------------------------------ */
 const $ = (id) => document.getElementById(id);
@@ -234,7 +242,7 @@ if (el.viewport) {
 }
 
 /* ------------------------------ Ink layer ------------------------------ */
-const ink = (() => {
+const ink =(() => {
   const canvas = el.ink;
   const ctx = canvas ? canvas.getContext("2d") : null;
 
@@ -275,9 +283,10 @@ const ink = (() => {
     canvas.width = Math.floor(w * dpr);
     canvas.height = Math.floor(h * dpr);
 
+    // Use devicePixelRatio transform so strokes look crisp on high-DPI displays
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-    // critical on Android
+    // critical on Android and for pointer handling
     canvas.style.touchAction = "none";
   }
 
@@ -302,10 +311,14 @@ const ink = (() => {
       ctx.globalCompositeOperation = "destination-out";
       ctx.lineWidth = 18;
       ctx.strokeStyle = "rgba(0,0,0,1)";
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
     } else {
       ctx.globalCompositeOperation = "source-over";
       ctx.lineWidth = 2;
       ctx.strokeStyle = "#000";
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
     }
 
     ctx.beginPath();
@@ -318,6 +331,7 @@ const ink = (() => {
   function redraw() {
     if (!canvas || !ctx) return;
     ensureCanvasSize();
+    // clear using CSS size (canvas.width/height are device pixels)
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     const strokes = getStrokesForView(state.view);
     for (const stroke of strokes) drawStroke(stroke);
@@ -364,7 +378,14 @@ const ink = (() => {
     if (activePointerId !== null && e.pointerId !== activePointerId) return;
     if (e.pointerType === "touch") return;
 
-    currentStroke.pts.push(screenToWorld(e.clientX, e.clientY));
+    // Throttle small moves to reduce point density (keeps memory reasonable)
+    const last = currentStroke.pts[currentStroke.pts.length - 1];
+    const next = screenToWorld(e.clientX, e.clientY);
+    const dx = next.x - last.x;
+    const dy = next.y - last.y;
+    if ((dx * dx + dy * dy) < 0.25) return; // skip tiny moves
+
+    currentStroke.pts.push(next);
     e.preventDefault();
     redraw();
   }
@@ -392,6 +413,7 @@ const ink = (() => {
     canvas.addEventListener("pointercancel", endStroke);
     canvas.addEventListener("lostpointercapture", endStroke);
     canvas.addEventListener("pointerleave", endStroke);
+    // default to not intercepting pointer events until pen mode is enabled
     canvas.style.pointerEvents = "none";
     canvas.style.touchAction = "none";
   }
@@ -423,8 +445,9 @@ const ink = (() => {
     redraw();
   });
 
+  // Ensure initial sizing and a safe initial render
   ensureCanvasSize();
-
+  // Do not call redraw here unconditionally; loadForView will call redraw when appropriate.
   return { redraw, loadForView, setPenMode, setEraser };
 })();
 
@@ -866,7 +889,12 @@ function ingestGeneralFromXlsx(wb) {
     languages: []
   };
 }
-
+// Example: if the sheet contains a "Slots" CSV block, ingest it and persist
+// (This is optional and depends on your sheet layout)
+if (typeof ingestSlotsCsv === "function") {
+  // Suppose you have a CSV string or grid; call ingestSlotsCsv(csvText, {source: 'gs', id: sheetId});
+  // ingestSlotsCsv(csvText, {source: 'google-sheets'});
+}
 function ingestSpellsFromXlsx(wb) {
   const ws = wb.Sheets["Spells"];
   if (!ws) throw new Error("Sheet 'Spells' not found");
@@ -1235,7 +1263,32 @@ function render() {
   applyWorldTransform();
   ink.redraw();
 }
-
+// Initialize DB and load persisted slots (so data/slots.js actually persists to idb)
+(async function initPersistenceAndSlots() {
+  try {
+    const db = await openDb();
+    // Load all persisted slots into slotsModel (if any)
+    const persisted = await idbGetAll(db, 'slots');
+    if (Array.isArray(persisted)) {
+      for (const s of persisted) slotsModel.byId[s.id] = s;
+    }
+    // Add a small UI hook: if there's a #viewSlots element, clicking it will render a simple slots panel
+    if (el.viewSlots) {
+      el.viewSlots.onclick = () => {
+        const list = Object.values(slotsModel.byId);
+        el.app.innerHTML = `
+          <div class="panel">
+            <h2>Slots</h2>
+            <div class="hint">Loaded slots from IndexedDB</div>
+            <ul>${list.length ? list.map(x => `<li>${escapeHtml(x.class)} L${x.level}: ${escapeHtml(String(x.slots))}</li>`).join("") : "<li>(none)</li>"}</ul>
+          </div>
+        `;
+      };
+    }
+  } catch (err) {
+    console.warn("Could not initialize persistence:", err);
+  }
+})();
 /* --------------------------- XLSX loading ------------------------------ */
 if (el.file) {
   el.file.addEventListener("change", async (e) => {
