@@ -1,12 +1,11 @@
-/* ==========================================================================
-   DnD 3.5 Ink Sheet (Paper Mode) - app.js
-   - Pan/zoom paper inside #viewport/#world (no page scroll)
-   - Stylus-safe ink layer on #inkWorld (world coordinates)
-   - Load data from:
-        A) XLSX upload (SheetJS)
-        B) Google Sheets via NAS proxy endpoint: /gs/csv?id=...&gid=...
-   - Implemented views: General, Spells,more comment commit damnit,test 2,3
-   ========================================================================== */
+/* ========================================================================== 
+DnD 3.5 Ink Sheet (Paper Mode) - app.js
+Pan/zoom paper inside #viewport/#world (no page scroll)
+Stylus-safe ink layer on #inkWorld (world coordinates)
+Load data from: A) XLSX upload (SheetJS) B) Google Sheets via NAS proxy endpoint: /gs/csv?id=...
+Implemented views: General, Spells,more comment commit damnit,test 2,3
+========================================================================== */
+
 // app.js (top) — add these imports (requires index.html to load app.js as type="module")
 import { evaluateExpression } from './expr/evaluator.js';
 import { slotsModel, ingestSlotsCsv } from './data/slots.js';
@@ -18,31 +17,25 @@ window.__evaluateExpression = evaluateExpression;
 
 /* ----------------------------- DOM helpers ------------------------------ */
 const $ = (id) => document.getElementById(id);
-
 const el = {
   file: $("file"),
   status: $("status"),
   progressBar: $("progressBar"),
-
   viewGeneral: $("viewGeneral"),
   viewSpells: $("viewSpells"),
   viewSlots: $("viewSlots"),
   viewSkills: $("viewSkills"),
-
   zoomOut: $("zoomOut"),
   zoomIn: $("zoomIn"),
   zoomReset: $("zoomReset"),
-
   penToggle: $("penToggle"),
   eraser: $("eraser"),
   undo: $("undo"),
   clearInk: $("clearInk"),
-
   viewport: $("viewport"),
   world: $("world"),
   app: $("app"),
   ink: $("inkWorld"),
-
   gsUrl: $("gsUrl"),
   loadGs: $("loadGs"),
 };
@@ -54,20 +47,16 @@ function assertEl(name) {
 
 /* ------------------------------ App state ------------------------------ */
 const state = {
-  loaded: false,                 // becomes true after XLSX or Google load
+  loaded: false, // becomes true after XLSX or Google load
   view: "General",
-
   // Paper transform
   pan: { x: 20, y: 20 },
   zoom: 1.0,
-
   // Pen state
   penOn: false,
   erasing: false,
-
   // Ink storage per view
   strokesByView: {},
-
   // Data
   data: {
     general: null,
@@ -76,49 +65,24 @@ const state = {
 };
 window.state = state;
 
-
 /* ------------------------------ Progress ------------------------------- */
 function setProgress(pct, text) {
   if (el.progressBar) el.progressBar.style.width = `${pct}%`;
   if (el.status) el.status.textContent = text;
 }
-function nextFrame() {
-  return new Promise((resolve) => requestAnimationFrame(resolve));
-}
+function nextFrame() { return new Promise((resolve) => requestAnimationFrame(resolve)); }
 
 /* ---------------------------- Utilities -------------------------------- */
 function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, (m) => ({
-    "&": "&", "<": "<", ">": ">", "\"": "&quot;", "'": "&#039;"
-  }[m]));
+  return String(s).replace(/[&<>\"']/g, (m) => ({ "&": "&", "<": "<", ">": ">", "\"": "&quot;", "'": "&#039;" }[m]));
 }
-function fmtSign(n) {
-  n = Number(n) || 0;
-  return (n >= 0 ? "+" : "") + n;
-}
-function abilityMod(score) {
-  return Math.floor((Number(score) - 10) / 2);
-}
-function babPoor(level) {
-  level = Number(level) || 0;
-  return Math.floor(level / 2);
-}
-function saveGood(level) {
-  level = Number(level) || 0;
-  return 2 + Math.floor(level / 2);
-}
-function savePoor(level) {
-  level = Number(level) || 0;
-  return Math.floor(level / 3);
-}
-function totalLevel(classes) {
-  return (Number(classes.sorc) || 0) + (Number(classes.wiz) || 0) + (Number(classes.um) || 0);
-}
-function hpAverageD4(totalLvl) {
-  totalLvl = Number(totalLvl) || 0;
-  if (totalLvl <= 0) return 0;
-  return 4 + (totalLvl - 1) * 3;
-}
+function fmtSign(n) { n = Number(n) || 0; return (n >= 0 ? "+" : "") + n; }
+function abilityMod(score) { return Math.floor((Number(score) - 10) / 2); }
+function babPoor(level) { level = Number(level) || 0; return Math.floor(level / 2); }
+function saveGood(level) { level = Number(level) || 0; return 2 + Math.floor(level / 2); }
+function savePoor(level) { level = Number(level) || 0; return Math.floor(level / 3); }
+function totalLevel(classes) { return (Number(classes.sorc) || 0) + (Number(classes.wiz) || 0) + (Number(classes.um) || 0); }
+function hpAverageD4(totalLvl) { totalLvl = Number(totalLvl) || 0; if (totalLvl <= 0) return 0; return 4 + (totalLvl - 1) * 3; }
 
 /* -------------------- Viewport height sync (topbar wrap) --------------- */
 function syncViewportHeight() {
@@ -126,11 +90,7 @@ function syncViewportHeight() {
   const h = topbar ? topbar.getBoundingClientRect().height : 64;
   if (el.viewport) el.viewport.style.height = `calc(100vh - ${h}px)`;
 }
-window.addEventListener("resize", () => {
-  syncViewportHeight();
-  applyWorldTransform();
-  ink.redraw();
-});
+window.addEventListener("resize", () => { syncViewportHeight(); applyWorldTransform(); ink.redraw(); });
 syncViewportHeight();
 
 /* -------------------- Paper transform (pan/zoom) ----------------------- */
@@ -138,9 +98,10 @@ function applyWorldTransform() {
   if (!el.world) return;
   el.world.style.transformOrigin = "0 0";
   el.world.style.transform = `translate(${state.pan.x}px, ${state.pan.y}px) scale(${state.zoom})`;
-     // Keep the ink canvas visually and geometrically in sync with the world,
+
+  // Keep the ink canvas visually and geometrically in sync with the world,
   // taking into account the canvas origin offset stored on state.
- if (el.ink) {
+  if (el.ink) {
     el.ink.style.transformOrigin = "0 0";
     // Ensure canvasOrigin exists and is numeric
     const origin = (state && state.canvasOrigin) ? state.canvasOrigin : { x: 0, y: 0 };
@@ -151,46 +112,28 @@ function applyWorldTransform() {
     el.ink.style.left = "0px";
     el.ink.style.top = "0px";
   }
-
-
 }
 
-
-
-function clampZoom(z) {
-  return Math.max(0.5, Math.min(3.0, z));
-}
-
+function clampZoom(z) { return Math.max(0.5, Math.min(3.0, z)); }
 function setZoom(newZoom, anchorClientX = null, anchorClientY = null) {
   const oldZoom = state.zoom;
   newZoom = clampZoom(newZoom);
   if (newZoom === oldZoom) return;
-
   // Zoom around a point in viewport coordinates
   if (anchorClientX != null && anchorClientY != null && el.viewport) {
     const vr = el.viewport.getBoundingClientRect();
     const vx = anchorClientX - vr.left;
     const vy = anchorClientY - vr.top;
-
     const wx = (vx - state.pan.x) / oldZoom;
     const wy = (vy - state.pan.y) / oldZoom;
-
     state.pan.x = vx - wx * newZoom;
     state.pan.y = vy - wy * newZoom;
   }
-
   state.zoom = newZoom;
   applyWorldTransform();
   ink.redraw();
 }
-
-function resetView() {
-  state.zoom = 1.0;
-  state.pan.x = 20;
-  state.pan.y = 20;
-  applyWorldTransform();
-  ink.redraw();
-}
+function resetView() { state.zoom = 1.0; state.pan.x = 20; state.pan.y = 20; applyWorldTransform(); ink.redraw(); }
 
 /* --------------------------- View routing ------------------------------ */
 function setView(viewName) {
@@ -204,15 +147,14 @@ function setView(viewName) {
     setProgress(0, `Render error: ${e?.message || e}`);
   }
 }
-
 if (el.viewGeneral) el.viewGeneral.onclick = () => setView("General");
-if (el.viewSpells)  el.viewSpells.onclick  = () => setView("Spells");
-if (el.viewSlots)   el.viewSlots.onclick   = () => setView("Slots");
-if (el.viewSkills)  el.viewSkills.onclick  = () => setView("Skills");
+if (el.viewSpells) el.viewSpells.onclick = () => setView("Spells");
+if (el.viewSlots) el.viewSlots.onclick = () => setView("Slots");
+if (el.viewSkills) el.viewSkills.onclick = () => setView("Skills");
 
 /* --------------------------- Zoom controls ----------------------------- */
-if (el.zoomOut)   el.zoomOut.onclick = () => setZoom(state.zoom / 1.15);
-if (el.zoomIn)    el.zoomIn.onclick  = () => setZoom(state.zoom * 1.15);
+if (el.zoomOut) el.zoomOut.onclick = () => setZoom(state.zoom / 1.15);
+if (el.zoomIn) el.zoomIn.onclick = () => setZoom(state.zoom * 1.15);
 if (el.zoomReset) el.zoomReset.onclick = () => resetView();
 
 // ctrl+wheel zoom inside viewport (desktop convenience)
@@ -226,11 +168,10 @@ if (el.viewport) {
 }
 
 /* ----------------------------- Pan mode --------------------------------
-   - When pen is OFF: drag to pan paper
-   - When pen is ON: ink handles strokes
+- When pen is OFF: drag to pan paper
+- When pen is ON: ink handles strokes
 ------------------------------------------------------------------------- */
 let panDrag = { active: false, startX: 0, startY: 0, basePanX: 0, basePanY: 0 };
-
 function beginPan(e) {
   panDrag.active = true;
   panDrag.startX = e.clientX;
@@ -261,52 +202,43 @@ if (el.viewport) {
 }
 
 /* ------------------------------ Ink layer ------------------------------ */
-/* ------------------------------ Ink layer ------------------------------ */
 const ink = (() => {
-   // Preallocate a safe drawing origin so canvas and world math stay aligned
-const PREALLOC_MARGIN = 2000; 
-let canvasOrigin = { x: PREALLOC_MARGIN, y: PREALLOC_MARGIN };
-state.canvasOrigin = canvasOrigin;
+  // Preallocate a safe drawing origin so canvas and world math stay aligned
+  const PREALLOC_MARGIN = 2000; // CSS pixels margin on each side (tune if needed)
+  // Single authoritative canvasOrigin used everywhere
+  let canvasOrigin = { x: PREALLOC_MARGIN, y: PREALLOC_MARGIN };
+  state.canvasOrigin = canvasOrigin;
 
   const canvas = el.ink;
   const ctx = canvas ? canvas.getContext("2d") : null;
-// --- Ensure canvas is positioned and initially non-interactive ---
-// This makes the canvas visible, on top, and prevents it from blocking UI until pen mode is enabled.
-if (canvas) {
-  // Basic positioning and sensible defaults (keeps existing width/height if already set)
-  canvas.style.position = canvas.style.position || "absolute";
-  canvas.style.left = canvas.style.left || "0px";
-  canvas.style.top = canvas.style.top || "0px";
-  canvas.style.width = canvas.style.width || `${Math.max(el.app?.scrollWidth || 1200, 1200)}px`;
-  canvas.style.height = canvas.style.height || `${Math.max(el.app?.scrollHeight || 800, 800)}px`;
 
-  // Start non-interactive; setPenMode will toggle this to "auto" when pen is ON
-  canvas.style.pointerEvents = "none";
-  canvas.style.touchAction = "none";
-
-  // Keep canvas above most UI by default; setPenMode will raise it further when active
-  // Use a modest default so other overlays can still appear if needed
-  canvas.style.zIndex = canvas.style.zIndex || "20";
-
-  // Ensure the canvas has an explicit CSS display so layout is predictable
-  if (!canvas.style.display) canvas.style.display = "block";
-}
-  // Canvas origin offset in CSS pixels: how many CSS pixels the world origin is shifted
-  // from the canvas top-left. This allows expansion to the left/top by shifting content.
-  let canvasOrigin = { x: 0, y: 0 };
-   state.canvasOrigin = canvasOrigin;
+  // --- Ensure canvas is positioned and initially non-interactive ---
+  if (canvas) {
+    canvas.style.position = canvas.style.position || "absolute";
+    canvas.style.left = canvas.style.left || "0px";
+    canvas.style.top = canvas.style.top || "0px";
+    // Start with a size that includes the prealloc margin so world origin sits away from edges
+    const initialW = Math.max(el.app?.scrollWidth || 1200, 1200) + PREALLOC_MARGIN * 2;
+    const initialH = Math.max(el.app?.scrollHeight || 800, 800) + PREALLOC_MARGIN * 2;
+    canvas.style.width = canvas.style.width || `${initialW}px`;
+    canvas.style.height = canvas.style.height || `${initialH}px`;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = canvas.width || Math.floor(initialW * dpr);
+    canvas.height = canvas.height || Math.floor(initialH * dpr);
+    ctx && ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    canvas.style.pointerEvents = "none"; // toggled by setPenMode
+    canvas.style.touchAction = "none";
+    canvas.style.zIndex = canvas.style.zIndex || "20";
+    canvas.style.display = canvas.style.display || "block";
+  }
 
   function getStrokesForView(view) {
     state.strokesByView[view] ||= [];
     return state.strokesByView[view];
   }
-
   function saveForView(view) {
-    try {
-      localStorage.setItem(`ink:${view}`, JSON.stringify(getStrokesForView(view)));
-    } catch {}
+    try { localStorage.setItem(`ink:${view}`, JSON.stringify(getStrokesForView(view))); } catch {}
   }
-
   function loadForView(view) {
     try {
       const raw = localStorage.getItem(`ink:${view}`);
@@ -318,18 +250,17 @@ if (canvas) {
     scheduleFullRedraw();
   }
 
-// Convert world coords -> CSS canvas coords (taking origin offset into account)
-function worldToCanvasCss(worldX, worldY) {
-  // The canvas element itself is translated by (pan + canvasOrigin) via CSS transform.
-  // To compute coordinates inside the canvas backing store we must NOT re-apply pan.
-  // Use world*zoom then subtract the canvas origin offset.
-  const vx = worldX * state.zoom;
-  const vy = worldY * state.zoom;
-  return { x: vx - canvasOrigin.x, y: vy - canvasOrigin.y };
-}
+  // Convert world coords -> CSS canvas coords (taking origin offset into account)
+  function worldToCanvasCss(worldX, worldY) {
+    // The canvas element itself is translated by (pan + canvasOrigin) via CSS transform.
+    // To compute coordinates inside the canvas backing store we must NOT re-apply pan.
+    // Use world*zoom then subtract the canvas origin offset.
+    const vx = worldX * state.zoom;
+    const vy = worldY * state.zoom;
+    return { x: vx - canvasOrigin.x, y: vy - canvasOrigin.y };
+  }
 
-
-  // Convert client coords -> world coords (existing helper)
+  // Convert client coords -> world coords
   function screenToWorld(clientX, clientY) {
     if (!el.viewport) return { x: 0, y: 0 };
     const vr = el.viewport.getBoundingClientRect();
@@ -339,7 +270,7 @@ function worldToCanvasCss(worldX, worldY) {
   }
 
   // Draw a single segment (prev -> next) for a stroke directly to the canvas.
-  // This is used to incrementally render the stroke as the pointer moves.
+  // prev/next are expected to be CSS canvas coords (already converted).
   function drawStrokeSegment(prev, next, stroke) {
     if (!ctx) return;
     ctx.save();
@@ -347,15 +278,13 @@ function worldToCanvasCss(worldX, worldY) {
       ctx.globalCompositeOperation = "destination-out";
       ctx.lineWidth = 18;
       ctx.strokeStyle = "rgba(0,0,0,1)";
-      ctx.lineCap = "round";
-      ctx.lineJoin = "round";
     } else {
       ctx.globalCompositeOperation = "source-over";
       ctx.lineWidth = 2;
       ctx.strokeStyle = "#000";
-      ctx.lineCap = "round";
-      ctx.lineJoin = "round";
     }
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
     ctx.beginPath();
     ctx.moveTo(prev.x, prev.y);
     ctx.lineTo(next.x, next.y);
@@ -364,6 +293,7 @@ function worldToCanvasCss(worldX, worldY) {
   }
 
   // Full stroke draw (used for redraw from saved strokes)
+  // Expects stroke.pts to already be in canvas CSS coords (scheduleFullRedraw converts them).
   function drawStroke(stroke) {
     if (!ctx) return;
     const pts = stroke.pts || [];
@@ -373,15 +303,13 @@ function worldToCanvasCss(worldX, worldY) {
       ctx.globalCompositeOperation = "destination-out";
       ctx.lineWidth = 18;
       ctx.strokeStyle = "rgba(0,0,0,1)";
-      ctx.lineCap = "round";
-      ctx.lineJoin = "round";
     } else {
       ctx.globalCompositeOperation = "source-over";
       ctx.lineWidth = 2;
       ctx.strokeStyle = "#000";
-      ctx.lineCap = "round";
-      ctx.lineJoin = "round";
     }
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
     ctx.beginPath();
     ctx.moveTo(pts[0].x, pts[0].y);
     for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
@@ -403,28 +331,23 @@ function worldToCanvasCss(worldX, worldY) {
     if (!canvas || !ctx) return;
     const { cssW, cssH, dpr } = getCssSize();
     const MARGIN = 80;
-
     // Determine required expansion on each side
     let leftExpand = 0, rightExpand = 0, topExpand = 0, bottomExpand = 0;
-
     if (cssX < MARGIN) leftExpand = Math.ceil(MARGIN - cssX);
     else if (cssX > cssW - MARGIN) rightExpand = Math.ceil(cssX - (cssW - MARGIN));
-
     if (cssY < MARGIN) topExpand = Math.ceil(MARGIN - cssY);
     else if (cssY > cssH - MARGIN) bottomExpand = Math.ceil(cssY - (cssH - MARGIN));
-
     if (!leftExpand && !rightExpand && !topExpand && !bottomExpand) return;
 
-    // New CSS dimensions
-    const newCssW = Math.max(cssW + leftExpand + rightExpand, Math.ceil(cssX + MARGIN));
-    const newCssH = Math.max(cssH + topExpand + bottomExpand, Math.ceil(cssY + MARGIN));
+    // New CSS dimensions (include prealloc margin to avoid frequent small grows)
+    const newCssW = Math.min(10000, Math.max(cssW + leftExpand + rightExpand, Math.ceil(cssX + MARGIN)));
+    const newCssH = Math.min(10000, Math.max(cssH + topExpand + bottomExpand, Math.ceil(cssY + MARGIN)));
 
     // Offscreen copy of current backing store
     const oldW = canvas.width;
     const oldH = canvas.height;
     const oldCssW = cssW;
     const oldCssH = cssH;
-
     const off = document.createElement("canvas");
     off.width = oldW || 1;
     off.height = oldH || 1;
@@ -435,6 +358,7 @@ function worldToCanvasCss(worldX, worldY) {
     // so existing content appears at the correct offset.
     canvasOrigin.x += leftExpand;
     canvasOrigin.y += topExpand;
+    state.canvasOrigin = canvasOrigin;
 
     // Apply new CSS sizes and backing store sizes
     canvas.style.width = `${newCssW}px`;
@@ -449,7 +373,7 @@ function worldToCanvasCss(worldX, worldY) {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     if (oldW && oldH) {
       // drawImage(off, sx, sy, sw, sh, dx, dy, dw, dh)
-      ctx.drawImage(off, 0, 0, oldW, oldH, Math.floor(canvasOrigin.x - leftExpand), Math.floor(canvasOrigin.y - topExpand), Math.floor(oldCssW * dpr), Math.floor(oldCssH * dpr));
+      ctx.drawImage(off, 0, 0, oldW, oldH, Math.floor(canvasOrigin.x), Math.floor(canvasOrigin.y), Math.floor(oldCssW * dpr), Math.floor(oldCssH * dpr));
     }
   }
 
@@ -459,12 +383,13 @@ function worldToCanvasCss(worldX, worldY) {
     const minW = Math.max(el.app?.scrollWidth || 0, 1200);
     const minH = Math.max(el.app?.scrollHeight || 0, 800);
     const { cssW, cssH, dpr } = getCssSize();
-
-    const targetCssW = Math.max(cssW, minW);
-    const targetCssH = Math.max(cssH, minH);
+    // include prealloc margin so world origin is not near edges
+    const targetCssW = Math.max(cssW, minW + PREALLOC_MARGIN * 2);
+    const targetCssH = Math.max(cssH, minH + PREALLOC_MARGIN * 2);
 
     // If already large enough, just ensure transform is correct
-    if (Math.floor(canvas.width) === Math.floor(targetCssW * dpr) && Math.floor(canvas.height) === Math.floor(targetCssH * dpr)) {
+    if (Math.floor(canvas.width) === Math.floor(targetCssW * dpr) &&
+        Math.floor(canvas.height) === Math.floor(targetCssH * dpr)) {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       canvas.style.touchAction = "none";
       return;
@@ -475,7 +400,6 @@ function worldToCanvasCss(worldX, worldY) {
     const oldH = canvas.height;
     const oldCssW = cssW || (oldW / dpr);
     const oldCssH = cssH || (oldH / dpr);
-
     const off = document.createElement("canvas");
     off.width = oldW || 1;
     off.height = oldH || 1;
@@ -503,24 +427,19 @@ function worldToCanvasCss(worldX, worldY) {
       rafId = requestAnimationFrame(() => {
         rafId = null;
         if (needsFullRedraw) {
-          // full redraw: clear and draw all strokes
           if (!canvas || !ctx) return;
           ensureCanvasSize();
           ctx.clearRect(0, 0, canvas.width, canvas.height);
           const strokes = getStrokesForView(state.view);
-          // draw each stroke in world coords -> convert to canvas coords by applying origin offset
-          // We store strokes in world coords; when drawing to canvas we must transform points to canvas CSS coords
-          ctx.save();
-          // We'll draw in CSS pixel space; points are in world coords, so convert each point
+          // draw each stroke in world coords -> convert to canvas coords then draw
           for (const s of strokes) {
             const pts = (s.pts || []).map(p => {
               const css = worldToCanvasCss(p.x, p.y);
               return { x: css.x, y: css.y };
             });
-            // draw using a temporary stroke object with converted pts
+            if (pts.length < 2) continue;
             drawStroke({ ...s, pts });
           }
-          ctx.restore();
           needsFullRedraw = false;
         }
       });
@@ -530,14 +449,9 @@ function worldToCanvasCss(worldX, worldY) {
   // --- Clear / Undo (do not shrink canvas) ---
   function clear() {
     state.strokesByView[state.view] = [];
-    // Clear the backing store but keep canvas size/origin intact
-    if (canvas && ctx) {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-    }
+    if (canvas && ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
     saveForView(state.view);
-    // keep canvas size; no shrinking
   }
-
   function undo() {
     const s = getStrokesForView(state.view);
     s.pop();
@@ -550,150 +464,148 @@ function worldToCanvasCss(worldX, worldY) {
   let currentStroke = null;
   let activePointerId = null;
 
-// --- Safety caps and pending expansion state (place near top of IIFE if not present) ---
-const MAX_CANVAS_CSS = 10000; // maximum CSS pixels for width/height to avoid runaway memory
-let pendingExpansion = null; // { minX, minY, maxX, maxY } in CSS coords, applied on pointerup
+  // --- Safety caps and pending expansion state ---
+  const MAX_CANVAS_CSS = 10000; // maximum CSS pixels for width/height to avoid runaway memory
+  let pendingExpansion = null; // { minX, minY, maxX, maxY } in CSS coords, applied on pointerup
 
-// --- pointerDown: ensure canvas is ready, draw initial dot, do NOT expand canvas here ---
-function pointerDown(e) {
-  if (!state.penOn || !canvas) return;
-  if (e.pointerType === "touch") return;
+  // --- pointerDown: ensure canvas is ready, draw initial dot, do NOT expand canvas here ---
+  function pointerDown(e) {
+    if (!state.penOn || !canvas) return;
+    if (e.pointerType === "touch") return;
 
-  // Ensure canvas is at least the base size (cheap no-op after first call)
-  ensureCanvasSize();
+    ensureCanvasSize();
 
-  drawing = true;
-  activePointerId = e.pointerId;
+    drawing = true;
+    activePointerId = e.pointerId;
 
-  const pWorld = screenToWorld(e.clientX, e.clientY);
-  currentStroke = { erase: state.erasing, pts: [pWorld] };
-  getStrokesForView(state.view).push(currentStroke);
+    const pWorld = screenToWorld(e.clientX, e.clientY);
+    currentStroke = { erase: state.erasing, pts: [pWorld] };
+    getStrokesForView(state.view).push(currentStroke);
 
-  // Draw initial dot incrementally (convert to CSS coords)
-  const cssStart = worldToCanvasCss(pWorld.x, pWorld.y);
-  drawStrokeSegment(cssStart, cssStart, currentStroke);
+    // Draw initial dot incrementally (convert to CSS coords)
+    const cssStart = worldToCanvasCss(pWorld.x, pWorld.y);
+    drawStrokeSegment(cssStart, cssStart, currentStroke);
 
-  // If the pointer is outside the current CSS canvas area, record pending expansion
-  const { cssW, cssH } = getCssSize();
-  if (cssStart.x < 0 || cssStart.y < 0 || cssStart.x > cssW || cssStart.y > cssH) {
-    pendingExpansion = {
-      minX: Math.min(0, cssStart.x),
-      minY: Math.min(0, cssStart.y),
-      maxX: Math.max(cssW, cssStart.x),
-      maxY: Math.max(cssH, cssStart.y)
-    };
-  } else {
-    pendingExpansion = null;
-  }
-
-  try { canvas.setPointerCapture(e.pointerId); } catch {}
-  e.preventDefault();
-}
-
-// --- pointerMove: draw incrementally, mark pending expansion but DO NOT resize backing store here ---
-function pointerMove(e) {
-  if (!state.penOn || !drawing || !currentStroke) return;
-  if (activePointerId !== null && e.pointerId !== activePointerId) return;
-  if (e.pointerType === "touch") return;
-
-  const pWorld = screenToWorld(e.clientX, e.clientY);
-  const last = currentStroke.pts[currentStroke.pts.length - 1];
-  const dx = pWorld.x - last.x;
-  const dy = pWorld.y - last.y;
-  if ((dx * dx + dy * dy) < 0.0004) return; // small threshold in world units
-
-  // Convert to CSS coords for immediate incremental drawing
-  const prevCss = worldToCanvasCss(last.x, last.y);
-  const nextCss = worldToCanvasCss(pWorld.x, pWorld.y);
-
-  // If next point is outside current CSS canvas, record pending expansion instead of resizing now
-  const { cssW, cssH } = getCssSize();
-  if (nextCss.x < 0 || nextCss.y < 0 || nextCss.x > cssW || nextCss.y > cssH) {
-    // expand pending box to include this point
-    if (!pendingExpansion) {
-      pendingExpansion = { minX: Math.min(0, nextCss.x), minY: Math.min(0, nextCss.y), maxX: Math.max(cssW, nextCss.x), maxY: Math.max(cssH, nextCss.y) };
+    // If the pointer is outside the current CSS canvas area, record pending expansion
+    const { cssW, cssH } = getCssSize();
+    if (cssStart.x < 0 || cssStart.y < 0 || cssStart.x > cssW || cssStart.y > cssH) {
+      pendingExpansion = {
+        minX: Math.min(0, cssStart.x),
+        minY: Math.min(0, cssStart.y),
+        maxX: Math.max(cssW, cssStart.x),
+        maxY: Math.max(cssH, cssStart.y)
+      };
     } else {
-      pendingExpansion.minX = Math.min(pendingExpansion.minX, nextCss.x);
-      pendingExpansion.minY = Math.min(pendingExpansion.minY, nextCss.y);
-      pendingExpansion.maxX = Math.max(pendingExpansion.maxX, nextCss.x);
-      pendingExpansion.maxY = Math.max(pendingExpansion.maxY, nextCss.y);
-    }
-    // Clip the incremental draw to the current canvas bounds to avoid drawing off-canvas
-    const clippedPrev = { x: Math.max(0, Math.min(cssW, prevCss.x)), y: Math.max(0, Math.min(cssH, prevCss.y)) };
-    const clippedNext = { x: Math.max(0, Math.min(cssW, nextCss.x)), y: Math.max(0, Math.min(cssH, nextCss.y)) };
-    drawStrokeSegment(clippedPrev, clippedNext, currentStroke);
-  } else {
-    // Normal fast incremental draw
-    drawStrokeSegment(prevCss, nextCss, currentStroke);
-  }
-
-  currentStroke.pts.push(pWorld);
-  e.preventDefault();
-}
-
-// --- endStroke: finalize stroke, apply pending expansion once, then schedule full redraw/save ---
-function endStroke(e) {
-  if (!state.penOn) return;
-  if (e && activePointerId !== null && e.pointerId !== activePointerId) return;
-
-  drawing = false;
-  currentStroke = null;
-
-  if (canvas && e) {
-    try { canvas.releasePointerCapture(e.pointerId); } catch {}
-  }
-  activePointerId = null;
-
-  // If we recorded a pending expansion, apply it now (single resize)
-  if (pendingExpansion) {
-    try {
-      // Compute new CSS size with margin and cap to MAX_CANVAS_CSS
-      const margin = 80;
-      let newCssW = Math.ceil(Math.min(MAX_CANVAS_CSS, Math.max(pendingExpansion.maxX + margin, getCssSize().cssW)));
-      let newCssH = Math.ceil(Math.min(MAX_CANVAS_CSS, Math.max(pendingExpansion.maxY + margin, getCssSize().cssH)));
-
-      // If negative min values exist (drawing left/top), we avoid complex origin shifts here.
-      // Instead, clamp min to 0 to keep implementation simple and safe.
-      // (If you need negative-world drawing, we can implement origin shifting later.)
       pendingExpansion = null;
+    }
 
-      // Only resize if it actually grows
-      const { cssW: curW, cssH: curH, dpr } = getCssSize();
-      if (newCssW > curW || newCssH > curH) {
-        // Preserve existing content
-        const oldW = canvas.width;
-        const oldH = canvas.height;
-        const oldCssW = curW;
-        const oldCssH = curH;
-        const off = document.createElement("canvas");
-        off.width = oldW || 1;
-        off.height = oldH || 1;
-        const offCtx = off.getContext("2d");
-        if (oldW && oldH) offCtx.drawImage(canvas, 0, 0);
+    try { canvas.setPointerCapture(e.pointerId); } catch {}
+    e.preventDefault();
+  }
 
-        // Apply new CSS/backing sizes
-        canvas.style.width = `${newCssW}px`;
-        canvas.style.height = `${newCssH}px`;
-        canvas.width = Math.floor(newCssW * dpr);
-        canvas.height = Math.floor(newCssH * dpr);
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  // --- pointerMove: draw incrementally, mark pending expansion but DO NOT resize backing store here ---
+  function pointerMove(e) {
+    if (!state.penOn || !drawing || !currentStroke) return;
+    if (activePointerId !== null && e.pointerId !== activePointerId) return;
+    if (e.pointerType === "touch") return;
 
-        // Redraw preserved content at same origin (no origin shift)
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        if (oldW && oldH) {
-          ctx.drawImage(off, 0, 0, oldW, oldH, Math.floor(canvasOrigin?.x || 0), Math.floor(canvasOrigin?.y || 0), Math.floor(oldCssW * dpr), Math.floor(oldCssH * dpr));
-        }
+    const pWorld = screenToWorld(e.clientX, e.clientY);
+    const last = currentStroke.pts[currentStroke.pts.length - 1];
+    const dx = pWorld.x - last.x;
+    const dy = pWorld.y - last.y;
+    if ((dx * dx + dy * dy) < 0.0004) return; // small threshold in world units
+
+    // Convert to CSS coords for immediate incremental drawing
+    const prevCss = worldToCanvasCss(last.x, last.y);
+    const nextCss = worldToCanvasCss(pWorld.x, pWorld.y);
+
+    // If next point is outside current CSS canvas, record pending expansion instead of resizing now
+    const { cssW, cssH } = getCssSize();
+    if (nextCss.x < 0 || nextCss.y < 0 || nextCss.x > cssW || nextCss.y > cssH) {
+      // expand pending box to include this point
+      if (!pendingExpansion) {
+        pendingExpansion = { minX: Math.min(0, nextCss.x), minY: Math.min(0, nextCss.y), maxX: Math.max(cssW, nextCss.x), maxY: Math.max(cssH, nextCss.y) };
+      } else {
+        pendingExpansion.minX = Math.min(pendingExpansion.minX, nextCss.x);
+        pendingExpansion.minY = Math.min(pendingExpansion.minY, nextCss.y);
+        pendingExpansion.maxX = Math.max(pendingExpansion.maxX, nextCss.x);
+        pendingExpansion.maxY = Math.max(pendingExpansion.maxY, nextCss.y);
       }
-    } catch (err) {
-      console.warn("Canvas expansion failed, skipping:", err);
-      pendingExpansion = null;
+      // Clip the incremental draw to the current canvas bounds to avoid drawing off-canvas
+      const clippedPrev = { x: Math.max(0, Math.min(cssW, prevCss.x)), y: Math.max(0, Math.min(cssH, prevCss.y)) };
+      const clippedNext = { x: Math.max(0, Math.min(cssW, nextCss.x)), y: Math.max(0, Math.min(cssH, nextCss.y)) };
+      drawStrokeSegment(clippedPrev, clippedNext, currentStroke);
+    } else {
+      // Normal fast incremental draw
+      drawStrokeSegment(prevCss, nextCss, currentStroke);
     }
+
+    currentStroke.pts.push(pWorld);
+    e.preventDefault();
   }
 
-  // Save and schedule a full redraw to normalize incremental segments
-  saveForView(state.view);
-  scheduleFullRedraw();
-}
+  // --- endStroke: finalize stroke, apply pending expansion once, then schedule full redraw/save ---
+  function endStroke(e) {
+    if (!state.penOn) return;
+    if (e && activePointerId !== null && e.pointerId !== activePointerId) return;
+
+    drawing = false;
+    currentStroke = null;
+
+    if (canvas && e) {
+      try { canvas.releasePointerCapture(e.pointerId); } catch {}
+    }
+    activePointerId = null;
+
+    // If we recorded a pending expansion, apply it now (single resize)
+    if (pendingExpansion) {
+      try {
+        // Compute new CSS size with margin and cap to MAX_CANVAS_CSS
+        const margin = 80;
+        const { cssW: curCssW, cssH: curCssH, dpr } = getCssSize();
+        let newCssW = Math.ceil(Math.min(MAX_CANVAS_CSS, Math.max(pendingExpansion.maxX + margin, curCssW)));
+        let newCssH = Math.ceil(Math.min(MAX_CANVAS_CSS, Math.max(pendingExpansion.maxY + margin, curCssH)));
+
+        // If negative min values exist (drawing left/top), we avoid complex origin shifts here.
+        // Instead, clamp min to 0 to keep implementation simple and safe.
+        // (If you need negative-world drawing, we can implement origin shifting later.)
+        pendingExpansion = null;
+
+        // Only resize if it actually grows
+        if (newCssW > curCssW || newCssH > curCssH) {
+          const oldW = canvas.width;
+          const oldH = canvas.height;
+          const oldCssW = curCssW;
+          const oldCssH = curCssH;
+          const off = document.createElement("canvas");
+          off.width = oldW || 1;
+          off.height = oldH || 1;
+          const offCtx = off.getContext("2d");
+          if (oldW && oldH) offCtx.drawImage(canvas, 0, 0);
+
+          // Apply new CSS/backing sizes
+          canvas.style.width = `${newCssW}px`;
+          canvas.style.height = `${newCssH}px`;
+          canvas.width = Math.floor(newCssW * dpr);
+          canvas.height = Math.floor(newCssH * dpr);
+          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+          // Redraw preserved content at same origin (no origin shift)
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          if (oldW && oldH) {
+            ctx.drawImage(off, 0, 0, oldW, oldH, Math.floor(canvasOrigin.x), Math.floor(canvasOrigin.y), Math.floor(oldCssW * dpr), Math.floor(oldCssH * dpr));
+          }
+        }
+      } catch (err) {
+        console.warn("Canvas expansion failed, skipping:", err);
+        pendingExpansion = null;
+      }
+    }
+
+    // Save and schedule a full redraw to normalize incremental segments
+    saveForView(state.view);
+    scheduleFullRedraw();
+  }
 
   if (canvas) {
     canvas.addEventListener("pointerdown", pointerDown);
@@ -705,24 +617,20 @@ function endStroke(e) {
     canvas.style.pointerEvents = "none";
     canvas.style.touchAction = "none";
   }
-function setPenMode(on) {
-  state.penOn = !!on;
-  if (el.penToggle) el.penToggle.textContent = `Pen: ${state.penOn ? "ON" : "OFF"}`;
 
-  // Allow the canvas to receive pointer events only when pen is ON
-  if (canvas) {
-    canvas.style.pointerEvents = state.penOn ? "auto" : "none";
-    // Keep canvas visually on top while pen is active
-    canvas.style.zIndex = state.penOn ? "9999" : "20";
+  function setPenMode(on) {
+    state.penOn = !!on;
+    if (el.penToggle) el.penToggle.textContent = `Pen: ${state.penOn ? "ON" : "OFF"}`;
+    if (canvas) {
+      canvas.style.pointerEvents = state.penOn ? "auto" : "none";
+      canvas.style.zIndex = state.penOn ? "29999" : "20";
+    }
+    if (!state.penOn) {
+      drawing = false;
+      currentStroke = null;
+      activePointerId = null;
+    }
   }
-
-  if (!state.penOn) {
-    drawing = false;
-    currentStroke = null;
-    activePointerId = null;
-  }
-}
-
 
   function setEraser(on) {
     state.erasing = !!on;
@@ -734,14 +642,10 @@ function setPenMode(on) {
   if (el.undo) el.undo.onclick = () => undo();
   if (el.clearInk) el.clearInk.onclick = () => clear();
 
-  window.addEventListener("resize", () => {
-    ensureCanvasSize();
-    scheduleFullRedraw();
-  });
+  window.addEventListener("resize", () => { ensureCanvasSize(); scheduleFullRedraw(); });
 
-  // initial sizing
+  // initial sizing and redraw
   ensureCanvasSize();
-  // initial full redraw to render any loaded strokes
   scheduleFullRedraw();
 
   return { redraw: scheduleFullRedraw, loadForView, setPenMode, setEraser };
@@ -750,7 +654,6 @@ function setPenMode(on) {
 /* ----------------- Derived computations (General view) ----------------- */
 function computeGeneralDerived(g) {
   const cls = g.classes;
-
   const abilities = {};
   for (const k of ["str","dex","con","int","wis","cha"]) {
     const a = g.abilities[k];
@@ -758,11 +661,9 @@ function computeGeneralDerived(g) {
     const total = base + (Number(a.items)||0) + (Number(a.buffs)||0);
     abilities[k] = { total, mod: abilityMod(total) };
   }
-
   const lvl = totalLevel(cls);
   const hpBase = hpAverageD4(lvl);
   const hpMax = hpBase + abilities.con.mod * lvl;
-
   const ac = g.ac;
   const armorItem = Number(ac.armor)||0;
   const shieldItem = Number(ac.shield)||0;
@@ -770,80 +671,51 @@ function computeGeneralDerived(g) {
   const shieldSpellBonus = Number(g.buffs?.shieldSpell)||0;
   const armorUsed = Math.max(armorItem, mageArmorBonus);
   const shieldUsed = Math.max(shieldItem, shieldSpellBonus);
-
-  const acTotal =
-    10 + armorUsed + shieldUsed + abilities.dex.mod +
-    (Number(ac.size)||0) + (Number(ac.natural)||0) +
-    (Number(ac.deflect)||0) + (Number(ac.misc)||0);
-
+  const acTotal = 10 + armorUsed + shieldUsed + abilities.dex.mod + (Number(ac.size)||0) + (Number(ac.natural)||0) + (Number(ac.deflect)||0) + (Number(ac.misc)||0);
   const touch = 10 + abilities.dex.mod + (Number(ac.size)||0) + (Number(ac.deflect)||0) + (Number(ac.miscTouch)||0);
-  const flat  = 10 + armorUsed + shieldUsed + (Number(ac.size)||0) + (Number(ac.natural)||0) + (Number(ac.deflect)||0) + (Number(ac.misc)||0);
-
+  const flat = 10 + armorUsed + shieldUsed + (Number(ac.size)||0) + (Number(ac.natural)||0) + (Number(ac.deflect)||0) + (Number(ac.misc)||0);
   const bab = babPoor(cls.sorc) + babPoor(cls.wiz) + babPoor(cls.um);
-
   const fortBase = savePoor(cls.sorc) + savePoor(cls.wiz) + savePoor(cls.um);
-  const refBase  = savePoor(cls.sorc) + savePoor(cls.wiz) + savePoor(cls.um);
+  const refBase = savePoor(cls.sorc) + savePoor(cls.wiz) + savePoor(cls.um);
   const willBase = saveGood(cls.sorc) + saveGood(cls.wiz) + saveGood(cls.um);
-
-  const saves = {
-    fort: fortBase + abilities.con.mod + (Number(g.saves.fortMisc)||0),
-    ref:  refBase  + abilities.dex.mod + (Number(g.saves.refMisc)||0),
-    will: willBase + abilities.wis.mod + (Number(g.saves.willMisc)||0)
-  };
-
+  const saves = { fort: fortBase + abilities.con.mod + (Number(g.saves.fortMisc)||0), ref: refBase + abilities.dex.mod + (Number(g.saves.refMisc)||0), will: willBase + abilities.wis.mod + (Number(g.saves.willMisc)||0) };
   const init = abilities.dex.mod + (Number(g.initMisc)||0);
   const melee = bab + abilities.str.mod + (Number(g.attacks.meleeMisc)||0);
   const ranged = bab + abilities.dex.mod + (Number(g.attacks.rangedMisc)||0);
-
   return { lvl, abilities, hpMax, acTotal, touch, flat, bab, saves, init, melee, ranged };
 }
 
 /* ---------------------- Google Sheets ingest (CSV) ---------------------- */
 /* Uses your NAS proxy endpoint: /gs/csv?id=...&gid=... */
-
 function extractSpreadsheetId(url) {
   const m = String(url).match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
   return m ? m[1] : null;
 }
-
 async function fetchCsvViaProxy(sheetId, gid) {
   const url = `/gs/csv?id=${encodeURIComponent(sheetId)}&gid=${encodeURIComponent(gid)}`;
   const res = await fetch(url, { cache: "no-store" });
   if (!res.ok) throw new Error(`CSV proxy failed ${res.status}`);
   return await res.text();
 }
-
 function csvToGrid(csvText) {
   const wb = XLSX.read(csvText, { type: "string" });
   const ws = wb.Sheets[wb.SheetNames[0]];
   return XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
 }
-
 async function loadFromGoogleSheets(sheetUrl) {
   try {
     const id = extractSpreadsheetId(sheetUrl);
     if (!id) throw new Error("Could not extract spreadsheet ID from URL.");
-
-    const gids = {
-      spells: 0,
-      general: 2004670713,
-      slot: 1231385124,
-      skills: 2140364605
-    };
-
+    const gids = { spells: 0, general: 2004670713, slot: 1231385124, skills: 2140364605 };
     setProgress(5, "Fetching Spells…");
     const spellsGrid = csvToGrid(await fetchCsvViaProxy(id, gids.spells));
-
     setProgress(30, "Fetching General…");
     const generalGrid = csvToGrid(await fetchCsvViaProxy(id, gids.general));
-
     // Parse first; don't mark loaded until parsing succeeds
     ingestSpellsFromGrid(spellsGrid);
     ingestGeneralFromGrid(generalGrid);
-
     // Only now mark loaded
     state.loaded = true;
-
     setProgress(95, "Rendering…");
     render();
     setProgress(100, "Done ✅");
@@ -854,6 +726,7 @@ async function loadFromGoogleSheets(sheetUrl) {
     state.loaded = false;
   }
 }
+
 
 function ingestGeneralFromGrid(grid) {
   const cell = (r, c) => (grid[r] && grid[r][c] != null) ? String(grid[r][c]) : "";
@@ -1629,10 +1502,7 @@ window.addEventListener("DOMContentLoaded", () => {
     el.loadGs.addEventListener("click", async () => {
       try {
         const url = el.gsUrl.value.trim();
-        if (!url) {
-          setProgress(0, "Paste a Google Sheets URL first.");
-          return;
-        }
+        if (!url) { setProgress(0, "Paste a Google Sheets URL first."); return; }
         await loadFromGoogleSheets(url);
       } catch (e) {
         console.error(e);
@@ -1648,3 +1518,16 @@ window.addEventListener("DOMContentLoaded", () => {
 applyWorldTransform();
 ink.loadForView(state.view);
 render();
+
+/* ========================================================================
+Notes on fixes applied to the ink system (summary of surgical changes):
+- Consolidated canvasOrigin to a single authoritative variable initialized to PREALLOC_MARGIN.
+- Ensured initial canvas CSS/backing size includes PREALLOC_MARGIN on both axes so the world origin is not near edges.
+- Fixed ensureCanvasSize to include PREALLOC_MARGIN when sizing the canvas.
+- Removed duplicate/contradictory canvasOrigin re-declarations that caused origin to be zero.
+- Kept incremental drawing on pointermove and deferred any backing-store expansion until pointerup (pendingExpansion logic).
+- scheduleFullRedraw converts world-space stroke points to canvas CSS coords before calling drawStroke, so drawStroke expects canvas coords.
+- applyWorldTransform explicitly translates the canvas by (pan + canvasOrigin) so DOM transform and coordinate math align.
+- expandCanvasToIncludePoint and ensureCanvasSize preserve existing content and update canvasOrigin consistently when expanding left/top.
+These changes are intentionally minimal and focused on the ink layer; all other app logic (sheet loading, rendering, persistence) was left intact.
+========================================================================== */
