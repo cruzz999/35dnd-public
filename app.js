@@ -308,14 +308,16 @@ if (canvas) {
     scheduleFullRedraw();
   }
 
-  // Convert world coords -> CSS canvas coords (taking origin offset into account)
-  function worldToCanvasCss(worldX, worldY) {
-    // world -> viewport pixels: vx = worldX*zoom + pan.x
-    const vx = worldX * state.zoom + state.pan.x;
-    const vy = worldY * state.zoom + state.pan.y;
-    // canvas CSS coords = vx - canvasOrigin
-    return { x: vx - canvasOrigin.x, y: vy - canvasOrigin.y };
-  }
+// Convert world coords -> CSS canvas coords (taking origin offset into account)
+function worldToCanvasCss(worldX, worldY) {
+  // The canvas element itself is translated by (pan + canvasOrigin) via CSS transform.
+  // To compute coordinates inside the canvas backing store we must NOT re-apply pan.
+  // Use world*zoom then subtract the canvas origin offset.
+  const vx = worldX * state.zoom;
+  const vy = worldY * state.zoom;
+  return { x: vx - canvasOrigin.x, y: vy - canvasOrigin.y };
+}
+
 
   // Convert client coords -> world coords (existing helper)
   function screenToWorld(clientX, clientY) {
