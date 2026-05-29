@@ -81,6 +81,36 @@ function savePoor(level) { level = Number(level) || 0; return Math.floor(level /
 function totalLevel(classes) { return (Number(classes.sorc) || 0) + (Number(classes.wiz) || 0) + (Number(classes.um) || 0); }
 function hpAverageD4(totalLvl) { totalLvl = Number(totalLvl) || 0; if (totalLvl <= 0) return 0; return 4 + (totalLvl - 1) * 3; }
 
+/* Helper: apply a parsed sheet row (object) into state.data.general. */
+function applySheetRowToGeneralDetailed(row) {
+  if (!state.data.general) state.data.general = {};
+  const g = state.data.general;
+  g.characterName = row['Character'] ?? g.characterName ?? g.characterName;
+  g.playerName = row['Player'] ?? g.playerName ?? g.playerName;
+  g.xp = row['XP'] ?? g.xp ?? g.xp;
+  g.classLine = row['Class'] ?? g.classLine ?? g.classLine;
+  g.race = row['Race'] ?? g.race ?? g.race;
+  // Map ability columns: expect headers like STR, STR ASI, STR PB, STR ITEMS, STR BUFFS
+  const map = { STR: 'str', DEX: 'dex', CON: 'con', INT: 'int', WIS: 'wis', CHA: 'cha' };
+  Object.keys(map).forEach(h => {
+    const a = map[h];
+    g.abilities = g.abilities || {};
+    g.abilities[a] = g.abilities[a] || {};
+    if (row[`${h}`] !== undefined) g.abilities[a].pointBuy = Number(row[`${h}`]) || g.abilities[a].pointBuy || 0;
+    if (row[`${h} ASI`] !== undefined) g.abilities[a].asi = Number(row[`${h} ASI`]) || g.abilities[a].asi || 0;
+    if (row[`${h} ITEMS`] !== undefined) g.abilities[a].items = Number(row[`${h} ITEMS`]) || g.abilities[a].items || 0;
+    if (row[`${h} BUFFS`] !== undefined) g.abilities[a].buffs = Number(row[`${h} BUFFS`]) || g.abilities[a].buffs || 0;
+  });
+  // Feats: if sheet has a Feats column that is a comma list
+  if (row['Feats']) {
+    g.feats = String(row['Feats']).split(',').map(s => ({ label: s.trim() })).filter(Boolean);
+  }
+  // Re-render
+  renderGeneral();
+}
+
+/* Helper: safe boolean from sheet values */
+function sheetBool(v) { if (v === undefined || v === null) return 0; const s = String(v).trim().toLowerCase(); return (s === '1' || s === 'true' || s === 'yes' || s === '✓') ? 1 : 0; }
 /* -------------------- Viewport height sync (topbar wrap) --------------- */
 function syncViewportHeight() {
   const topbar = document.querySelector(".topbar");
