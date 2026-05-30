@@ -54,6 +54,7 @@
     const canvas = el.canvas;
     if (!canvas) return;
     const appEl = el.app || document.getElementById("app");
+    // Use app element size so canvas overlays paper exactly
     const w = Math.max(appEl?.offsetWidth || 1200, 1200);
     const h = Math.max(appEl?.offsetHeight || 800, 800);
     const dpr = window.devicePixelRatio || 1;
@@ -101,6 +102,7 @@
     const canvas = el.canvas;
     if (!canvas || !ctx) return;
     ensureCanvasSize();
+    // clear using device pixels
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     const s = getState();
     const strokes = getStrokesForView(s.view || "General");
@@ -130,6 +132,7 @@
   function pointerDown(e) {
     const s = getState();
     if (!s.penOn) return;
+    // ignore touch when pen mode is on (stylus only)
     if (e.pointerType === "touch") return;
     drawing = true;
     activePointerId = e.pointerId;
@@ -174,6 +177,7 @@
     canvas.addEventListener("pointercancel", endStroke);
     canvas.addEventListener("lostpointercapture", endStroke);
     canvas.addEventListener("pointerleave", endStroke);
+    // default off; app toggles when pen is ON
     canvas.style.pointerEvents = "none";
     canvas.style.touchAction = "none";
   }
@@ -182,7 +186,11 @@
     redraw,
     ensureCanvasSize,
     loadForView(view) { getState().view = view || getState().view || "General"; loadForView(getState().view); },
-    setPenMode(on) { const s = getState(); s.penOn = !!on; if (el.canvas) el.canvas.style.pointerEvents = s.penOn ? "auto" : "none"; },
+    setPenMode(on) {
+      const s = getState();
+      s.penOn = !!on;
+      if (el.canvas) el.canvas.style.pointerEvents = s.penOn ? "auto" : "none";
+    },
     setEraser(on) { const s = getState(); s.erasing = !!on; },
     undo,
     clear,
