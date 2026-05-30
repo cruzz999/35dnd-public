@@ -3,56 +3,55 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>DnD 3.5 Ink Sheet (MVP)</title>
-  <link rel="stylesheet" href="/35dnd/styles.css?v=20260528b" />
-  <!-- SheetJS from CDN (works offline too if you download it locally later) -->
-  <script src="/35dnd/xlsx.full.min.js"></script>
-  <script src="gs_ingest.js"></script>
+  <title>35 DnD Ink Sheet</title>
+  <link rel="stylesheet" href="styles.css" />
 </head>
-
 <body>
-  <header class="topbar">
-    <div class="left">
-      <input id="file" type="file" accept=".xlsx" />
-      <input id="gsUrl" type="text"
-       placeholder="Paste Google Sheets URL"
-       value="https://docs.google.com/spreadsheets/d/1P_Vslp-rxiTcntUZVLR2BjJrdeQqdWfPLeigs2Gnx_U/edit?usp=sharing"
-       style="width:420px; max-width:100%;">
-      <button id="loadGs">Load Sheet</button>
-      <span id="status">Load your XLSX to begin.</span>
-      <div class="progress">
-        <div id="progressBar"></div>
-      </div>
-    </div>
-
-    <div class="right">
-      <button id="viewGeneral">General</button>
-      <button id="viewSpells">Spells</button>
-      <button id="viewSlots">Slots</button>
-      <button id="viewSkills">Skills</button>
-
-      <span class="sep"></span>
-
-      <button id="zoomOut">−</button>
-      <button id="zoomReset">Reset</button>
-      <button id="zoomIn">+</button>
-
-      <span class="sep"></span>
-
-      <button id="penToggle">Pen: OFF</button>
-      <button id="eraser">Eraser</button>
-      <button id="undo">Undo</button>
-      <button id="clearInk">Clear</button>
-    </div>
-  </header>
-
-  <!-- Paper viewport (no page scroll). Everything is panned/zoomed inside this. -->
-  <div id="viewport">
-    <div id="world">
-      <div id="app" class="app"></div>
-      <canvas id="inkWorld"></canvas>
+  <div class="topbar">
+    <div class="brand">35 DnD Ink Sheet</div>
+    <div class="controls">
+      <input id="gsUrl" class="input" placeholder="Paste Google Sheets URL here" />
+      <button id="loadGs" class="btn">Load Google Sheets</button>
+      <button id="viewGeneral" class="btn">General</button>
+      <button id="viewSpells" class="btn">Spells</button>
+      <button id="viewSlots" class="btn">Slots</button>
+      <button id="viewSkills" class="btn">Skills</button>
+      <button id="zoomOut" class="btn">−</button>
+      <button id="zoomIn" class="btn">+</button>
+      <button id="zoomReset" class="btn">Reset</button>
+      <button id="penToggle" class="btn">Pen: OFF</button>
+      <button id="eraser" class="btn">Eraser</button>
+      <button id="undo" class="btn">Undo</button>
+      <button id="clearInk" class="btn">Clear</button>
     </div>
   </div>
-  <script src="/35dnd/app.js?v=20260528b"></script>
+
+  <div id="viewport" class="viewport">
+    <div id="world" class="world">
+      <div id="app" class="app"></div>
+      <canvas id="inkWorld" class="ink"></canvas>
+    </div>
+  </div>
+
+  <div class="statusbar">
+    <div id="status" class="status">Ready</div>
+    <div class="progress">
+      <div id="progressBar" class="progressBar"></div>
+    </div>
+  </div>
+
+  <template id="hint-template">
+    <div class="hint">Use the Google Sheets URL above to load your character sheet. XLSX uploads are disabled.</div>
+  </template>
+
+  <!-- Optional: keep a disabled file input if you want a visual placeholder -->
+  <div class="file-ui">
+    <label class="file-label">XLSX uploads disabled</label>
+    <input id="file" type="file" accept=".xlsx" style="display:none" />
+  </div>
+
+  <!-- gs_ingest must be loaded before app.js -->
+  <script src="gs_ingest.js"></script>
+  <script src="app.js"></script>
 </body>
 </html>
