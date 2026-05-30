@@ -626,7 +626,7 @@ function renderGeneral() {
 function renderSpellTable(rows, meta, castingMod, showPrep) {
   if (!rows || !rows.length) return `<div class="hint">No spells loaded.</div>`;
   return `
-    <table class="table">
+  <div class="table-wrapper"><table class="table">
       <thead>
         <tr>
           <th>Spell</th><th>SL</th><th>CL</th><th>DC</th>
@@ -659,7 +659,7 @@ function renderSpellTable(rows, meta, castingMod, showPrep) {
           `;
         }).join("")}
       </tbody>
-    </table>
+    </table></div>
   `;
 }
 
@@ -710,7 +710,11 @@ function render() {
   else el.app.innerHTML = `<div class="panel"><h2>${escapeHtml(state.view)}</h2><div class="hint">Not implemented yet.</div></div>`;
   applyWorldTransform();
 
-  // CRITICAL: ensure the ink canvas is sized to the final layout AFTER render
+  const appEl = document.getElementById("app");
+  if (appEl) {
+    if (state.view === "Spells") appEl.classList.add("landscape");
+    else appEl.classList.remove("landscape");
+  }
   if (window.ink && typeof window.ink.ensureCanvasSize === "function") window.ink.ensureCanvasSize();
   if (window.ink && typeof window.ink.redraw === "function") window.ink.redraw();
 }
@@ -898,7 +902,43 @@ window.addEventListener("DOMContentLoaded", () => {
         if (inkApi && typeof inkApi.setPenWidth === "function") inkApi.setPenWidth(v);
       });
     }
+// ---------- Add writable space button ----------
+const addWriteSpaceBtn = document.getElementById("addWriteSpace");
+if (addWriteSpaceBtn) {
+  addWriteSpaceBtn.addEventListener("click", () => {
+    // Create a new writeable panel and append to #app below the current content
+    const ws = document.createElement("div");
+    ws.className = "panel write-space";
+    ws.setAttribute("contenteditable", "true");
+    ws.textContent = ""; // empty by default
+    // Append to app; if you want it in a specific place, adjust accordingly
+    const appEl = document.getElementById("app");
+    if (appEl) {
+      appEl.appendChild(ws);
+      // Ensure ink canvas and layout update
+      if (window.ink && typeof window.ink.ensureCanvasSize === "function") window.ink.ensureCanvasSize();
+      if (window.ink && typeof window.ink.redraw === "function") window.ink.redraw();
+      // Focus the new write area so user can start writing
+      ws.focus();
+    }
+  });
+}
 
+// ---------- Landscape mode for Spells view ----------
+// Ensure render() toggles a class on #app so CSS can switch to landscape
+const originalRender = render;
+render = function () {
+  originalRender();
+  // toggle landscape class on #app when viewing Spells
+  const appEl = document.getElementById("app");
+  if (appEl) {
+    if (state.view === "Spells") appEl.classList.add("landscape");
+    else appEl.classList.remove("landscape");
+  }
+  // After toggling layout, ensure ink canvas matches the new size
+  if (window.ink && typeof window.ink.ensureCanvasSize === "function") window.ink.ensureCanvasSize();
+  if (window.ink && typeof window.ink.redraw === "function") window.ink.redraw();
+};
     // Greyscale control
     const penGreyEl = document.getElementById("penGrey");
     const penGreyLabel = document.getElementById("penGreyLabel");
