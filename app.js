@@ -789,7 +789,7 @@ if (canvas) {
             if (inkApi && typeof inkApi.setPenMode === "function") {
               try { inkApi.setPenMode(state.penOn); } catch (e) { console.error("ink.setPenMode error", e); }
             }
-            const canvas = document.getElementById("inkWorld");
+            
             if (canvas) canvas.style.pointerEvents = state.penOn ? "auto" : "none";
             updatePenLabel();
           });
