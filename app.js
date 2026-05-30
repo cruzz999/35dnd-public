@@ -1,13 +1,8 @@
 /* ==========================================================================
-   DnD 3.5 Ink Sheet (Paper Mode) - app.js (drop-in replacement)
-   This version expects the Google Sheets / XLSX ingest logic to live in a
-   separate file that attaches functions to `window.gsIngest` (or is an ES
-   module you import before this script runs). The functions used here are:
-     - loadFromGoogleSheets(sheetUrl)
-     - ingestGeneralFromXlsx(workbook)
-     - ingestSpellsFromXlsx(workbook)
-   If you prefer ES module imports, load `gs_ingest.js` as a module and set
-   `window.gsIngest = { ... }` or adapt this file to use `import` instead.
+   DnD 3.5 Ink Sheet - app.js (drop-in replacement)
+   - Inline ink restored
+   - Pen width (float) and greyscale controls supported
+   - Google Sheets URL auto-populated if empty
    ========================================================================== */
 
 /* ----------------------------- DOM helpers ------------------------------ */
@@ -33,7 +28,7 @@ const el = {
   ink: $("inkWorld"),
   gsUrl: $("gsUrl"),
   loadGs: $("loadGs"),
-
+  fillGs: $("fillGs")
 };
 
 function assertEl(name) {
@@ -43,45 +38,27 @@ function assertEl(name) {
 
 /* ------------------------------ App state ------------------------------ */
 const state = {
-  loaded: false, // becomes true after XLSX or Google load
-  view: "General", // Paper transform
+  loaded: false,
+  view: "General",
   pan: { x: 20, y: 20 },
   zoom: 1.0,
-  // Pen state
   penOn: false,
   erasing: false,
-  // Ink storage per view
+  penWidth: 0.5,   // default hairline width (CSS pixels)
+  penGrey: 0,      // 0 = black, 100 = white
   strokesByView: {},
-  // Data
   data: {
     general: null,
-    spells: { sorc: [], wiz: [], meta: null },
-  },
-     penWidth: 2,
-  penGrey: 0, // 0 = black, 100 = white
-};
-
-// Receive ingested data from gs_ingest and merge into app state
-window.receiveIngestedData = function (general, spells) {
-  // Defensive merge so UI keeps using its local `state`
-  state.data = state.data || {};
-  state.data.general = general || state.data.general;
-  state.data.spells = spells || state.data.spells;
-  state.loaded = true;
-
-  // Re-render and restore ink for current view
-  try {
-    setProgress(95, "Rendering…");
-    ink.loadForView(state.view);
-    render();
-
-
-    setProgress(100, "Done ✅");
-  } catch (err) {
-    console.error("receiveIngestedData render error:", err);
-    setProgress(0, "Render failed after ingest");
+    spells: { sorc: [], wiz: [], meta: null }
   }
 };
+
+/* ------------------ ensureGs helper (defensive) ------------------------- */
+function ensureGs() {
+  if (window.gsIngest) return window.gsIngest;
+  if (typeof setProgress === "function") setProgress(0, "gs_ingest.js not loaded. Check script order.");
+  throw new Error("gs_ingest.js not loaded (window.gsIngest missing). Ensure gs_ingest.js is included before app.js.");
+}
 
 /* ------------------------------ Progress ------------------------------- */
 function setProgress(pct, text) {
@@ -126,7 +103,7 @@ function hpAverageD4(totalLvl) {
   return 4 + (totalLvl - 1) * 3;
 }
 
-/* -------------------- Viewport height sync (topbar wrap) --------------- */
+/* -------------------- Viewport height sync ------------------------------- */
 function syncViewportHeight() {
   const topbar = document.querySelector(".topbar");
   const h = topbar ? topbar.getBoundingClientRect().height : 64;
@@ -135,7 +112,8 @@ function syncViewportHeight() {
 window.addEventListener("resize", () => {
   syncViewportHeight();
   applyWorldTransform();
-  ink.redraw();
+  if (window.ink && typeof window.ink.ensureCanvasSize === "function") window.ink.ensureCanvasSize();
+  if (window.ink && typeof window.ink.redraw === "function") window.ink.redraw();
 });
 syncViewportHeight();
 
@@ -152,7 +130,6 @@ function setZoom(newZoom, anchorClientX = null, anchorClientY = null) {
   const oldZoom = state.zoom;
   newZoom = clampZoom(newZoom);
   if (newZoom === oldZoom) return;
-  // Zoom around a point in viewport coordinates
   if (anchorClientX != null && anchorClientY != null && el.viewport) {
     const vr = el.viewport.getBoundingClientRect();
     const vx = anchorClientX - vr.left;
@@ -164,14 +141,17 @@ function setZoom(newZoom, anchorClientX = null, anchorClientY = null) {
   }
   state.zoom = newZoom;
   applyWorldTransform();
-  ink.redraw();
+  // After changing zoom, ensure ink canvas is resized to match new layout
+  if (window.ink && typeof window.ink.ensureCanvasSize === "function") window.ink.ensureCanvasSize();
+  if (window.ink && typeof window.ink.redraw === "function") window.ink.redraw();
 }
 function resetView() {
   state.zoom = 1.0;
   state.pan.x = 20;
   state.pan.y = 20;
   applyWorldTransform();
-  ink.redraw();
+  if (window.ink && typeof window.ink.ensureCanvasSize === "function") window.ink.ensureCanvasSize();
+  if (window.ink && typeof window.ink.redraw === "function") window.ink.redraw();
 }
 
 /* --------------------------- View routing ------------------------------ */
@@ -180,7 +160,8 @@ function setView(viewName) {
   setProgress(1, `View: ${viewName}`);
   try {
     render();
-    ink.loadForView(viewName);
+    // load ink strokes for the view
+    if (window.ink && typeof window.ink.loadForView === "function") window.ink.loadForView(viewName);
   } catch (e) {
     console.error(e);
     setProgress(0, `Render error: ${e?.message || e}`);
@@ -196,7 +177,6 @@ if (el.zoomOut) el.zoomOut.onclick = () => setZoom(state.zoom / 1.15);
 if (el.zoomIn) el.zoomIn.onclick = () => setZoom(state.zoom * 1.15);
 if (el.zoomReset) el.zoomReset.onclick = () => resetView();
 
-// ctrl+wheel zoom inside viewport (desktop convenience)
 if (el.viewport) {
   el.viewport.addEventListener("wheel", (e) => {
     if (!e.ctrlKey) return;
@@ -206,10 +186,7 @@ if (el.viewport) {
   }, { passive: false });
 }
 
-/* ----------------------------- Pan mode --------------------------------
-   - When pen is OFF: drag to pan paper
-   - When pen is ON: ink handles strokes
-------------------------------------------------------------------------- */
+/* ----------------------------- Pan mode -------------------------------- */
 let panDrag = { active: false, startX: 0, startY: 0, basePanX: 0, basePanY: 0 };
 
 // Prevent text selection while panning the paper
@@ -217,7 +194,6 @@ let panDrag = { active: false, startX: 0, startY: 0, basePanX: 0, basePanY: 0 };
   let suppressSelect = false;
   const onSelectStart = (e) => { if (suppressSelect) e.preventDefault(); };
 
-  // toggle suppression when pan starts/ends
   const origBeginPan = beginPan;
   const origEndPan = endPan;
   beginPan = function (e) {
@@ -246,7 +222,8 @@ function movePan(e) {
   state.pan.x = panDrag.basePanX + dx;
   state.pan.y = panDrag.basePanY + dy;
   applyWorldTransform();
-  ink.redraw();
+  if (window.ink && typeof window.ink.ensureCanvasSize === "function") window.ink.ensureCanvasSize();
+  if (window.ink && typeof window.ink.redraw === "function") window.ink.redraw();
 }
 function endPan() { panDrag.active = false; }
 
@@ -261,18 +238,24 @@ if (el.viewport) {
   el.viewport.addEventListener("pointercancel", endPan);
 }
 
-/* ------------------------------ Ink layer ------------------------------ */
+/* ------------------------------ Inline Ink ------------------------------ */
 const ink = (() => {
   const canvas = el.ink;
-  const ctx = canvas ? canvas.getContext("2d") : null;
+  let ctx = canvas ? canvas.getContext("2d") : null;
 
   function getStrokesForView(view) {
     state.strokesByView[view] ||= [];
     return state.strokesByView[view];
   }
+
   function saveForView(view) {
-    try { localStorage.setItem(`ink:${view}`, JSON.stringify(getStrokesForView(view))); } catch {}
+    try {
+      localStorage.setItem(`ink:${view}`, JSON.stringify(getStrokesForView(view)));
+    } catch (e) {
+      console.warn("ink save failed", e);
+    }
   }
+
   function loadForView(view) {
     try {
       const raw = localStorage.getItem(`ink:${view}`);
@@ -283,28 +266,49 @@ const ink = (() => {
     redraw();
   }
 
+  // Ensure canvas is a child of #app and sized to app.scrollWidth/scrollHeight (exact)
   function ensureCanvasSize() {
-    if (!canvas || !ctx) return;
-    const w = Math.max(el.app?.scrollWidth || 0, 1200);
-    const h = Math.max(el.app?.scrollHeight || 0, 800);
+    const canvasEl = canvas;
+    const appEl = el.app || document.getElementById("app");
+    if (!canvasEl || !appEl) return;
+
+    // Move canvas into app if needed
+    if (canvasEl.parentElement !== appEl) {
+      canvasEl.style.position = "absolute";
+      canvasEl.style.left = "0px";
+      canvasEl.style.top = "0px";
+      canvasEl.style.zIndex = 30;
+      appEl.appendChild(canvasEl);
+    }
+
+    // Size to the app's scroll size exactly
+    const w = Math.max(1, Math.floor(appEl.scrollWidth || 1));
+    const h = Math.max(1, Math.floor(appEl.scrollHeight || 1));
     const dpr = window.devicePixelRatio || 1;
-    canvas.style.position = "absolute";
-    canvas.style.left = "0px";
-    canvas.style.top = "0px";
-    canvas.style.width = `${w}px`;
-    canvas.style.height = `${h}px`;
-    canvas.width = Math.floor(w * dpr);
-    canvas.height = Math.floor(h * dpr);
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0); // critical on Android
-    canvas.style.touchAction = "none";
+
+    canvasEl.style.width = `${w}px`;
+    canvasEl.style.height = `${h}px`;
+
+    canvasEl.width = Math.floor(w * dpr);
+    canvasEl.height = Math.floor(h * dpr);
+
+    ctx = canvasEl.getContext("2d");
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    canvasEl.style.touchAction = "none";
+    canvasEl.style.pointerEvents = state.penOn ? "auto" : "none";
   }
 
+  // Map client coordinates to app-local coordinates using viewport rect and state pan/zoom
   function screenToWorld(clientX, clientY) {
     if (!el.viewport) return { x: 0, y: 0 };
     const vr = el.viewport.getBoundingClientRect();
     const vx = clientX - vr.left;
     const vy = clientY - vr.top;
-    return { x: (vx - state.pan.x) / state.zoom, y: (vy - state.pan.y) / state.zoom };
+    return {
+      x: (vx - state.pan.x) / state.zoom,
+      y: (vy - state.pan.y) / state.zoom
+    };
   }
 
   function drawStroke(stroke) {
@@ -318,11 +322,11 @@ const ink = (() => {
 
     if (stroke.erase) {
       ctx.globalCompositeOperation = "destination-out";
-      ctx.lineWidth = stroke.width ? Math.max(2, stroke.width*6) : 18;
+      ctx.lineWidth = Math.max(8, (stroke.width || 0.5) * 8);
       ctx.strokeStyle = "rgba(0,0,0,1)";
     } else {
       ctx.globalCompositeOperation = "source-over";
-      ctx.lineWidth = stroke.width || 2;
+      ctx.lineWidth = stroke.width || 0.5;
       ctx.strokeStyle = stroke.color || "#000";
     }
 
@@ -334,9 +338,10 @@ const ink = (() => {
   }
 
   function redraw() {
-    if (!canvas || !ctx) return;
+    const canvasEl = canvas;
+    if (!canvasEl || !ctx) return;
     ensureCanvasSize();
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
     const strokes = getStrokesForView(state.view);
     for (const stroke of strokes) drawStroke(stroke);
   }
@@ -346,6 +351,7 @@ const ink = (() => {
     redraw();
     saveForView(state.view);
   }
+
   function undo() {
     const s = getStrokesForView(state.view);
     s.pop();
@@ -353,47 +359,60 @@ const ink = (() => {
     saveForView(state.view);
   }
 
-  // Stylus-safe pointer handling
+  // Pointer state
   let drawing = false;
   let currentStroke = null;
   let activePointerId = null;
 
   function pointerDown(e) {
-    if (!state.penOn || !canvas) return;
-    // ignore finger/palm touches in pen mode
+    const s = state;
+    if (!s.penOn || !canvas) return;
     if (e.pointerType === "touch") return;
+
     drawing = true;
     activePointerId = e.pointerId;
+
     const p = screenToWorld(e.clientX, e.clientY);
-    const grey = Math.round((state.penGrey || 0) * 2.55); // 0-255
+    const width = Number(s.penWidth) || 0.5;
+    const grey = Math.round((Number(s.penGrey) || 0) * 2.55);
     const color = `rgb(${grey},${grey},${grey})`;
-    currentStroke = { erase: state.erasing, pts: [p], width: Number(state.penWidth) || 2, color };
-    getStrokesForView(state.view).push(currentStroke);
-    try { canvas.setPointerCapture(e.pointerId); } catch {}
+    currentStroke = { erase: s.erasing, pts: [p], width, color };
+    getStrokesForView(s.view).push(currentStroke);
+
+    try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
     e.preventDefault();
     redraw();
   }
+
   function pointerMove(e) {
-    if (!state.penOn || !drawing || !currentStroke) return;
+    const s = state;
+    if (!s.penOn || !drawing || !currentStroke) return;
     if (activePointerId !== null && e.pointerId !== activePointerId) return;
     if (e.pointerType === "touch") return;
+
     currentStroke.pts.push(screenToWorld(e.clientX, e.clientY));
     e.preventDefault();
     redraw();
   }
+
   function endStroke(e) {
-    if (!state.penOn) return;
+    const s = state;
+    if (!s.penOn) return;
     if (e && activePointerId !== null && e.pointerId !== activePointerId) return;
+
     drawing = false;
     currentStroke = null;
+
     if (canvas && e) {
-      try { canvas.releasePointerCapture(e.pointerId); } catch {}
+      try { canvas.releasePointerCapture(e.pointerId); } catch (err) {}
     }
     activePointerId = null;
+
     saveForView(state.view);
     redraw();
   }
 
+  // Attach listeners
   if (canvas) {
     canvas.addEventListener("pointerdown", pointerDown);
     canvas.addEventListener("pointermove", pointerMove);
@@ -407,24 +426,34 @@ const ink = (() => {
 
   function setPenMode(on) {
     state.penOn = !!on;
-    if (el.penToggle) el.penToggle.textContent = `Pen: ${state.penOn ? "ON" : "OFF"}`;
+    if (el.penToggle) el.penToggle.textContent = state.penOn ? "Pen: ON" : "Pen: OFF";
     if (canvas) canvas.style.pointerEvents = state.penOn ? "auto" : "none";
-    if (!state.penOn) { drawing = false; currentStroke = null; activePointerId = null; }
+
+    if (!state.penOn) {
+      drawing = false;
+      currentStroke = null;
+      activePointerId = null;
+    }
   }
+
   function setEraser(on) {
     state.erasing = !!on;
     if (el.eraser) el.eraser.textContent = state.erasing ? "Eraser: ON" : "Eraser";
   }
 
-  if (el.penToggle) el.penToggle.onclick = () => setPenMode(!state.penOn);
-  if (el.eraser) el.eraser.onclick = () => setEraser(!state.erasing);
-  if (el.undo) el.undo.onclick = () => undo();
-  if (el.clearInk) el.clearInk.onclick = () => clear();
-
-  window.addEventListener("resize", () => { ensureCanvasSize(); redraw(); });
-  ensureCanvasSize();
-
-  return { redraw, loadForView, setPenMode, setEraser, setPenWidth: (w) => { state.penWidth = w; }, setPenGrey: (g) => { state.penGrey = g; }, undo, clear, saveForView, _internal: { screenToWorld } };
+  // Expose API including setters for width/grey
+  return {
+    redraw,
+    loadForView,
+    setPenMode,
+    setEraser,
+    setPenWidth: (w) => { state.penWidth = Number(w); },
+    setPenGrey: (g) => { state.penGrey = Number(g); },
+    undo,
+    clear,
+    saveForView,
+    _internal: { screenToWorld }
+  };
 })();
 
 /* ----------------- Derived computations (General view) ----------------- */
@@ -465,17 +494,6 @@ function computeGeneralDerived(g) {
   return { lvl, abilities, hpMax, acTotal, touch, flat, bab, saves, init, melee, ranged };
 }
 
-/* ---------------------- Google Sheets / XLSX ingest bridge ----------------------
-   This file no longer contains the ingest implementations. Instead it expects
-   them to be provided by `window.gsIngest`. If `gs_ingest.js` is loaded as a
-   plain script it should attach the functions to window.gsIngest. If you use
-   ES modules, ensure the module sets window.gsIngest before this script runs.
-   --------------------------------------------------------------------------- */
-function ensureGs() {
-  if (!window.gsIngest) throw new Error("gs_ingest.js not loaded. Include it before app.js or attach functions to window.gsIngest.");
-  return window.gsIngest;
-}
-
 /* ------------------------------ Rendering ------------------------------ */
 function computeSpellDC(sl, castingMod) {
   return 10 + (Number(sl)||0) + (Number(castingMod)||0);
@@ -493,7 +511,6 @@ function renderGeneral() {
     return;
   }
 
-  // Defensive defaults so missing fields never crash rendering
   g.feats = Array.isArray(g.feats) ? g.feats : [];
   g.languages = Array.isArray(g.languages) ? g.languages : [];
   g.abilities = g.abilities || {};
@@ -510,7 +527,6 @@ function renderGeneral() {
   const d = computeGeneralDerived(g);
   const A = d.abilities;
 
-  // Helper to render one ability row with breakdown
   const abilityRow = (label, key) => `
     <div><strong>${label}</strong></div>
     <div class="val">${g.abilities[key].pointBuy ?? 0}</div>
@@ -590,13 +606,11 @@ function renderGeneral() {
   </div>
   `;
 
-  // Buff wiring
   const mage = $("buff_mage");
   const shield = $("buff_shield");
-  if (mage) mage.onchange = () => { g.buffs.mageArmor = mage.checked ? 4 : 0; renderGeneral(); ink.redraw(); };
-  if (shield) shield.onchange = () => { g.buffs.shieldSpell = shield.checked ? 4 : 0; renderGeneral(); ink.redraw(); };
+  if (mage) mage.onchange = () => { g.buffs.mageArmor = mage.checked ? 4 : 0; renderGeneral(); if (window.ink) window.ink.redraw(); };
+  if (shield) shield.onchange = () => { g.buffs.shieldSpell = shield.checked ? 4 : 0; renderGeneral(); if (window.ink) window.ink.redraw(); };
 
-  // Hook ability inputs (Items + Buffs)
   document.querySelectorAll('.ability-breakdown-grid input[data-ab][data-field]').forEach(inp => {
     inp.addEventListener('input', () => {
       const ab = inp.getAttribute('data-ab');
@@ -604,7 +618,7 @@ function renderGeneral() {
       const val = Number(inp.value);
       g.abilities[ab][field] = Number.isFinite(val) ? val : 0;
       renderGeneral();
-      ink.redraw();
+      if (window.ink) window.ink.redraw();
     });
   });
 }
@@ -682,24 +696,26 @@ function render() {
     el.app.innerHTML = `
       <div class="panel">
         <h2>Load</h2>
-        <div class="hint"> Load via Google Sheets (recommended on Boox) or upload XLSX. </div>
+        <div class="hint"> Load via Google Sheets (recommended on Boox). </div>
       </div>
     `;
     applyWorldTransform();
-    ink.redraw();
+    // ensure ink canvas matches layout after render
+    if (window.ink && typeof window.ink.ensureCanvasSize === "function") window.ink.ensureCanvasSize();
+    if (window.ink && typeof window.ink.redraw === "function") window.ink.redraw();
     return;
   }
   if (state.view === "General") renderGeneral();
   else if (state.view === "Spells") renderSpells();
   else el.app.innerHTML = `<div class="panel"><h2>${escapeHtml(state.view)}</h2><div class="hint">Not implemented yet.</div></div>`;
   applyWorldTransform();
-  ink.redraw();
 
-
-
+  // CRITICAL: ensure the ink canvas is sized to the final layout AFTER render
+  if (window.ink && typeof window.ink.ensureCanvasSize === "function") window.ink.ensureCanvasSize();
+  if (window.ink && typeof window.ink.redraw === "function") window.ink.redraw();
 }
 
-/* --------------------------- XLSX loading ------------------------------ */
+/* --------------------------- XLSX loading (disabled) ------------------------------ */
 if (el.file) {
   el.file.addEventListener("change", () => {
     setProgress(0, "XLSX uploads are disabled. Use Google Sheets URL instead.");
@@ -707,8 +723,43 @@ if (el.file) {
   });
 }
 
+/* ---------------------- Merge helper (defensive) ---------------------- */
+// Merge any data left in window.state into the app's local state
+function mergeWindowStateIfPresent() {
+  try {
+    if (window.state && window.state.data) {
+      const g = window.state.data.general ?? null;
+      const s = window.state.data.spells ?? null;
+      let changed = false;
+      if (g && (!state.data || !state.data.general)) {
+        state.data = state.data || {};
+        state.data.general = g;
+        changed = true;
+      }
+      if (s && (!state.data || !state.data.spells)) {
+        state.data = state.data || {};
+        state.data.spells = s;
+        changed = true;
+      }
+      if (changed) {
+        state.loaded = true;
+        // Re-render and ensure ink canvas matches
+        if (typeof render === "function") render();
+        if (window.ink && typeof window.ink.ensureCanvasSize === "function") window.ink.ensureCanvasSize();
+        if (window.ink && typeof window.ink.redraw === "function") window.ink.redraw();
+      }
+    }
+  } catch (e) {
+    console.warn("mergeWindowStateIfPresent failed", e);
+  }
+}
+
 /* ---------------------- Hook Google Sheets button ---------------------- */
 window.addEventListener("DOMContentLoaded", () => {
+  // Auto-populate GS URL if empty
+  const AUTO_SHEET = "https://docs.google.com/spreadsheets/d/1P_Vslp-rxiTcntUZVLR2BjJrdeQqdWfPLeigs2Gnx_U/edit?usp=sharing";
+  if (el.gsUrl && !el.gsUrl.value) el.gsUrl.value = AUTO_SHEET;
+
   if (el.loadGs && el.gsUrl) {
     el.loadGs.addEventListener("click", async () => {
       try {
@@ -718,7 +769,37 @@ window.addEventListener("DOMContentLoaded", () => {
           return;
         }
         const gs = ensureGs();
+
+        // Patch loadFromGoogleSheets once to call receiveIngestedData if present
+        if (!gs.__patchedForApp) {
+          const orig = gs.loadFromGoogleSheets.bind(gs);
+          gs.loadFromGoogleSheets = async function (sheetUrl) {
+            await orig(sheetUrl);
+            // If ingest wrote to window.state, hand it to the app receiver
+            try {
+              const general = window.state?.data?.general ?? null;
+              const spells = window.state?.data?.spells ?? null;
+              if (typeof window.receiveIngestedData === "function") {
+                window.receiveIngestedData(general, spells);
+              }
+            } catch (err) {
+              console.warn("post-ingest merge failed", err);
+            }
+          };
+          gs.__patchedForApp = true;
+        }
+
         await gs.loadFromGoogleSheets(url);
+
+        // Defensive merge in case gs_ingest wrote to window.state but didn't call the receiver
+        mergeWindowStateIfPresent();
+
+        // Ensure layout/render is up-to-date and ink canvas matches
+        if (typeof render === "function") render();
+        if (window.ink && typeof window.ink.ensureCanvasSize === "function") window.ink.ensureCanvasSize();
+        if (window.ink && typeof window.ink.redraw === "function") window.ink.redraw();
+
+        setProgress(100, "Done ✅");
       } catch (e) {
         console.error(e);
         setProgress(0, "Google Sheets load failed (see console).");
@@ -728,44 +809,124 @@ window.addEventListener("DOMContentLoaded", () => {
     console.warn("Google Sheets UI not present (#gsUrl / #loadGs).");
   }
 
-  // Pen width control
-  const penWidthEl = document.getElementById("penWidth");
-  const penWidthLabel = document.getElementById("penWidthLabel");
-  if (penWidthEl) {
-    penWidthEl.value = state.penWidth || 2;
-    penWidthLabel.textContent = penWidthEl.value;
-    penWidthEl.addEventListener("input", () => {
-      const v = Number(penWidthEl.value) || 2;
-      penWidthLabel.textContent = v;
-      state.penWidth = v;
-      const inkApi = window.ink;
-      if (inkApi && typeof inkApi.setPenWidth === "function") inkApi.setPenWidth(v);
+  // Auto-fill button wiring (if present)
+  if (el.fillGs && el.gsUrl) {
+    el.fillGs.addEventListener("click", () => {
+      el.gsUrl.value = AUTO_SHEET;
+      el.gsUrl.focus();
+    });
+    el.gsUrl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") el.loadGs.click();
     });
   }
 
-  // Greyscale control
-  const penGreyEl = document.getElementById("penGrey");
-  const penGreyLabel = document.getElementById("penGreyLabel");
-  if (penGreyEl) {
-    penGreyEl.value = state.penGrey || 0;
-    const updateGreyLabel = (val) => {
-      const grey = Math.round(val * 2.55);
-      const hex = grey.toString(16).padStart(2, "0");
-      penGreyLabel.textContent = `#${hex}${hex}${hex}`;
-    };
-    updateGreyLabel(penGreyEl.value);
-    penGreyEl.addEventListener("input", () => {
-      const v = Number(penGreyEl.value) || 0;
-      state.penGrey = v;
-      updateGreyLabel(v);
-      const inkApi = window.ink;
-      if (inkApi && typeof inkApi.setPenGrey === "function") inkApi.setPenGrey(v);
-    });
-  }
+  // Wire ink controls (Pen, Eraser, Undo, Clear) and new pen controls
+  (function wireInkControls() {
+    function safeInk() {
+      if (window.ink) return window.ink;
+      console.warn("ink API not ready yet");
+      return null;
+    }
 
+    function updatePenLabel() {
+      if (!el.penToggle) return;
+      el.penToggle.textContent = `Pen: ${state.penOn ? "ON" : "OFF"}`;
+    }
+    function updateEraserLabel() {
+      if (!el.eraser) return;
+      el.eraser.textContent = state.erasing ? "Eraser: ON" : "Eraser";
+    }
+
+    if (el.penToggle) {
+      el.penToggle.addEventListener("click", () => {
+        state.penOn = !state.penOn;
+        const inkApi = safeInk();
+        if (inkApi && typeof inkApi.setPenMode === "function") {
+          try { inkApi.setPenMode(state.penOn); } catch (e) { console.error("ink.setPenMode error", e); }
+        }
+        // Ensure canvas pointer-events reflect pen state
+        const canvas = document.getElementById("inkWorld");
+        if (canvas) canvas.style.pointerEvents = state.penOn ? "auto" : "none";
+        updatePenLabel();
+      });
+    }
+
+    if (el.eraser) {
+      el.eraser.addEventListener("click", () => {
+        state.erasing = !state.erasing;
+        const inkApi = safeInk();
+        if (inkApi && typeof inkApi.setEraser === "function") {
+          try { inkApi.setEraser(state.erasing); } catch (e) { console.error("ink.setEraser error", e); }
+        }
+        updateEraserLabel();
+      });
+    }
+
+    if (el.undo) {
+      el.undo.addEventListener("click", () => {
+        const inkApi = safeInk();
+        if (inkApi && typeof inkApi.undo === "function") {
+          try { inkApi.undo(); } catch (e) { console.error("ink.undo error", e); }
+        } else {
+          console.warn("undo not available");
+        }
+      });
+    }
+
+    if (el.clearInk) {
+      el.clearInk.addEventListener("click", () => {
+        const inkApi = safeInk();
+        if (inkApi && typeof inkApi.clear === "function") {
+          try { inkApi.clear(); } catch (e) { console.error("ink.clear error", e); }
+        } else {
+          console.warn("clear not available");
+        }
+      });
+    }
+
+    // Pen width control (float, small min)
+    const penWidthEl = document.getElementById("penWidth");
+    const penWidthLabel = document.getElementById("penWidthLabel");
+    if (penWidthEl) {
+      penWidthEl.value = state.penWidth ?? 0.5;
+      penWidthLabel.textContent = (Number(penWidthEl.value) % 1 === 0) ? String(Number(penWidthEl.value)) : Number(penWidthEl.value).toFixed(2).replace(/\.00$/, "");
+      penWidthEl.addEventListener("input", () => {
+        const v = parseFloat(penWidthEl.value) || 0.25;
+        state.penWidth = v;
+        penWidthLabel.textContent = (v % 1 === 0) ? String(v) : v.toFixed(2).replace(/\.00$/, "");
+        const inkApi = safeInk();
+        if (inkApi && typeof inkApi.setPenWidth === "function") inkApi.setPenWidth(v);
+      });
+    }
+
+    // Greyscale control
+    const penGreyEl = document.getElementById("penGrey");
+    const penGreyLabel = document.getElementById("penGreyLabel");
+    if (penGreyEl) {
+      penGreyEl.value = state.penGrey ?? 0;
+      const updateGreyLabel = (val) => {
+        const grey = Math.round(val * 2.55);
+        const hex = grey.toString(16).padStart(2, "0");
+        penGreyLabel.textContent = `#${hex}${hex}${hex}`;
+      };
+      updateGreyLabel(penGreyEl.value);
+      penGreyEl.addEventListener("input", () => {
+        const v = Number(penGreyEl.value) || 0;
+        state.penGrey = v;
+        updateGreyLabel(v);
+        const inkApi = safeInk();
+        if (inkApi && typeof inkApi.setPenGrey === "function") inkApi.setPenGrey(v);
+      });
+    }
+
+    updatePenLabel();
+    updateEraserLabel();
+  })();
 });
 
 /* --------------------------- Initial setup ----------------------------- */
 applyWorldTransform();
-ink.loadForView(state.view);
+// Ensure ink canvas is sized after initial render
+if (window.ink && typeof window.ink.ensureCanvasSize === "function") window.ink.ensureCanvasSize();
+if (window.ink && typeof window.ink.loadForView === "function") window.ink.loadForView(state.view);
 render();
