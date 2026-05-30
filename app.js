@@ -1,9 +1,9 @@
 /* ========================================================================== 
    DnD Ink Sheet - app.js (drop-in replacement)
-   - Robust ink canvas attached to #world so it moves with pan/zoom
-   - Canvas pointer-events controlled by body.pen-active and kept in sync
-   - Delegated checkbox handling for buffs using requestAnimationFrame to avoid races
-   - Defensive guards around ink API usage
+   - Deterministic canvas pointer handling: canvas inert by default, active only when penOn
+   - Canvas attached to #world so it moves with pan/zoom
+   - Delegated checkbox handling with requestAnimationFrame to avoid races
+   - Defensive ink API guards
    ========================================================================== */
 
 /* ----------------------------- DOM helpers ------------------------------ */
@@ -155,24 +155,6 @@ if (el.viewport) {
 /* ----------------------------- Pan mode -------------------------------- */
 let panDrag = { active: false, startX: 0, startY: 0, basePanX: 0, basePanY: 0 };
 
-// Prevent text selection while panning the paper
-(function () {
-  let suppressSelect = false;
-  const onSelectStart = (e) => { if (suppressSelect) e.preventDefault(); };
-  const origBeginPan = beginPan;
-  const origEndPan = endPan;
-  beginPan = function (e) {
-    suppressSelect = true;
-    document.addEventListener("selectstart", onSelectStart);
-    origBeginPan(e);
-  };
-  endPan = function (e) {
-    suppressSelect = false;
-    document.removeEventListener("selectstart", onSelectStart);
-    origEndPan(e);
-  };
-})();
-
 function beginPan(e) {
   panDrag.active = true;
   panDrag.startX = e.clientX;
@@ -228,13 +210,13 @@ const ink = (() => {
     const appEl = el.app || document.getElementById("app");
     if (!canvasEl || (!worldEl && !appEl)) return;
 
-    // Prefer to attach canvas to the transformed world so it moves with pan/zoom
     const parentEl = worldEl || appEl;
     if (canvasEl.parentElement !== parentEl) {
       canvasEl.style.position = "absolute";
       canvasEl.style.left = "0px";
       canvasEl.style.top = "0px";
-      canvasEl.style.zIndex = 5;
+      // keep canvas behind UI by default
+      canvasEl.style.zIndex = '5';
       parentEl.appendChild(canvasEl);
     }
 
@@ -252,10 +234,10 @@ const ink = (() => {
     if (ctx) ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     canvasEl.style.touchAction = "none";
-    canvasEl.style.pointerEvents = state.penOn ? "auto" : "none";
+    // IMPORTANT: do not set pointerEvents here except to the authoritative default
+    canvasEl.style.pointerEvents = state.penOn ? 'auto' : 'none';
   }
 
-  // Map client coordinates to app-local coordinates using viewport rect and state pan/zoom
   function screenToWorld(clientX, clientY) {
     if (!el.viewport) return { x: 0, y: 0 };
     const vr = el.viewport.getBoundingClientRect();
@@ -353,20 +335,24 @@ const ink = (() => {
     canvas.addEventListener("pointercancel", endStroke);
     canvas.addEventListener("lostpointercapture", endStroke);
     canvas.addEventListener("pointerleave", endStroke);
-    canvas.style.pointerEvents = state.penOn ? "auto" : "none";
+    // authoritative default: inert unless penOn is true
+    canvas.style.pointerEvents = state.penOn ? 'auto' : 'none';
     canvas.style.touchAction = "none";
+    canvas.style.zIndex = '5';
   }
 
   function setPenMode(on) {
     state.penOn = !!on;
     if (el.penToggle) el.penToggle.textContent = state.penOn ? "Pen: ON" : "Pen: OFF";
-    if (canvas) canvas.style.pointerEvents = state.penOn ? "auto" : "none";
-    if (!state.penOn) { drawing = false; currentStroke = null; activePointerId = null; }
-    // Keep body class in sync
+    // authoritative body class
     if (state.penOn) document.body.classList.add('pen-active');
     else document.body.classList.remove('pen-active');
-    // Keep inline z-index consistent
-    if (canvas) canvas.style.zIndex = state.penOn ? '40' : '5';
+    // authoritative inline canvas style
+    if (canvas) {
+      canvas.style.pointerEvents = state.penOn ? 'auto' : 'none';
+      canvas.style.zIndex = state.penOn ? '40' : '5';
+    }
+    if (!state.penOn) { drawing = false; currentStroke = null; activePointerId = null; }
   }
 
   function setEraser(on) {
@@ -374,7 +360,6 @@ const ink = (() => {
     if (el.eraser) el.eraser.textContent = state.erasing ? "Eraser: ON" : "Eraser";
   }
 
-  // Expose API including setters for width/grey and ensureCanvasSize/redraw
   return {
     redraw,
     loadForView,
@@ -548,8 +533,8 @@ function renderGeneral() {
       const field = inp.getAttribute('data-field');
       const val = Number(inp.value);
       g.abilities[ab][field] = Number.isFinite(val) ? val : 0;
-      renderGeneral();
-      if (window.ink && typeof window.ink.redraw === "function") window.ink.redraw();
+      // Defer re-render to next frame to avoid interrupting input commit
+      requestAnimationFrame(() => { renderGeneral(); if (window.ink && typeof window.ink.redraw === "function") window.ink.redraw(); });
     });
   });
 
@@ -658,7 +643,6 @@ if (el.file) {
 }
 
 /* ---------------------- Merge helper (robust) ------------------------- */
-// Merge any data left in window.state into the app's local state
 function mergeWindowStateIfPresent() {
   try {
     if (window.state && window.state.data) {
@@ -693,8 +677,9 @@ function mergeWindowStateIfPresent() {
 
 /* ---------------------- Hook Google Sheets button ---------------------- */
 window.addEventListener("DOMContentLoaded", () => {
-  // Ensure body class matches initial pen state
-  document.body.classList.toggle('pen-active', !!state.penOn);
+  // Ensure body class matches initial pen state (authoritative)
+  if (state.penOn) document.body.classList.add('pen-active'); else document.body.classList.remove('pen-active');
+  // Ensure canvas inline style matches initial state
   const canvasInit = document.getElementById('inkWorld');
   if (canvasInit) {
     canvasInit.style.pointerEvents = state.penOn ? 'auto' : 'none';
@@ -740,13 +725,12 @@ window.addEventListener("DOMContentLoaded", () => {
     console.warn("Google Sheets UI not present (#gsUrl / #loadGs).");
   }
 
-  // Auto-fill button wiring (if present)
   if (el.fillGs && el.gsUrl) {
     el.fillGs.addEventListener("click", () => { el.gsUrl.value = AUTO_SHEET; el.gsUrl.focus(); });
     el.gsUrl.addEventListener("keydown", (e) => { if (e.key === "Enter") el.loadGs.click(); });
   }
 
-  // Wire ink controls (Pen, Eraser, Undo, Clear) and new pen controls
+  /* ------------------ Wire ink controls and pen toggle ------------------ */
   (function wireInkControls() {
     function safeInk() {
       if (window.ink) return window.ink;
@@ -775,14 +759,13 @@ window.addEventListener("DOMContentLoaded", () => {
         enableControls();
         if (el.penToggle) {
           el.penToggle.addEventListener("click", () => {
+            // Toggle pen state and call authoritative setter
             state.penOn = !state.penOn;
             const inkApi = safeInk();
             if (inkApi && typeof inkApi.setPenMode === "function") {
               try { inkApi.setPenMode(state.penOn); } catch (e) { console.error("ink.setPenMode error", e); }
-            } else if (inkApi && typeof inkApi.setPenMode === "undefined") {
-              // no-op
             }
-            // authoritative body class and inline canvas style
+            // Authoritative: set body class and canvas inline style
             if (state.penOn) document.body.classList.add('pen-active'); else document.body.classList.remove('pen-active');
             const canvas = document.getElementById('inkWorld');
             if (canvas) {
@@ -819,6 +802,7 @@ window.addEventListener("DOMContentLoaded", () => {
           });
         }
       } else {
+        // Wait briefly then enable controls in a safe fallback mode
         setTimeout(() => {
           if (!window.ink) {
             enableControls();
@@ -826,10 +810,6 @@ window.addEventListener("DOMContentLoaded", () => {
             if (el.penToggle) {
               el.penToggle.addEventListener("click", () => {
                 state.penOn = !state.penOn;
-                const inkApi = safeInk();
-                if (inkApi && typeof inkApi.setPenMode === "function") {
-                  try { inkApi.setPenMode(state.penOn); } catch (e) { console.error("ink.setPenMode error", e); }
-                }
                 if (state.penOn) document.body.classList.add('pen-active'); else document.body.classList.remove('pen-active');
                 const canvas = document.getElementById('inkWorld');
                 if (canvas) {
@@ -842,28 +822,14 @@ window.addEventListener("DOMContentLoaded", () => {
             if (el.eraser) {
               el.eraser.addEventListener("click", () => {
                 state.erasing = !state.erasing;
-                const inkApi = safeInk();
-                if (inkApi && typeof inkApi.setEraser === "function") {
-                  try { inkApi.setEraser(state.erasing); } catch (e) { console.error("ink.setEraser error", e); }
-                }
                 updateEraserLabel();
               });
             }
             if (el.undo) {
-              el.undo.addEventListener("click", () => {
-                const inkApi = safeInk();
-                if (inkApi && typeof inkApi.undo === "function") {
-                  try { inkApi.undo(); } catch (e) { console.error("ink.undo error", e); }
-                } else { console.warn("undo not available"); }
-              });
+              el.undo.addEventListener("click", () => { console.warn("undo not available"); });
             }
             if (el.clearInk) {
-              el.clearInk.addEventListener("click", () => {
-                const inkApi = safeInk();
-                if (inkApi && typeof inkApi.clear === "function") {
-                  try { inkApi.clear(); } catch (e) { console.error("ink.clear error", e); }
-                } else { console.warn("clear not available"); }
-              });
+              el.clearInk.addEventListener("click", () => { console.warn("clear not available"); });
             }
           } else {
             inkReadyCheck();
@@ -907,7 +873,7 @@ window.addEventListener("DOMContentLoaded", () => {
       });
     }
 
-    // Landscape mode for Spells view: wrap render to ensure canvas sizing after layout change
+    // Wrap render to ensure canvas sizing after layout change
     const originalRender = render;
     render = function () {
       originalRender();
@@ -969,6 +935,9 @@ window.addEventListener("DOMContentLoaded", () => {
 
 /* --------------------------- Initial setup ----------------------------- */
 applyWorldTransform();
+// Ensure canvas inline state is authoritative at startup
+const c0 = document.getElementById('inkWorld');
+if (c0) { c0.style.pointerEvents = state.penOn ? 'auto' : 'none'; c0.style.zIndex = state.penOn ? '40' : '5'; }
 if (window.ink && typeof window.ink.ensureCanvasSize === "function") window.ink.ensureCanvasSize();
 if (window.ink && typeof window.ink.loadForView === "function") window.ink.loadForView(state.view);
 render();
