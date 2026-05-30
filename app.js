@@ -233,20 +233,201 @@ if (el.viewport) {
   el.viewport.addEventListener("pointercancel", endPan);
 }
 
-/* ------------------------------ Ink bridge ------------------------------ */
-// Defensive stub if ink.js not loaded yet
-if (typeof window.ink === "undefined") {
-  console.warn("ink.js not loaded yet; creating minimal stub.");
-  window.ink = {
-    redraw: () => {},
-    ensureCanvasSize: () => {},
-    loadForView: () => {},
-    setPenMode: () => {},
-    setEraser: () => {},
-    undo: () => {},
-    clear: () => {}
-  };
-}
+/* ------------------------------ Inline Ink (restore) ------------------------------ */
+const ink = (() => {
+  const canvas = el.ink;
+  const ctx = canvas ? canvas.getContext("2d") : null;
+
+  function getStrokesForView(view) {
+    state.strokesByView[view] ||= [];
+    return state.strokesByView[view];
+  }
+
+  function saveForView(view) {
+    try {
+      localStorage.setItem(`ink:${view}`, JSON.stringify(getStrokesForView(view)));
+    } catch {}
+  }
+
+  function loadForView(view) {
+    try {
+      const raw = localStorage.getItem(`ink:${view}`);
+      state.strokesByView[view] = raw ? JSON.parse(raw) : [];
+    } catch {
+      state.strokesByView[view] = [];
+    }
+    redraw();
+  }
+
+  function ensureCanvasSize() {
+    if (!canvas || !ctx) return;
+
+    const w = Math.max(el.app?.scrollWidth || 0, 1200);
+    const h = Math.max(el.app?.scrollHeight || 0, 800);
+    const dpr = window.devicePixelRatio || 1;
+
+    canvas.style.position = "absolute";
+    canvas.style.left = "0px";
+    canvas.style.top = "0px";
+    canvas.style.width = `${w}px`;
+    canvas.style.height = `${h}px`;
+
+    canvas.width = Math.floor(w * dpr);
+    canvas.height = Math.floor(h * dpr);
+
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    // critical on Android
+    canvas.style.touchAction = "none";
+  }
+
+  function screenToWorld(clientX, clientY) {
+    if (!el.viewport) return { x: 0, y: 0 };
+    const vr = el.viewport.getBoundingClientRect();
+    const vx = clientX - vr.left;
+    const vy = clientY - vr.top;
+    return {
+      x: (vx - state.pan.x) / state.zoom,
+      y: (vy - state.pan.y) / state.zoom,
+    };
+  }
+
+  function drawStroke(stroke) {
+    if (!ctx) return;
+    const pts = stroke.pts || [];
+    if (pts.length < 2) return;
+
+    ctx.save();
+    if (stroke.erase) {
+      ctx.globalCompositeOperation = "destination-out";
+      ctx.lineWidth = 18;
+      ctx.strokeStyle = "rgba(0,0,0,1)";
+    } else {
+      ctx.globalCompositeOperation = "source-over";
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = "#000";
+    }
+
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function redraw() {
+    if (!canvas || !ctx) return;
+    ensureCanvasSize();
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const strokes = getStrokesForView(state.view);
+    for (const stroke of strokes) drawStroke(stroke);
+  }
+
+  function clear() {
+    state.strokesByView[state.view] = [];
+    redraw();
+    saveForView(state.view);
+  }
+
+  function undo() {
+    const s = getStrokesForView(state.view);
+    s.pop();
+    redraw();
+    saveForView(state.view);
+  }
+
+  // Stylus-safe pointer handling
+  let drawing = false;
+  let currentStroke = null;
+  let activePointerId = null;
+
+  function pointerDown(e) {
+    if (!state.penOn || !canvas) return;
+
+    // ignore finger/palm touches in pen mode
+    if (e.pointerType === "touch") return;
+
+    drawing = true;
+    activePointerId = e.pointerId;
+
+    const p = screenToWorld(e.clientX, e.clientY);
+    currentStroke = { erase: state.erasing, pts: [p] };
+    getStrokesForView(state.view).push(currentStroke);
+
+    try { canvas.setPointerCapture(e.pointerId); } catch {}
+    e.preventDefault();
+    redraw();
+  }
+
+  function pointerMove(e) {
+    if (!state.penOn || !drawing || !currentStroke) return;
+    if (activePointerId !== null && e.pointerId !== activePointerId) return;
+    if (e.pointerType === "touch") return;
+
+    currentStroke.pts.push(screenToWorld(e.clientX, e.clientY));
+    e.preventDefault();
+    redraw();
+  }
+
+  function endStroke(e) {
+    if (!state.penOn) return;
+    if (e && activePointerId !== null && e.pointerId !== activePointerId) return;
+
+    drawing = false;
+    currentStroke = null;
+
+    if (canvas && e) {
+      try { canvas.releasePointerCapture(e.pointerId); } catch {}
+    }
+    activePointerId = null;
+
+    saveForView(state.view);
+    redraw();
+  }
+
+  if (canvas) {
+    canvas.addEventListener("pointerdown", pointerDown);
+    canvas.addEventListener("pointermove", pointerMove);
+    canvas.addEventListener("pointerup", endStroke);
+    canvas.addEventListener("pointercancel", endStroke);
+    canvas.addEventListener("lostpointercapture", endStroke);
+    canvas.addEventListener("pointerleave", endStroke);
+    canvas.style.pointerEvents = "none";
+    canvas.style.touchAction = "none";
+  }
+
+  function setPenMode(on) {
+    state.penOn = !!on;
+    if (el.penToggle) el.penToggle.textContent = state.penOn ? "Pen: ON" : "Pen: OFF";
+    if (canvas) canvas.style.pointerEvents = state.penOn ? "auto" : "none";
+
+    if (!state.penOn) {
+      drawing = false;
+      currentStroke = null;
+      activePointerId = null;
+    }
+  }
+
+  function setEraser(on) {
+    state.erasing = !!on;
+    if (el.eraser) el.eraser.textContent = state.erasing ? "Eraser: ON" : "Eraser";
+  }
+
+  if (el.penToggle) el.penToggle.onclick = () => setPenMode(!state.penOn);
+  if (el.eraser) el.eraser.onclick = () => setEraser(!state.erasing);
+  if (el.undo) el.undo.onclick = () => undo();
+  if (el.clearInk) el.clearInk.onclick = () => clear();
+
+  window.addEventListener("resize", () => {
+    ensureCanvasSize();
+    redraw();
+  });
+
+  ensureCanvasSize();
+
+  return { redraw, loadForView, setPenMode, setEraser };
+})();
+
 
 /* ----------------- Derived computations (General view) ----------------- */
 function computeGeneralDerived(g) {
