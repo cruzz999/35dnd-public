@@ -4,5 +4,6 @@ expr/evaluator.js
 index.html
 ink/tiler.js
 persistence/idb.js
+src/utils.js
 styles.css
 xlsx.full.min.js
