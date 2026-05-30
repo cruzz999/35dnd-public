@@ -67,40 +67,46 @@
   }
 
   // Ensure canvas is a child of #app and sized to app.scrollWidth/scrollHeight (exact)
-  function ensureCanvasSize() {
-    const canvas = el.canvas;
-    const appEl = el.app || document.getElementById("app");
-    if (!canvas || !appEl) return;
+// ensureCanvasSize replacement — paste into ink.js
+function ensureCanvasSize() {
+  const canvas = el.canvas;
+  const appEl = el.app || document.getElementById("app");
+  if (!canvas || !appEl) return;
 
-    // Move canvas into app so it shares the same origin and layout coordinate space
-    if (canvas.parentElement !== appEl) {
-      canvas.style.position = "absolute";
-      canvas.style.left = "0px";
-      canvas.style.top = "0px";
-      canvas.style.zIndex = 30;
-      appEl.appendChild(canvas);
-    }
-
-    // Size to the app's scroll size exactly (no hardcoded minima)
-    const w = Math.max(1, Math.floor(appEl.scrollWidth || 1));
-    const h = Math.max(1, Math.floor(appEl.scrollHeight || 1));
-    const dpr = window.devicePixelRatio || 1;
-
-    canvas.style.width = `${w}px`;
-    canvas.style.height = `${h}px`;
-
-    // Backing store in device pixels
-    canvas.width = Math.floor(w * dpr);
-    canvas.height = Math.floor(h * dpr);
-
-    // Keep drawing coordinates in CSS pixels
-    ctx = canvas.getContext("2d");
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
-    // critical on Android
-    canvas.style.touchAction = "none";
-    // pointer-events toggled by app when pen mode changes
+  // Force the canvas to be a direct child of #app so it shares the same layout origin
+  if (canvas.parentElement !== appEl) {
+    // Remove any transform inheritance by moving it into app
+    // Preserve pointer-events and z-index
+    canvas.style.position = "absolute";
+    canvas.style.left = "0px";
+    canvas.style.top = "0px";
+    canvas.style.transform = "none";
+    canvas.style.transformOrigin = "0 0";
+    canvas.style.zIndex = 30;
+    appEl.appendChild(canvas);
   }
+
+  // Size canvas exactly to the app scroll area (no hardcoded minima)
+  const w = Math.max(1, Math.floor(appEl.scrollWidth || 1));
+  const h = Math.max(1, Math.floor(appEl.scrollHeight || 1));
+  const dpr = window.devicePixelRatio || 1;
+
+  canvas.style.width = `${w}px`;
+  canvas.style.height = `${h}px`;
+
+  // Backing store in device pixels
+  canvas.width = Math.floor(w * dpr);
+  canvas.height = Math.floor(h * dpr);
+
+  // Keep drawing coordinates in CSS pixels
+  ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  // pointer/touch settings
+  canvas.style.touchAction = "none";
+  canvas.style.pointerEvents = getState().penOn ? "auto" : "none";
+}
+
 
   // Map client coordinates to app-local coordinates using viewport rect and state pan/zoom
   // This is identical to the inline code that worked previously.
