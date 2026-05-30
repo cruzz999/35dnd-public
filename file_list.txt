@@ -5,6 +5,7 @@ index.html
 ink/tiler.js
 persistence/idb.js
 src/ingest.js
+src/render.js
 src/utils.js
 styles.css
 xlsx.full.min.js
