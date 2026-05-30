@@ -1,6 +1,5 @@
 app.js
 data/slots.js
-expr/evaluator.js
 index.html
 persistence/idb.js
 src/ingest.js
