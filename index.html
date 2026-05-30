@@ -3,55 +3,39 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>DnD 3.5 Ink Sheet (MVP)</title>
-  <link rel="stylesheet" href="/35dnd/styles.css?v=20260528b" />
-  <!-- SheetJS from CDN (works offline too if you download it locally later) -->
-  <script src="/35dnd/xlsx.full.min.js"></script>
+  <title>35dnd</title>
+  <link rel="stylesheet" href="./styles.css" />
 </head>
-
 <body>
-  <header class="topbar">
-    <div class="left">
-      <input id="file" type="file" accept=".xlsx" />
-      <input id="gsUrl" type="text"
-       placeholder="Paste Google Sheets URL"
-       value="https://docs.google.com/spreadsheets/d/1P_Vslp-rxiTcntUZVLR2BjJrdeQqdWfPLeigs2Gnx_U/edit?usp=sharing"
-       style="width:420px; max-width:100%;">
-      <button id="loadGs">Load Sheet</button>
-      <span id="status">Load your XLSX to begin.</span>
-      <div class="progress">
-        <div id="progressBar"></div>
-      </div>
-    </div>
-
-    <div class="right">
-      <button id="viewGeneral">General</button>
-      <button id="viewSpells">Spells</button>
-      <button id="viewSlots">Slots</button>
-      <button id="viewSkills">Skills</button>
-
-      <span class="sep"></span>
-
-      <button id="zoomOut">−</button>
-      <button id="zoomReset">Reset</button>
-      <button id="zoomIn">+</button>
-
-      <span class="sep"></span>
-
-      <button id="penToggle">Pen: OFF</button>
-      <button id="eraser">Eraser</button>
-      <button id="undo">Undo</button>
-      <button id="clearInk">Clear</button>
-    </div>
-  </header>
-
-  <!-- Paper viewport (no page scroll). Everything is panned/zoomed inside this. -->
-  <div id="viewport">
-    <div id="world">
+  <div id="viewport" class="viewport">
+    <div id="world" class="world">
       <div id="app" class="app"></div>
-      <canvas id="inkWorld"></canvas>
     </div>
+    <!-- Ink canvas must exist with id "inkWorld" and be a sibling of #world so transforms match -->
+    <canvas id="inkWorld" class="ink-canvas" width="2000" height="2000" aria-hidden="true"></canvas>
   </div>
-  <script src="/35dnd/app.js?v=20260528b"></script>
+
+  <!-- Controls (minimal; your app.js wires these by id) -->
+  <input id="file" type="file" style="display:none" />
+  <div id="controls" style="display:none">
+    <button id="viewGeneral">General</button>
+    <button id="viewSpells">Spells</button>
+    <button id="viewSlots">Slots</button>
+    <button id="viewSkills">Skills</button>
+    <button id="penToggle">Pen: OFF</button>
+    <button id="eraser">Eraser</button>
+    <button id="undo">Undo</button>
+    <button id="clearInk">Clear</button>
+    <input id="gsUrl" type="text" />
+    <button id="loadGs">Load</button>
+    <div id="status"></div>
+    <div id="progressBarWrap"><div id="progressBar"></div></div>
+  </div>
+
+  <!-- XLSX library (if used) -->
+  <script src="./xlsx.full.min.js"></script>
+
+  <!-- Load app.js as a module so dynamic import and top-level module semantics are consistent -->
+  <script type="module" src="./app.js"></script>
 </body>
 </html>
