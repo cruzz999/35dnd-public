@@ -299,7 +299,34 @@ canvas.ink {
   .ability-breakdown-grid { grid-template-columns: 1fr repeat(6, 44px); }
   :root { --ability-input-width: 36px; }
 }
+/* Ensure ink canvas does not steal mouseup when pen is off */
+canvas#inkWorld {
+  pointer-events: none !important;
+  z-index: 5 !important;
+}
 
+/* When pen mode is active, body gets a class and canvas can accept pointers */
+body.pen-active canvas#inkWorld {
+  pointer-events: auto !important;
+  z-index: 40 !important;
+}
+
+/* Make checkboxes and labels sit above the canvas and accept pointer events */
+.panel input[type="checkbox"],
+.ability-breakdown-grid input[type="checkbox"],
+.panel label input[type="checkbox"] {
+  position: relative !important;
+  z-index: 60 !important;
+  pointer-events: auto !important;
+}
+
+/* Prevent pseudo-elements from catching pointer events */
+.panel *::before,
+.panel *::after,
+.ability-breakdown-grid *::before,
+.ability-breakdown-grid *::after {
+  pointer-events: none !important;
+}
 /* Utility */
 .hidden { display: none !important; }
 .center { text-align: center; }
