@@ -1,7 +1,6 @@
-// gs_ingest.js
-// Non-module drop-in: attaches ingest functions to window.gsIngest
+// gs_ingest.js — CSV-only ingest, no XLSX dependency
 (function () {
-  if (window.gsIngest) return; // already loaded
+  if (window.gsIngest) return;
 
   function extractSpreadsheetId(url) {
     const m = String(url).match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
@@ -15,13 +14,50 @@
     return await res.text();
   }
 
+  // Lightweight CSV parser that returns grid (array of rows)
+  // Handles quoted fields and newlines inside quotes.
   function csvToGrid(csvText) {
-    if (typeof XLSX === "undefined") {
-      throw new Error("XLSX not found; include xlsx.full.min.js before gs_ingest.js");
+    const rows = [];
+    let cur = [];
+    let field = "";
+    let inQuotes = false;
+    for (let i = 0; i < csvText.length; i++) {
+      const ch = csvText[i];
+      const nxt = csvText[i + 1];
+      if (inQuotes) {
+        if (ch === '"' && nxt === '"') {
+          field += '"';
+          i++; // skip escaped quote
+        } else if (ch === '"') {
+          inQuotes = false;
+        } else {
+          field += ch;
+        }
+      } else {
+        if (ch === '"') {
+          inQuotes = true;
+        } else if (ch === ',') {
+          cur.push(field);
+          field = "";
+        } else if (ch === '\r') {
+          // ignore, wait for \n or treat as newline
+        } else if (ch === '\n') {
+          cur.push(field);
+          rows.push(cur);
+          cur = [];
+          field = "";
+        } else {
+          field += ch;
+        }
+      }
     }
-    const wb = XLSX.read(csvText, { type: "string" });
-    const ws = wb.Sheets[wb.SheetNames[0]];
-    return XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+    // final field
+    if (field !== "" || inQuotes || cur.length) {
+      cur.push(field);
+      rows.push(cur);
+    }
+    // Normalize undefined cells to empty string
+    return rows.map(r => r.map(c => (c === undefined || c === null) ? "" : String(c)));
   }
 
   function numFromString(s, fb = 0) {
@@ -32,9 +68,7 @@
     return Number.isFinite(n) ? n : fb;
   }
 
-  /* -------------------------
-     ingestGeneralFromGrid
-     ------------------------- */
+  /* ingestGeneralFromGrid (unchanged logic, writes to window.state and calls receiver) */
   function ingestGeneralFromGrid(grid) {
     const cell = (r, c) => (grid[r] && grid[r][c] != null) ? String(grid[r][c]) : "";
     const num = (v, fb = 0) => numFromString(v, fb);
@@ -169,23 +203,19 @@
       }
     }
 
-    // Write into window.state for backward compatibility
     window.state = window.state || {};
     window.state.data = window.state.data || {};
     window.state.data.general = general;
 
-    // If app provided a receiver, hand off the parsed objects
     if (typeof window.receiveIngestedData === "function") {
       const spells = (window.state.data && window.state.data.spells) ? window.state.data.spells : { sorc: [], wiz: [], meta: null };
-      try { window.receiveIngestedData(general, spells); } catch (e) { /* ignore receiver errors */ }
+      try { window.receiveIngestedData(general, spells); } catch (e) { /* ignore */ }
     }
 
     return general;
   }
 
-  /* -------------------------
-     ingestSpellsFromGrid
-     ------------------------- */
+  /* ingestSpellsFromGrid (unchanged logic) */
   function ingestSpellsFromGrid(grid) {
     const cell = (r, c) => (grid[r] && grid[r][c] != null) ? String(grid[r][c]) : "";
     const num = (s, fb = 0) => {
@@ -271,174 +301,10 @@
     spells.sorc = readBlock(sorcHeader, "sorc");
     spells.wiz = readBlock(wizHeader, "wiz");
 
-    // Write into window.state for backward compatibility
     window.state = window.state || {};
     window.state.data = window.state.data || {};
     window.state.data.spells = spells;
 
-    // If app provided a receiver, hand off the parsed objects
-    if (typeof window.receiveIngestedData === "function") {
-      const general = (window.state.data && window.state.data.general) ? window.state.data.general : null;
-      try { window.receiveIngestedData(general, spells); } catch (e) { /* ignore receiver errors */ }
-    }
-
-    return spells;
-  }
-
-  /* -------------------------
-     XLSX ingest functions
-     ------------------------- */
-  function ingestGeneralFromXlsx(wb) {
-    const ws = wb.Sheets["General info"];
-    if (!ws) throw new Error("Sheet 'General info' not found");
-    const v = (addr, fallback = "") => (ws[addr] && ws[addr].v !== undefined) ? ws[addr].v : fallback;
-    const general = {
-      characterName: String(v("A1", "")),
-      playerName: String(v("B1", "")),
-      alignment: String(v("C1", "")),
-      xp: Number(v("E1", 0)) || 0,
-      classLine: String(v("A4", "")),
-      race: String(v("D4", "")),
-      size: String(v("B7", "")),
-      age: Number(v("C7", 0)) || 0,
-      gender: String(v("D7", "")),
-      classes: { sorc: 1, wiz: 5, um: 2 },
-      abilities: {
-        str: { pointBuy: Number(v("J12", 0)) || 0, asi: Number(v("K12", 0)) || 0, items: Number(v("G12", 0)) || 0, buffs: Number(v("H12", 0)) || 0 },
-        dex: { pointBuy: Number(v("J13", 0)) || 0, asi: Number(v("K13", 0)) || 0, items: Number(v("G13", 0)) || 0, buffs: Number(v("H13", 0)) || 0 },
-        con: { pointBuy: Number(v("J14", 0)) || 0, asi: Number(v("K14", 0)) || 0, items: Number(v("G14", 0)) || 0, buffs: Number(v("H14", 0)) || 0 },
-        int: { pointBuy: Number(v("J15", 0)) || 0, asi: Number(v("K15", 0)) || 0, items: Number(v("G15", 0)) || 0, buffs: Number(v("H15", 0)) || 0 },
-        wis: { pointBuy: Number(v("J16", 0)) || 0, asi: Number(v("K16", 0)) || 0, items: Number(v("G16", 0)) || 0, buffs: Number(v("H16", 0)) || 0 },
-        cha: { pointBuy: Number(v("J17", 0)) || 0, asi: Number(v("K17", 0)) || 0, items: Number(v("G17", 0)) || 0, buffs: Number(v("H17", 0)) || 0 }
-      },
-      ac: { armor: Number(v("D21", 0)) || 0, shield: Number(v("E21", 0)) || 0, size: Number(v("G21", 0)) || 0, natural: Number(v("H21", 0)) || 0, deflect: Number(v("J21", 0)) || 0, misc: Number(v("L21", 0)) || 0, miscTouch: 0 },
-      saves: { fortMisc: 0, refMisc: 0, willMisc: 0 },
-      attacks: { meleeMisc: 0, rangedMisc: 0, grappleMisc: 0 },
-      initMisc: 0,
-      buffs: { mageArmor: 0, shieldSpell: 0 },
-      feats: [],
-      languages: []
-    };
-
-    // Write into window.state for backward compatibility
-    window.state = window.state || {};
-    window.state.data = window.state.data || {};
-    window.state.data.general = general;
-
-    // Call receiver if present
-    if (typeof window.receiveIngestedData === "function") {
-      const spells = (window.state.data && window.state.data.spells) ? window.state.data.spells : { sorc: [], wiz: [], meta: null };
-      try { window.receiveIngestedData(general, spells); } catch (e) { /* ignore */ }
-    }
-
-    return general;
-  }
-
-  function ingestSpellsFromXlsx(wb) {
-    const ws = wb.Sheets["Spells"];
-    if (!ws) throw new Error("Sheet 'Spells' not found");
-    const range = XLSX.utils.decode_range(ws["!ref"]);
-    const cellAt = (r, c) => ws[XLSX.utils.encode_cell({ r, c })];
-
-    function cellHasContent(cell) {
-      if (!cell) return false;
-      if (cell.v !== undefined && String(cell.v).trim() !== "") return true;
-      if (cell.f) return true;
-      if (cell.l && cell.l.Target) return true;
-      return false;
-    }
-
-    function findRowWithText(text) {
-      for (let r = range.s.r; r <= range.e.r; r++) {
-        for (let c = range.s.c; c <= range.e.c; c++) {
-          const cell = cellAt(r, c);
-          if (!cell || cell.v === undefined) continue;
-          if (String(cell.v).trim() === text) return r;
-        }
-      }
-      return -1;
-    }
-
-    const sorcHeader = findRowWithText("Spell slots (S)");
-    const wizHeader = findRowWithText("Spell slots (W)");
-
-    function readBlock(headerRow, mode) {
-      if (headerRow < 0) return [];
-      const header = {};
-      for (let c = range.s.c; c <= range.e.c; c++) {
-        const cell = cellAt(headerRow, c);
-        const val = cell && cell.v !== undefined ? String(cell.v).trim() : "";
-        if (val) header[val] = c;
-      }
-      const col = {
-        prep: header["Preparations"],
-        spell: header["Sorcerer"] ?? header["Wizard"],
-        sl: header["SL"],
-        type: header["Type"],
-        evo: header["Evo?"],
-        fire: header["Fire?"],
-        range: header["Range"],
-        area: header["Area"],
-        damage: header["Damage"],
-        duration: header["Duration"],
-        notes: header["Notes"]
-      };
-
-      function resolveSpellCol(spellCol) {
-        if (spellCol === undefined) return undefined;
-        for (let r = headerRow + 1; r <= Math.min(headerRow + 20, range.e.r); r++) {
-          const here = cellAt(r, spellCol);
-          const left = cellAt(r, spellCol - 1);
-          const right = cellAt(r, spellCol + 1);
-          if (cellHasContent(here)) return spellCol;
-          if (cellHasContent(left)) return spellCol - 1;
-          if (cellHasContent(right)) return spellCol + 1;
-        }
-        return spellCol;
-      }
-
-      col.spell = resolveSpellCol(col.spell);
-      const rows = [];
-      for (let r = headerRow + 1; r <= range.e.r; r++) {
-        const spellCell = col.spell !== undefined ? cellAt(r, col.spell) : null;
-        if (!cellHasContent(spellCell)) break;
-        const name = spellCell.v !== undefined ? String(spellCell.v) : "(spell)";
-        const get = (c) => {
-          if (c === undefined) return "";
-          const cell = cellAt(r, c);
-          if (!cell) return "";
-          return (cell.w !== undefined ? cell.w : (cell.v ?? ""));
-        };
-        const num = (c) => Number(get(c)) || 0;
-        rows.push({
-          mode,
-          name,
-          url: "",
-          sl: num(col.sl),
-          type: String(get(col.type) || ""),
-          evo: num(col.evo) === 1,
-          fire: num(col.fire) === 1,
-          range: String(get(col.range) || ""),
-          area: String(get(col.area) || ""),
-          damage: String(get(col.damage) || ""),
-          duration: String(get(col.duration) || ""),
-          notes: String(get(col.notes) || ""),
-          prep: mode === "wiz" ? String(get(col.prep) || "") : ""
-        });
-      }
-      return rows;
-    }
-
-    const spells = { sorc: [], wiz: [], meta: { sorcLevels: 1, wizLevels: 5, umLevels: 2, arcaneSpellpower: 1 } };
-    spells.sorc = readBlock(sorcHeader, "sorc");
-    spells.wiz = readBlock(wizHeader, "wiz");
-
-    // Write into window.state for backward compatibility
-    window.state = window.state || {};
-    window.state.data = window.state.data || {};
-    window.state.data.spells = spells;
-
-    // Call receiver if present
     if (typeof window.receiveIngestedData === "function") {
       const general = (window.state.data && window.state.data.general) ? window.state.data.general : null;
       try { window.receiveIngestedData(general, spells); } catch (e) { /* ignore */ }
@@ -447,9 +313,7 @@
     return spells;
   }
 
-  /* -------------------------
-     loadFromGoogleSheets (CSV proxy)
-     ------------------------- */
+  /* loadFromGoogleSheets (CSV proxy) */
   async function loadFromGoogleSheets(sheetUrl) {
     const id = extractSpreadsheetId(sheetUrl);
     if (!id) throw new Error("Could not extract spreadsheet ID from URL.");
@@ -463,25 +327,17 @@
     const generalCsv = await fetchCsvViaProxy(id, gids.general);
     const generalGrid = csvToGrid(generalCsv);
 
-    // Parse into objects
     const spells = ingestSpellsFromGrid(spellsGrid);
     const general = ingestGeneralFromGrid(generalGrid);
 
-    // Ensure window.state updated for backward compatibility
     window.state = window.state || {};
     window.state.data = window.state.data || {};
     window.state.data.general = general;
     window.state.data.spells = spells;
     window.state.loaded = true;
 
-    // Prefer explicit receiver if app provided one
     if (typeof window.receiveIngestedData === "function") {
-      try {
-        window.receiveIngestedData(general, spells);
-      } catch (e) {
-        // swallow receiver errors to avoid breaking the ingest flow
-        console.error("receiveIngestedData error:", e);
-      }
+      try { window.receiveIngestedData(general, spells); } catch (e) { console.error("receiveIngestedData error:", e); }
     } else {
       if (typeof setProgress === "function") setProgress(95, "Rendering…");
       if (typeof render === "function") render();
@@ -489,15 +345,12 @@
     }
   }
 
-  // Expose API
   window.gsIngest = {
     extractSpreadsheetId,
     fetchCsvViaProxy,
     csvToGrid,
     loadFromGoogleSheets,
     ingestGeneralFromGrid,
-    ingestSpellsFromGrid,
-    ingestGeneralFromXlsx,
-    ingestSpellsFromXlsx
+    ingestSpellsFromGrid
   };
 })();
