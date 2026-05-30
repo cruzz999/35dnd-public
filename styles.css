@@ -90,26 +90,35 @@ html, body {
 }
 
 /* ---------- Ability breakdown grid (single authoritative definition) ----------
-   Columns: label + 6 numeric columns (Point buy, ASI, Items, Buffs, Total, Mod)
-   This must match the renderer which outputs 7 cells per row.
-*/
-/* Compact ability table: label immediately adjacent to numbers */
-.ability-breakdown-grid {
-/* Use max-content so label is only as wide as needed */
+/* Robust ability grid: explicit 7 columns, children cannot stretch to full width */
 .ability-breakdown-grid {
   display: grid;
-  grid-template-columns: max-content repeat(6, 48px);
-  column-gap: 6px;      /* gap between numeric columns */
-  row-gap: 4px;         /* small vertical spacing */
+  grid-auto-flow: row;
+  grid-template-columns: max-content repeat(6, 48px); /* label + 6 numeric columns */
+  column-gap: 6px;   /* gap between numeric columns only */
+  row-gap: 4px;
   align-items: center;
   justify-content: start;
+  width: auto;
+  box-sizing: border-box;
 }
 
-/* Remove extra padding on label cells (every 7th child is the label) */
+/* Prevent any grid child from forcing a full-row width */
+.ability-breakdown-grid > * {
+  width: auto !important;
+  min-width: 0;
+  box-sizing: border-box;
+  display: block; /* keep block-level but allow grid to size it */
+  margin: 0;
+  padding: 0; /* we'll control padding per cell below */
+}
+
+/* Label cell (first cell of each 7-cell row) — small breathing room only */
 .ability-breakdown-grid > *:nth-child(7n+1) {
   padding-left: 0;
-  padding-right: 2px;   /* tiny breathing room, change to 0 if you want none */
+  padding-right: 6px;
   justify-self: start;
+  text-align: left;
 }
 
 /* Numeric cells centered and compact */
@@ -122,21 +131,29 @@ html, body {
   box-sizing: border-box;
 }
 
-/* Inputs: small and centered */
+/* Inputs: small and centered; do NOT let them expand to 100% */
 .ability-breakdown-grid input[type="number"],
 .ability-breakdown-grid input[type="text"] {
   width: 40px;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 2px;
   height: 24px;
   text-align: center;
-  padding: 2px;
-  box-sizing: border-box;
+  border-radius: 4px;
+  border: 1px solid rgba(0,0,0,0.08);
+  background: #fff;
+  display: inline-block; /* critical: prevents full-width expansion */
 }
 
 /* Totals and Mods: slightly smaller min-width */
 .ability-breakdown-grid .val strong {
   min-width: 28px;
   padding: 0 2px;
+  font-weight: 700;
+  display: inline-block;
 }
+
 
 /* Feats and languages lists */
 .panel ul { margin: 6px 0 0 18px; padding: 0; }
