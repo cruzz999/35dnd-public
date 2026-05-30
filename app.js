@@ -204,6 +204,25 @@ if (el.viewport) {
    - When pen is ON: ink handles strokes
 ------------------------------------------------------------------------- */
 let panDrag = { active: false, startX: 0, startY: 0, basePanX: 0, basePanY: 0 };
+// Prevent text selection while panning the paper
+(function () {
+  let suppressSelect = false;
+  const onSelectStart = (e) => { if (suppressSelect) e.preventDefault(); };
+
+  // toggle suppression when pan starts/ends
+  const origBeginPan = beginPan;
+  const origEndPan = endPan;
+  beginPan = function (e) {
+    suppressSelect = true;
+    document.addEventListener("selectstart", onSelectStart);
+    origBeginPan(e);
+  };
+  endPan = function (e) {
+    suppressSelect = false;
+    document.removeEventListener("selectstart", onSelectStart);
+    origEndPan(e);
+  };
+})();
 function beginPan(e) {
   panDrag.active = true;
   panDrag.startX = e.clientX;
