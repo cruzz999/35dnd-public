@@ -93,21 +93,25 @@ html, body {
    Columns: label + 6 numeric columns (Point buy, ASI, Items, Buffs, Total, Mod)
    This must match the renderer which outputs 7 cells per row.
 */
+/* Compact ability table: label immediately adjacent to numbers */
 .ability-breakdown-grid {
   display: grid;
-  grid-template-columns: 1.4fr repeat(6, var(--ability-col-width));
-  gap: 6px;
+  /* label column auto (only as wide as content), then 6 fixed numeric columns */
+  grid-template-columns: auto repeat(6, 48px);
+  gap: 4px 6px;               /* small vertical gap, tiny horizontal gap between numeric columns */
   align-items: center;
   font-size: 13px;
-  width: 100%;
+  width: auto;
+  justify-content: start;     /* keep table left-aligned, no extra stretch */
   box-sizing: border-box;
 }
 
-/* Column header style */
+/* Make header cells match compact layout */
 .ability-breakdown-grid .hdr {
   font-weight: 600;
   text-align: center;
   font-size: 12px;
+  padding: 2px 4px;
 }
 
 /* Numeric cells centered and compact */
@@ -115,31 +119,32 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 2px 4px;
-  min-height: 28px;
+  padding: 2px 2px;
+  min-height: 26px;
   box-sizing: border-box;
 }
 
-/* Inputs: small, centered, consistent */
+/* Inputs: small, centered, minimal padding */
 .ability-breakdown-grid input[type="number"],
 .ability-breakdown-grid input[type="text"] {
-  width: var(--ability-input-width);
-  height: 26px;
+  width: 40px;
+  height: 24px;
   text-align: center;
-  padding: 2px 4px;
+  padding: 2px;
   box-sizing: border-box;
-  border: 1px solid rgba(0,0,0,0.08);
   border-radius: 4px;
-  font-size: 13px;
+  border: 1px solid rgba(0,0,0,0.08);
   background: #fff;
+  font-size: 13px;
 }
 
-/* Totals and Mods: bold and centered */
+/* Totals and Mods: slightly smaller min-width so they don't force expansion */
 .ability-breakdown-grid .val strong {
   display: block;
   text-align: center;
-  min-width: 40px;
+  min-width: 28px;
   font-weight: 700;
+  padding: 0 2px;
 }
 
 /* Feats and languages lists */
