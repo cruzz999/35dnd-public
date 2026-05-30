@@ -1,8 +1,11 @@
 // ink.js
-// Drop-in ink layer. Attaches API to window.ink and mirrors the previous inline ink behavior.
+// Self-contained ink layer. Attach API to window.ink.
+// Designed to overlay the #app element and map pointer events reliably
+// across pan/zoom/transform by using the canvas bounding rect.
 (function () {
   if (window.ink) return;
 
+  // Use a shared state object if present; otherwise create a minimal one.
   function getState() {
     if (!window.state) {
       window.state = {
@@ -21,11 +24,23 @@
   const el = {
     canvas: document.getElementById("inkWorld"),
     app: document.getElementById("app"),
-    viewport: document.getElementById("viewport")
+    viewport: document.getElementById("viewport"),
+    world: document.getElementById("world")
   };
 
-  let ctx = el.canvas ? el.canvas.getContext("2d") : null;
+  // If the canvas element is missing, create one and insert into DOM
+  if (!el.canvas) {
+    const c = document.createElement("canvas");
+    c.id = "inkWorld";
+    c.className = "ink";
+    // try to append to body as fallback; app.js will move it into #app on ensureCanvasSize
+    document.body.appendChild(c);
+    el.canvas = c;
+  }
 
+  let ctx = el.canvas.getContext ? el.canvas.getContext("2d") : null;
+
+  // Utility: strokes storage per view
   function getStrokesForView(view) {
     const s = getState();
     s.strokesByView[view] ||= [];
@@ -50,99 +65,70 @@
     redraw();
   }
 
- function ensureCanvasSize() {
+  // Ensure the canvas is a child of the app element and sized to it exactly.
+  function ensureCanvasSize() {
     const canvas = el.canvas;
-    if (!canvas) return;
     const appEl = el.app || document.getElementById("app");
-    const worldEl = el.world || document.getElementById("world");
-    // Size the canvas to match the app element exactly (so ink overlays the paper)
+    if (!canvas || !appEl) return;
+
+    // Move canvas into the app element so it shares the same layout/transform
+    if (canvas.parentElement !== appEl) {
+      // preserve existing canvas style where possible
+      canvas.style.position = "absolute";
+      canvas.style.left = "0px";
+      canvas.style.top = "0px";
+      canvas.style.zIndex = 30;
+      appEl.appendChild(canvas);
+    }
+
+    // CSS size should match app element's layout size (untransformed CSS pixels)
     const w = Math.max(appEl.offsetWidth || 1200, 1200);
     const h = Math.max(appEl.offsetHeight || 800, 800);
     const dpr = window.devicePixelRatio || 1;
 
-    // Position canvas relative to the world container so it overlays the app
-    // appEl.offsetLeft/Top are relative to world content box (no transforms)
-    canvas.style.position = "absolute";
-    canvas.style.left = `${appEl.offsetLeft}px`;
-    canvas.style.top = `${appEl.offsetTop}px`;
     canvas.style.width = `${w}px`;
     canvas.style.height = `${h}px`;
 
-    // Set backing store size using devicePixelRatio
+    // Backing store size in device pixels
     canvas.width = Math.floor(w * dpr);
     canvas.height = Math.floor(h * dpr);
 
-    // Reset transform so drawing uses CSS pixels
+    // Use a scale so drawing coordinates are in CSS pixels
     ctx = canvas.getContext("2d");
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-    // Keep pointer events off by default; app toggles when pen is ON
+    // Default pointer-events off; app toggles when pen is ON
     canvas.style.pointerEvents = getState().penOn ? "auto" : "none";
     canvas.style.touchAction = "none";
   }
 
-  // Convert client coordinates to coordinates relative to the app (untransformed)
+  // Map client coordinates to coordinates relative to the canvas (CSS pixels).
+  // Using canvas.getBoundingClientRect() makes this robust across zoom/transform.
   function screenToWorld(clientX, clientY) {
-    // If world has a CSS transform (translate + scale), invert it using DOMMatrix
-    const worldEl = el.world || document.getElementById("world");
-    const appEl = el.app || document.getElementById("app");
-    if (!worldEl || !appEl) return { x: clientX, y: clientY };
+    const canvas = el.canvas;
+    if (!canvas) return { x: clientX, y: clientY };
 
-    // Get world bounding rect to compute point relative to world origin
-    const worldRect = worldEl.getBoundingClientRect();
-    const localX = clientX - worldRect.left;
-    const localY = clientY - worldRect.top;
-
-    // Get computed transform matrix of the world element
-    const style = getComputedStyle(worldEl);
-    const transform = style.transform || "none";
-
-    if (transform === "none") {
-      // No transform: map directly to world-local coordinates, then to app-local
-      const st = getState();
-      // world is translated by state.pan and scaled by state.zoom in CSS transform
-      // Convert to app-local by reversing translate and scale
-      const x = (localX - (st.pan?.x || 0)) / (st.zoom || 1);
-      const y = (localY - (st.pan?.y || 0)) / (st.zoom || 1);
-      // Now offset by app element position inside world
-      const appOffsetX = appEl.offsetLeft || 0;
-      const appOffsetY = appEl.offsetTop || 0;
-      return { x: x - appOffsetX, y: y - appOffsetY };
-    }
-
-    // Use DOMMatrix to invert the transform and map the point back to untransformed coords
-    try {
-      const matrix = new DOMMatrixReadOnly(transform);
-      const inv = matrix.inverse();
-      // point relative to world origin
-      const pt = new DOMPoint(localX, localY);
-      const unmapped = pt.matrixTransform(inv);
-      // unmapped is now coordinates in the world element's local coordinate system
-      // Convert to coordinates relative to the app element inside world
-      const appOffsetX = appEl.offsetLeft || 0;
-      const appOffsetY = appEl.offsetTop || 0;
-      return { x: unmapped.x - appOffsetX, y: unmapped.y - appOffsetY };
-    } catch (err) {
-      // Fallback: use state.pan/state.zoom inverse
-      const st = getState();
-      const x = (localX - (st.pan?.x || 0)) / (st.zoom || 1);
-      const y = (localY - (st.pan?.y || 0)) / (st.zoom || 1);
-      const appOffsetX = appEl.offsetLeft || 0;
-      const appOffsetY = appEl.offsetTop || 0;
-      return { x: x - appOffsetX, y: y - appOffsetY };
-    }
+    const rect = canvas.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+    return { x, y };
   }
 
+  // Basic stroke renderer
   function drawStroke(stroke) {
     if (!ctx || !stroke || !stroke.pts || stroke.pts.length < 2) return;
     ctx.save();
     if (stroke.erase) {
       ctx.globalCompositeOperation = "destination-out";
       ctx.lineWidth = 18;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
       ctx.strokeStyle = "rgba(0,0,0,1)";
     } else {
       ctx.globalCompositeOperation = "source-over";
       ctx.lineWidth = 2;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
       ctx.strokeStyle = "#000";
     }
     ctx.beginPath();
@@ -186,17 +172,16 @@
   function pointerDown(e) {
     const s = getState();
     if (!s.penOn) return;
-    // allow stylus/pointer; ignore touch if you want stylus-only
-    // (keep touch support if desired by removing the next line)
+    // ignore touch if you want stylus-only; remove the next line to allow finger drawing
     if (e.pointerType === "touch") return;
 
-    // Ensure canvas has correct size/position before starting stroke
+    // Ensure canvas is sized and placed correctly before starting stroke
     ensureCanvasSize();
 
     drawing = true;
     activePointerId = e.pointerId;
 
-    // Map the initial point using the robust screenToWorld
+    // Use robust mapping
     const p = screenToWorld(e.clientX, e.clientY);
     currentStroke = { erase: !!s.erasing, pts: [p] };
     getStrokesForView(s.view).push(currentStroke);
@@ -211,6 +196,7 @@
     if (!s.penOn || !drawing || !currentStroke) return;
     if (activePointerId !== null && e.pointerId !== activePointerId) return;
     if (e.pointerType === "touch") return;
+
     // Map subsequent points the same way
     currentStroke.pts.push(screenToWorld(e.clientX, e.clientY));
     e.preventDefault();
@@ -234,36 +220,56 @@
   function attachHandlers() {
     const canvas = el.canvas;
     if (!canvas) return;
+    // Remove existing listeners to avoid duplicates
+    canvas.removeEventListener("pointerdown", pointerDown);
+    canvas.removeEventListener("pointermove", pointerMove);
+    canvas.removeEventListener("pointerup", endStroke);
+    canvas.removeEventListener("pointercancel", endStroke);
+    canvas.removeEventListener("lostpointercapture", endStroke);
+    canvas.removeEventListener("pointerleave", endStroke);
+
     canvas.addEventListener("pointerdown", pointerDown);
     canvas.addEventListener("pointermove", pointerMove);
     canvas.addEventListener("pointerup", endStroke);
     canvas.addEventListener("pointercancel", endStroke);
     canvas.addEventListener("lostpointercapture", endStroke);
     canvas.addEventListener("pointerleave", endStroke);
+
     // default off; app toggles when pen is ON
-    canvas.style.pointerEvents = "none";
+    canvas.style.pointerEvents = getState().penOn ? "auto" : "none";
     canvas.style.touchAction = "none";
   }
 
+  // Public API
   const api = {
     redraw,
     ensureCanvasSize,
-    loadForView(view) { getState().view = view || getState().view || "General"; loadForView(getState().view); },
+    loadForView(view) {
+      const s = getState();
+      s.view = view || s.view || "General";
+      loadForView(s.view);
+    },
     setPenMode(on) {
       const s = getState();
       s.penOn = !!on;
       if (el.canvas) el.canvas.style.pointerEvents = s.penOn ? "auto" : "none";
     },
-    setEraser(on) { const s = getState(); s.erasing = !!on; },
+    setEraser(on) {
+      const s = getState();
+      s.erasing = !!on;
+    },
     undo,
     clear,
     saveForView,
+    // expose internals for debugging if needed
     _internal: { getState, el }
   };
 
+  // Initialize
   attachHandlers();
   window.addEventListener("load", () => { ensureCanvasSize(); redraw(); });
   window.addEventListener("resize", () => { ensureCanvasSize(); redraw(); });
 
+  // Expose API
   window.ink = api;
 })();
