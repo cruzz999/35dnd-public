@@ -1,7 +1,5 @@
 /* ==========================================================================
    DnD 3.5 Ink Sheet - app.js (uses external gs_ingest.js and ink.js)
-   This file is the app logic. It expects gs_ingest.js and ink.js to be
-   included before this script in index.html.
    ========================================================================== */
 
 /* ----------------------------- DOM helpers ------------------------------ */
@@ -49,31 +47,13 @@ const state = {
     spells: { sorc: [], wiz: [], meta: null }
   }
 };
+
+/* ------------------ ensureGs helper (defensive) ------------------------- */
 function ensureGs() {
   if (window.gsIngest) return window.gsIngest;
-  // Friendly fallback: update UI and throw so callers can catch
   if (typeof setProgress === "function") setProgress(0, "gs_ingest.js not loaded. Check script order.");
   throw new Error("gs_ingest.js not loaded (window.gsIngest missing). Ensure gs_ingest.js is included before app.js.");
 }
-// Receive ingested data from gs_ingest and merge into app state
-window.receiveIngestedData = function (general, spells) {
-  state.data = state.data || {};
-  state.data.general = general || state.data.general;
-  state.data.spells = spells || state.data.spells;
-  state.loaded = true;
-
-  try {
-    setProgress(95, "Rendering…");
-    if (window.ink && typeof window.ink.loadForView === "function") window.ink.loadForView(state.view);
-    render();
-    if (window.ink && typeof window.ink.ensureCanvasSize === "function") window.ink.ensureCanvasSize();
-    if (window.ink && typeof window.ink.redraw === "function") window.ink.redraw();
-    setProgress(100, "Done ✅");
-  } catch (err) {
-    console.error("receiveIngestedData render error:", err);
-    setProgress(0, "Render failed after ingest");
-  }
-};
 
 /* ------------------------------ Progress ------------------------------- */
 function setProgress(pct, text) {
@@ -248,7 +228,7 @@ if (el.viewport) {
 }
 
 /* ------------------------------ Ink bridge ------------------------------ */
-// Use global ink provided by ink.js. Provide a minimal stub if missing.
+// Defensive stub if ink.js not loaded yet
 if (typeof window.ink === "undefined") {
   console.warn("ink.js not loaded yet; creating minimal stub.");
   window.ink = {
@@ -559,6 +539,74 @@ window.addEventListener("DOMContentLoaded", () => {
       if (e.key === "Enter") el.loadGs.click();
     });
   }
+
+  // Wire ink controls (Pen, Eraser, Undo, Clear)
+  (function wireInkControls() {
+    function safeInk() {
+      if (window.ink) return window.ink;
+      console.warn("ink API not ready yet");
+      return null;
+    }
+
+    function updatePenLabel() {
+      if (!el.penToggle) return;
+      el.penToggle.textContent = `Pen: ${state.penOn ? "ON" : "OFF"}`;
+    }
+    function updateEraserLabel() {
+      if (!el.eraser) return;
+      el.eraser.textContent = state.erasing ? "Eraser: ON" : "Eraser";
+    }
+
+    if (el.penToggle) {
+      el.penToggle.addEventListener("click", () => {
+        state.penOn = !state.penOn;
+        const inkApi = safeInk();
+        if (inkApi && typeof inkApi.setPenMode === "function") {
+          try { inkApi.setPenMode(state.penOn); } catch (e) { console.error("ink.setPenMode error", e); }
+        }
+        // Ensure canvas pointer-events reflect pen state
+        const canvas = document.getElementById("inkWorld");
+        if (canvas) canvas.style.pointerEvents = state.penOn ? "auto" : "none";
+        updatePenLabel();
+      });
+    }
+
+    if (el.eraser) {
+      el.eraser.addEventListener("click", () => {
+        state.erasing = !state.erasing;
+        const inkApi = safeInk();
+        if (inkApi && typeof inkApi.setEraser === "function") {
+          try { inkApi.setEraser(state.erasing); } catch (e) { console.error("ink.setEraser error", e); }
+        }
+        updateEraserLabel();
+      });
+    }
+
+    if (el.undo) {
+      el.undo.addEventListener("click", () => {
+        const inkApi = safeInk();
+        if (inkApi && typeof inkApi.undo === "function") {
+          try { inkApi.undo(); } catch (e) { console.error("ink.undo error", e); }
+        } else {
+          console.warn("undo not available");
+        }
+      });
+    }
+
+    if (el.clearInk) {
+      el.clearInk.addEventListener("click", () => {
+        const inkApi = safeInk();
+        if (inkApi && typeof inkApi.clear === "function") {
+          try { inkApi.clear(); } catch (e) { console.error("ink.clear error", e); }
+        } else {
+          console.warn("clear not available");
+        }
+      });
+    }
+
+    updatePenLabel();
+    updateEraserLabel();
+  })();
 });
 
 /* --------------------------- Initial setup ----------------------------- */
