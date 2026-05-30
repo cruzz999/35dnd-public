@@ -1,112 +1,238 @@
-/* E-ink friendly: black on white, high contrast */
-:root{
+:root {
   --bg: #ffffff;
-  --panel: #ffffff;
-  --text: #000000;
-  --muted: #333333;
-  --accent: #000000;
+  --fg: #000000;
+  --border: #000000;
+  --muted: #444444;
+  --radius: 6px;
+  --pad: 10px;
+  --font: 17px;
+  --line: 1.35;
 }
 
-/* Basic layout */
-html,body{height:100%;margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;background:var(--bg);color:var(--text);}
-.topbar{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:12px;
-  padding:8px 12px;
-  border-bottom:1px solid #ddd;
-  background:var(--bg);
-  position:sticky;
-  top:0;
-  z-index:10001; /* topbar above canvas */
-}
-.topbar button, .topbar input[type="text"], .topbar .file-label{
-  margin-right:6px;
-  padding:6px 8px;
-  border-radius:4px;
-  border:1px solid #bbb;
-  background:#fff;
-  color:var(--text);
-  font-size:0.95rem;
-}
-.topbar .file-label input[type="file"]{ display:inline-block; }
-
-/* Viewport and world */
-.viewport{position:relative;overflow:auto;min-height:100vh;padding:12px;}
-.world{position:relative;transform-origin:0 0;}
-
-/* App content area */
-.app{position:relative;z-index:2;max-width:1200px;margin:12px auto;color:var(--text);padding:18px;}
-
-/* Ink canvas styling: sits under UI by default and does not intercept clicks */
-.ink-canvas{
-  position:fixed;
-  left:0;
-  top:0;
-  width:100%;
-  height:100%;
-  z-index:10000; /* below topbar (10001) but above world content if needed */
-  pointer-events:none; /* default: do not intercept clicks; Pen toggles this to 'auto' */
-  background:transparent;
-  touch-action:none;
-}
-
-/* Panels and sheet grid */
-.panel{background:transparent;border-radius:6px;padding:12px;margin-bottom:12px;border:1px solid #ddd;}
-.sheet{max-width:1100px;}
-.general-grid{display:grid;gap:10px;align-items:center;}
-.general-grid .header{font-weight:700;color:var(--muted);}
-
-/* Inputs */
-input[type="number"], input[type="text"]{padding:6px;border-radius:4px;border:1px solid #bbb;background:#fff;color:var(--text);}
-
-/* Small helpers */
-.status{font-size:0.9rem;color:var(--muted);margin-left:8px;}
-.no-select-during-pan{user-select:none;pointer-events:auto;}
-
-/* Feats panel styling (placed below Abilities) */
-/* Feats panel (simple vertical list) */
-.feats-panel {
-  margin-top: 12px;
-  padding: 10px;
-  border-radius: 6px;
-  background: var(--panel-bg, #fff);
-  box-shadow: 0 1px 0 rgba(0,0,0,0.04);
-}
-.feats-panel .feats-title {
-  margin: 0 0 8px 0;
-  font-size: 0.95rem;
-  font-weight: 600;
-}
-
-/* Simple vertical list (no chips) */
-.feats-list.simple {
-  list-style: disc inside;
-  padding-left: 0;
-  margin: 6px 0 0 0;
-  display: block;
-}
-.feats-list.simple .feat-item {
-  margin: 6px 0;
+html, body {
+  margin: 0;
   padding: 0;
-  background: transparent;
-  border-radius: 0;
-  font-size: 0.95rem;
-  color: var(--text, #111);
+  background: var(--bg);
+  color: var(--fg);
+  font-family: system-ui, Arial, sans-serif;
+  font-size: var(--font);
+  line-height: var(--line);
+  /* Paper mode: no page scroll */
+  overflow: hidden;
 }
 
-/* Defensive: remove previous chip styles if present */
-.feats-list { gap: 0; }
-.feat-item { box-shadow: none; padding: 0; }
+/* ---------------- Top bar ---------------- */
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  border-bottom: 2px solid var(--border);
+  background: var(--bg);
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+}
 
-/* Small helpers */
-.hint { color: #777; font-style: italic; }
-.panel { background: var(--panel-bg, #fff); border-radius: 6px; padding: 8px; }
-.kv { display:flex; justify-content:space-between; gap:8px; margin:6px 0; }
-.kv > div { flex:1; }
-.general-grid { display:grid; grid-auto-rows: 36px; align-items:center; }
-.general-grid .header { font-weight:600; font-size:0.85rem; color:var(--muted); }
-.ability-name { padding:6px 8px; font-weight:700; }
-.ability-cell input { width:100%; box-sizing:border-box; padding:6px; border-radius:4px; border:1px solid #ddd; }
-.hint { color: #777; font-style: italic; }
+.topbar .left,
+.topbar .right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.topbar button {
+  border: 2px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+  padding: 8px 10px;
+  border-radius: var(--radius);
+  font-size: 16px;
+}
+
+.topbar input[type="file"] {
+  font-size: 14px;
+}
+
+.topbar input[type="text"] {
+  border: 2px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+  padding: 6px 8px;
+  border-radius: var(--radius);
+  font-size: 16px;
+  width: 420px;
+  max-width: 100%;
+}
+
+.sep {
+  display: inline-block;
+  width: 1px;
+  height: 22px;
+  background: #999;
+  margin: 0 8px;
+}
+
+.progress {
+  width: 220px;
+  height: 12px;
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+#progressBar {
+  height: 100%;
+  width: 0%;
+  background: var(--fg);
+  transition: width 0.15s linear;
+}
+
+/* ---------------- Paper viewport ---------------- */
+#viewport {
+  position: relative;
+  width: 100vw;
+  height: calc(100vh - 64px); /* JS can override to true topbar height */
+  overflow: hidden;
+  background: var(--bg);
+
+  /* Stylus stability: prevent browser gesture stealing */
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+#world {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+  touch-action: none;
+}
+
+.app {
+  padding: var(--pad);
+  max-width: none; /* wide content is fine; pan/zoom reveals it */
+}
+
+/* ---------------- Panels & layout ---------------- */
+.panel {
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--pad);
+  margin: 10px 0;
+}
+
+.hint {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+@media (max-width: 900px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---------------- Tables ---------------- */
+.table {
+  border-collapse: collapse;
+  width: max-content;  /* don’t squash; pan/zoom instead */
+  min-width: 980px;
+  font-size: 15px;
+}
+
+.table th,
+.table td {
+  border: 2px solid var(--border);
+  padding: 6px 8px;
+  vertical-align: top;
+}
+
+.table th {
+  font-weight: 700;
+  background: #fff;
+}
+
+/* Empty prep box intended for ink */
+.prep-box {
+  width: 7ch;
+  height: 1.6em;
+  border: 2px solid var(--border);
+  border-radius: 4px;
+  display: inline-block;
+  background: #fff;
+}
+
+/* ---------------- Ability breakdown grid (important) ---------------- */
+/* Wrapper used in renderGeneral(): <div class="ability-breakdown-grid"> */
+.ability-breakdown-grid {
+  display: grid;
+  grid-template-columns: 70px 110px 70px 80px 120px 70px 60px;
+  gap: 8px;
+  align-items: center;
+  max-width: 100%;
+}}
+
+.ability-breakdown-grid .hdr {
+  font-weight: 700;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.ability-breakdown-grid .val {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Older/simple ability grid (if still used anywhere) */
+.ability-grid {
+  display: grid;
+  grid-template-columns: 80px 90px 70px;
+  gap: 8px;
+  align-items: center;
+}
+
+.ability-grid .hdr {
+  font-weight: 700;
+}
+
+.ability-grid .val {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* ---------------- Ink canvas ---------------- */
+#inkWorld {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 20;
+  pointer-events: none; /* JS toggles this */
+  touch-action: none;
+}
+
+
+.ability-breakdown-grid input[type="number"]{
+  width: 100%;
+  box-sizing: border-box /* CRITICAL: border+padding included in width */
+  padding: 2px 4px;
+  font-size: 16px;
+  line-height: 1.1;
+  border: 2px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--fg);
+  text-align: right;
+  min-width: 0;                /* allow grid to constrain it */
+}
