@@ -224,28 +224,40 @@ const ink = (() => {
   }
 
   // Ensure canvas is a child of #app and sized to app.scrollWidth/scrollHeight (exact)
+  // Ensure canvas is a child of #world (so it inherits pan/zoom) and sized to world scroll size
   function ensureCanvasSize() {
     const canvasEl = canvas;
+    const worldEl = el.world || document.getElementById("world");
     const appEl = el.app || document.getElementById("app");
-    if (!canvasEl || !appEl) return;
-    // Move canvas into app if needed
-    if (canvasEl.parentElement !== appEl) {
+    if (!canvasEl || (!worldEl && !appEl)) return;
+
+    // Prefer to attach canvas to the transformed world so it moves with pan/zoom
+    const parentEl = worldEl || appEl;
+    if (canvasEl.parentElement !== parentEl) {
       canvasEl.style.position = "absolute";
       canvasEl.style.left = "0px";
       canvasEl.style.top = "0px";
       canvasEl.style.zIndex = 30;
-      appEl.appendChild(canvasEl);
+      parentEl.appendChild(canvasEl);
     }
-    // Size to the app's scroll size exactly
-    const w = Math.max(1, Math.floor(appEl.scrollWidth || 1));
-    const h = Math.max(1, Math.floor(appEl.scrollHeight || 1));
+
+    // Size to the parent's scroll size (world/app content size)
+    // Use scrollWidth/scrollHeight so canvas covers the full paper area, not just viewport
+    const w = Math.max(1, Math.floor(parentEl.scrollWidth || parentEl.clientWidth || 1));
+    const h = Math.max(1, Math.floor(parentEl.scrollHeight || parentEl.clientHeight || 1));
     const dpr = window.devicePixelRatio || 1;
+
+    // Set CSS size and backing buffer size
     canvasEl.style.width = `${w}px`;
     canvasEl.style.height = `${h}px`;
     canvasEl.width = Math.floor(w * dpr);
     canvasEl.height = Math.floor(h * dpr);
+
+    // Reset transform on the 2D context to account for DPR
     ctx = canvasEl.getContext("2d");
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (ctx) ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    // Make sure pointer events reflect pen state
     canvasEl.style.touchAction = "none";
     canvasEl.style.pointerEvents = state.penOn ? "auto" : "none";
   }
