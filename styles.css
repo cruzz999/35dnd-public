@@ -95,23 +95,21 @@ html, body {
 */
 /* Compact ability table: label immediately adjacent to numbers */
 .ability-breakdown-grid {
+/* Use max-content so label is only as wide as needed */
+.ability-breakdown-grid {
   display: grid;
-  /* label column auto (only as wide as content), then 6 fixed numeric columns */
-  grid-template-columns: auto repeat(6, 48px);
-  gap: 4px 6px;               /* small vertical gap, tiny horizontal gap between numeric columns */
+  grid-template-columns: max-content repeat(6, 48px);
+  column-gap: 6px;      /* gap between numeric columns */
+  row-gap: 4px;         /* small vertical spacing */
   align-items: center;
-  font-size: 13px;
-  width: auto;
-  justify-content: start;     /* keep table left-aligned, no extra stretch */
-  box-sizing: border-box;
+  justify-content: start;
 }
 
-/* Make header cells match compact layout */
-.ability-breakdown-grid .hdr {
-  font-weight: 600;
-  text-align: center;
-  font-size: 12px;
-  padding: 2px 4px;
+/* Remove extra padding on label cells (every 7th child is the label) */
+.ability-breakdown-grid > *:nth-child(7n+1) {
+  padding-left: 0;
+  padding-right: 2px;   /* tiny breathing room, change to 0 if you want none */
+  justify-self: start;
 }
 
 /* Numeric cells centered and compact */
@@ -124,7 +122,7 @@ html, body {
   box-sizing: border-box;
 }
 
-/* Inputs: small, centered, minimal padding */
+/* Inputs: small and centered */
 .ability-breakdown-grid input[type="number"],
 .ability-breakdown-grid input[type="text"] {
   width: 40px;
@@ -132,18 +130,11 @@ html, body {
   text-align: center;
   padding: 2px;
   box-sizing: border-box;
-  border-radius: 4px;
-  border: 1px solid rgba(0,0,0,0.08);
-  background: #fff;
-  font-size: 13px;
 }
 
-/* Totals and Mods: slightly smaller min-width so they don't force expansion */
+/* Totals and Mods: slightly smaller min-width */
 .ability-breakdown-grid .val strong {
-  display: block;
-  text-align: center;
   min-width: 28px;
-  font-weight: 700;
   padding: 0 2px;
 }
 
