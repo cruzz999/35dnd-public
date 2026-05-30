@@ -66,6 +66,7 @@ input[type="number"], input[type="text"]{padding:6px;border-radius:4px;border:1p
 .no-select-during-pan{user-select:none;pointer-events:auto;}
 
 /* Feats panel styling (placed below Abilities) */
+/* Feats panel (simple vertical list) */
 .feats-panel {
   margin-top: 12px;
   padding: 10px;
@@ -78,18 +79,34 @@ input[type="number"], input[type="text"]{padding:6px;border-radius:4px;border:1p
   font-size: 0.95rem;
   font-weight: 600;
 }
-.feats-list {
-  list-style: none;
+
+/* Simple vertical list (no chips) */
+.feats-list.simple {
+  list-style: disc inside;
+  padding-left: 0;
+  margin: 6px 0 0 0;
+  display: block;
+}
+.feats-list.simple .feat-item {
+  margin: 6px 0;
   padding: 0;
-  margin: 0;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  background: transparent;
+  border-radius: 0;
+  font-size: 0.95rem;
+  color: var(--text, #111);
 }
-.feat-item {
-  background: var(--chip-bg, #f3f4f6);
-  padding: 6px 8px;
-  border-radius: 999px;
-  font-size: 0.85rem;
-}
+
+/* Defensive: remove previous chip styles if present */
+.feats-list { gap: 0; }
+.feat-item { box-shadow: none; padding: 0; }
+
+/* Small helpers */
+.hint { color: #777; font-style: italic; }
+.panel { background: var(--panel-bg, #fff); border-radius: 6px; padding: 8px; }
+.kv { display:flex; justify-content:space-between; gap:8px; margin:6px 0; }
+.kv > div { flex:1; }
+.general-grid { display:grid; grid-auto-rows: 36px; align-items:center; }
+.general-grid .header { font-weight:600; font-size:0.85rem; color:var(--muted); }
+.ability-name { padding:6px 8px; font-weight:700; }
+.ability-cell input { width:100%; box-sizing:border-box; padding:6px; border-radius:4px; border:1px solid #ddd; }
 .hint { color: #777; font-style: italic; }
