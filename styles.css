@@ -310,16 +310,15 @@ body.pen-active canvas#inkWorld {
   pointer-events: auto !important;
   z-index: 40 !important;
 }
-
 /* Make checkboxes and labels sit above the canvas and accept pointer events */
-.panel input[type="checkbox"],
-.ability-breakdown-grid input[type="checkbox"],
-.panel label input[type="checkbox"] {
+.panel input,
+.panel label input,
+.ability-breakdown-grid input,
+.ability-breakdown-grid input[type="checkbox"] {
   position: relative !important;
   z-index: 60 !important;
   pointer-events: auto !important;
 }
-
 /* Prevent pseudo-elements from catching pointer events */
 .panel *::before,
 .panel *::after,
