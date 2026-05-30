@@ -102,7 +102,7 @@ export function renderGeneral(state, ink) {
       ${headerHtml}
       <div style="display:flex;gap:18px;align-items:flex-start;">
         <div style="flex:1 1 640px;">
-          <div class="general-grid" id="abilitiesGrid" style="grid-template-columns: 1.0fr 0.9fr 0.8fr 1.0fr 0.9fr 0.9fr; gap:10px;">
+          <div class="general-grid" id="abilitiesGrid" style="grid-template-columns: 1fr 0.9fr 0.8fr 1fr 0.9fr 0.9fr; gap:10px;">
             <div class="header">Ability</div>
             <div class="header">Total</div>
             <div class="header">Mod</div>
