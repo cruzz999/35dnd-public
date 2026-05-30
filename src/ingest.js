@@ -52,4 +52,80 @@ export function applySheetRowToGeneralDetailed(row, state, render) {
 
   if (row['Armor']) g.ac = g.ac || {}, g.ac.armor = Number(row['Armor']) || g.ac.armor || 0;
   if (row['Shield']) g.ac = g.ac || {}, g.ac.shield = Number(row['Shield']) || g.ac.shield || 0;
-  if (row['Mage Armor']) g.buffs
+  if (row['Mage Armor']) g.buffs = g.buffs || {}, g.buffs.mageArmor = (String(row['Mage Armor']).trim().toLowerCase() === '1' || String(row['Mage Armor']).trim().toLowerCase() === 'yes') ? 1 : 0;
+  if (row['Shield Spell']) g.buffs = g.buffs || {}, g.buffs.shieldSpell = (String(row['Shield Spell']).trim().toLowerCase() === '1' || String(row['Shield Spell']).trim().toLowerCase() === 'yes') ? 1 : 0;
+
+  // After mapping, mark loaded and render
+  state.loaded = true;
+  if (typeof render === 'function') render();
+}
+
+/**
+ * Robust loader: tries direct CSV, proxy, Google export gids, published CSV.
+ * Returns { ok:true } or { ok:false, tried: [...] }.
+ */
+export async function loadFromGoogleSheets(url, state, render, setProgress) {
+  setProgress?.(2, 'Starting sheet load...');
+  const sheetId = extractSpreadsheetId(url);
+  const tried = [];
+
+  function isCsvUrl(u) { return /\.csv($|\?)/i.test(String(u)); }
+
+  // 1) direct CSV
+  if (isCsvUrl(url)) {
+    const r = await tryFetchText(url);
+    tried.push({ method: 'direct-csv', url, result: r });
+    if (r.ok && r.text) {
+      const rows = parseCsv(r.text);
+      const objs = csvRowsToObjects(rows);
+      if (objs.length) { applySheetRowToGeneralDetailed(objs[0], state, render); setProgress?.(100, 'Sheet loaded (direct CSV)'); return { ok:true }; }
+    }
+  }
+
+  // 2) proxy
+  if (sheetId) {
+    try {
+      const proxyUrl = `/gs/csv?id=${encodeURIComponent(sheetId)}&gid=0`;
+      const r = await tryFetchText(proxyUrl);
+      tried.push({ method: 'proxy', url: proxyUrl, result: r });
+      if (r.ok && r.text) {
+        const rows = parseCsv(r.text);
+        const objs = csvRowsToObjects(rows);
+        if (objs.length) { applySheetRowToGeneralDetailed(objs[0], state, render); setProgress?.(100, 'Sheet loaded (proxy)'); return { ok:true }; }
+      }
+    } catch (e) { tried.push({ method:'proxy-ex', error:String(e) }); }
+  }
+
+  // 3) google export gids
+  if (sheetId) {
+    const candidateGids = [2004670713, 0, 1231385124, 2140364605];
+    for (const gid of candidateGids) {
+      try {
+        const exportUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${gid}`;
+        const r = await tryFetchText(exportUrl);
+        tried.push({ method: 'google-export', gid, url: exportUrl, result: r });
+        if (r.ok && r.text) {
+          const rows = parseCsv(r.text);
+          const objs = csvRowsToObjects(rows);
+          if (objs.length) { applySheetRowToGeneralDetailed(objs[0], state, render); setProgress?.(100, `Sheet loaded (gid=${gid})`); return { ok:true }; }
+        }
+      } catch (e) { tried.push({ method:'google-export-ex', gid, error:String(e) }); }
+    }
+
+    // 4) published CSV
+    try {
+      const pubUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/pub?output=csv`;
+      const r = await tryFetchText(pubUrl);
+      tried.push({ method: 'published-csv', url: pubUrl, result: r });
+      if (r.ok && r.text) {
+        const rows = parseCsv(r.text);
+        const objs = csvRowsToObjects(rows);
+        if (objs.length) { applySheetRowToGeneralDetailed(objs[0], state, render); setProgress?.(100, 'Sheet loaded (published CSV)'); return { ok:true }; }
+      }
+    } catch (e) { tried.push({ method:'published-ex', error:String(e) }); }
+  }
+
+  console.error('[ingest] all attempts failed', tried);
+  setProgress?.(0, 'Sheet load failed — see console for details.');
+  return { ok:false, tried };
+}
