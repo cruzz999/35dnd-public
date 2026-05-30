@@ -64,3 +64,32 @@ input[type="number"], input[type="text"]{padding:6px;border-radius:4px;border:1p
 /* Small helpers */
 .status{font-size:0.9rem;color:var(--muted);margin-left:8px;}
 .no-select-during-pan{user-select:none;pointer-events:auto;}
+
+/* Feats panel styling (placed below Abilities) */
+.feats-panel {
+  margin-top: 12px;
+  padding: 10px;
+  border-radius: 6px;
+  background: var(--panel-bg, #fff);
+  box-shadow: 0 1px 0 rgba(0,0,0,0.04);
+}
+.feats-panel .feats-title {
+  margin: 0 0 8px 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+.feats-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.feat-item {
+  background: var(--chip-bg, #f3f4f6);
+  padding: 6px 8px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+}
+.hint { color: #777; font-style: italic; }
