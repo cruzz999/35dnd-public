@@ -50,33 +50,87 @@
     redraw();
   }
 
-  function ensureCanvasSize() {
+ function ensureCanvasSize() {
     const canvas = el.canvas;
     if (!canvas) return;
     const appEl = el.app || document.getElementById("app");
-    // Use app element size so canvas overlays paper exactly
-    const w = Math.max(appEl?.offsetWidth || 1200, 1200);
-    const h = Math.max(appEl?.offsetHeight || 800, 800);
+    const worldEl = el.world || document.getElementById("world");
+    // Size the canvas to match the app element exactly (so ink overlays the paper)
+    const w = Math.max(appEl.offsetWidth || 1200, 1200);
+    const h = Math.max(appEl.offsetHeight || 800, 800);
     const dpr = window.devicePixelRatio || 1;
+
+    // Position canvas relative to the world container so it overlays the app
+    // appEl.offsetLeft/Top are relative to world content box (no transforms)
     canvas.style.position = "absolute";
-    canvas.style.left = "0px";
-    canvas.style.top = "0px";
+    canvas.style.left = `${appEl.offsetLeft}px`;
+    canvas.style.top = `${appEl.offsetTop}px`;
     canvas.style.width = `${w}px`;
     canvas.style.height = `${h}px`;
+
+    // Set backing store size using devicePixelRatio
     canvas.width = Math.floor(w * dpr);
     canvas.height = Math.floor(h * dpr);
+
+    // Reset transform so drawing uses CSS pixels
     ctx = canvas.getContext("2d");
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    // Keep pointer events off by default; app toggles when pen is ON
+    canvas.style.pointerEvents = getState().penOn ? "auto" : "none";
     canvas.style.touchAction = "none";
   }
 
+  // Convert client coordinates to coordinates relative to the app (untransformed)
   function screenToWorld(clientX, clientY) {
-    const st = getState();
-    const vr = el.viewport?.getBoundingClientRect();
-    if (!vr) return { x: clientX, y: clientY };
-    const vx = clientX - vr.left;
-    const vy = clientY - vr.top;
-    return { x: (vx - (st.pan?.x || 0)) / (st.zoom || 1), y: (vy - (st.pan?.y || 0)) / (st.zoom || 1) };
+    // If world has a CSS transform (translate + scale), invert it using DOMMatrix
+    const worldEl = el.world || document.getElementById("world");
+    const appEl = el.app || document.getElementById("app");
+    if (!worldEl || !appEl) return { x: clientX, y: clientY };
+
+    // Get world bounding rect to compute point relative to world origin
+    const worldRect = worldEl.getBoundingClientRect();
+    const localX = clientX - worldRect.left;
+    const localY = clientY - worldRect.top;
+
+    // Get computed transform matrix of the world element
+    const style = getComputedStyle(worldEl);
+    const transform = style.transform || "none";
+
+    if (transform === "none") {
+      // No transform: map directly to world-local coordinates, then to app-local
+      const st = getState();
+      // world is translated by state.pan and scaled by state.zoom in CSS transform
+      // Convert to app-local by reversing translate and scale
+      const x = (localX - (st.pan?.x || 0)) / (st.zoom || 1);
+      const y = (localY - (st.pan?.y || 0)) / (st.zoom || 1);
+      // Now offset by app element position inside world
+      const appOffsetX = appEl.offsetLeft || 0;
+      const appOffsetY = appEl.offsetTop || 0;
+      return { x: x - appOffsetX, y: y - appOffsetY };
+    }
+
+    // Use DOMMatrix to invert the transform and map the point back to untransformed coords
+    try {
+      const matrix = new DOMMatrixReadOnly(transform);
+      const inv = matrix.inverse();
+      // point relative to world origin
+      const pt = new DOMPoint(localX, localY);
+      const unmapped = pt.matrixTransform(inv);
+      // unmapped is now coordinates in the world element's local coordinate system
+      // Convert to coordinates relative to the app element inside world
+      const appOffsetX = appEl.offsetLeft || 0;
+      const appOffsetY = appEl.offsetTop || 0;
+      return { x: unmapped.x - appOffsetX, y: unmapped.y - appOffsetY };
+    } catch (err) {
+      // Fallback: use state.pan/state.zoom inverse
+      const st = getState();
+      const x = (localX - (st.pan?.x || 0)) / (st.zoom || 1);
+      const y = (localY - (st.pan?.y || 0)) / (st.zoom || 1);
+      const appOffsetX = appEl.offsetLeft || 0;
+      const appOffsetY = appEl.offsetTop || 0;
+      return { x: x - appOffsetX, y: y - appOffsetY };
+    }
   }
 
   function drawStroke(stroke) {
@@ -132,14 +186,22 @@
   function pointerDown(e) {
     const s = getState();
     if (!s.penOn) return;
-    // ignore touch when pen mode is on (stylus only)
+    // allow stylus/pointer; ignore touch if you want stylus-only
+    // (keep touch support if desired by removing the next line)
     if (e.pointerType === "touch") return;
+
+    // Ensure canvas has correct size/position before starting stroke
+    ensureCanvasSize();
+
     drawing = true;
     activePointerId = e.pointerId;
+
+    // Map the initial point using the robust screenToWorld
     const p = screenToWorld(e.clientX, e.clientY);
     currentStroke = { erase: !!s.erasing, pts: [p] };
     getStrokesForView(s.view).push(currentStroke);
-    try { el.canvas.setPointerCapture(e.pointerId); } catch {}
+
+    try { el.canvas.setPointerCapture(e.pointerId); } catch (err) {}
     e.preventDefault();
     redraw();
   }
@@ -149,6 +211,7 @@
     if (!s.penOn || !drawing || !currentStroke) return;
     if (activePointerId !== null && e.pointerId !== activePointerId) return;
     if (e.pointerType === "touch") return;
+    // Map subsequent points the same way
     currentStroke.pts.push(screenToWorld(e.clientX, e.clientY));
     e.preventDefault();
     redraw();
@@ -161,7 +224,7 @@
     drawing = false;
     currentStroke = null;
     if (el.canvas && e) {
-      try { el.canvas.releasePointerCapture(e.pointerId); } catch {}
+      try { el.canvas.releasePointerCapture(e.pointerId); } catch (err) {}
     }
     activePointerId = null;
     saveForView(getState().view);
