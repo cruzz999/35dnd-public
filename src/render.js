@@ -104,12 +104,24 @@ export function renderGeneral(state, ink) {
     `;
   }).join('');
 
-  // Build feats HTML (moved out of Derived)
-  const featsHtmlPanel = g.feats.length ? `
+  // Build feats HTML (plain list, skip title-like first row)
+  const filteredFeats = (g.feats || []).filter(f => {
+    const label = (typeof f === 'string') ? f : (f.label || '');
+    if (!label) return false;
+    const nk = String(label).trim().toUpperCase();
+    if (nk === 'FEATS' || nk === 'FEATS & SPECIAL ABILITIES' || nk === 'FEATS & SPECIAL') return false;
+    if (/FEATS/.test(nk) && /SPECIAL/.test(nk)) return false;
+    return true;
+  });
+
+  const featsHtmlPanel = filteredFeats.length ? `
     <section class="feats-panel">
       <h3 class="feats-title">Feats</h3>
-      <ul class="feats-list">
-        ${g.feats.map(f => `<li class="feat-item">${f.url ? `<a href="${escapeHtml(f.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(f.label||f)}</a>` : escapeHtml(f.label||f)}</li>`).join('')}
+      <ul class="feats-list simple">
+        ${filteredFeats.map(f => {
+          const text = (typeof f === 'string') ? f : (f.label || '');
+          return `<li class="feat-item">${escapeHtml(text)}</li>`;
+        }).join('')}
       </ul>
     </section>
   ` : `<div class="hint">No feats listed.</div>`;
