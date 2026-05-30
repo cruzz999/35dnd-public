@@ -11,28 +11,28 @@ import { parseCsv, csvRowsToObjects } from './utils.js';
 const CELL_MAP = {
   // Basic identity fields (edit these to match your sheet)
   characterName: 'A1',   // user suggested A1
-  playerName:    'A2',
-  xp:            'A3',
+  playerName:    'B1',
+  xp:            'E1',
   classLine:     'A4',
-  race:          'A5',
+  race:          'D4',
 
   // Abilities: point these at the cell that contains the numeric score
   // Defaults are placeholders — change to the real cells in your sheet
-  str: 'B10',
-  dex: 'B11',
-  con: 'B12',
-  int: 'B13',
-  wis: 'B14',
-  cha: 'B15',
+  str: 'D12',
+  dex: 'D13',
+  con: 'D14',
+  int: 'D15',
+  wis: 'D16',
+  cha: 'D17',
 
   // AC / buffs
-  acTotal: 'C5',        // if sheet shows total AC
+  acTotal: 'B21',        // if sheet shows total AC
   mageArmor: 'D5',      // cell that contains "1" or "yes" if mage armor active
   shieldSpell: 'D6',
 
   // Feats block: starting cell (column,row) and number of rows to read
-  featsStart: 'A30',
-  featsCount: 12
+  featsStart: 'A46',
+  featsCount: 20
 };
 
 // GIDs for tabs (already provided)
