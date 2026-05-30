@@ -169,9 +169,18 @@
       }
     }
 
+    // Write into window.state for backward compatibility
     window.state = window.state || {};
     window.state.data = window.state.data || {};
     window.state.data.general = general;
+
+    // If app provided a receiver, hand off the parsed objects
+    if (typeof window.receiveIngestedData === "function") {
+      const spells = (window.state.data && window.state.data.spells) ? window.state.data.spells : { sorc: [], wiz: [], meta: null };
+      try { window.receiveIngestedData(general, spells); } catch (e) { /* ignore receiver errors */ }
+    }
+
+    return general;
   }
 
   /* -------------------------
@@ -258,12 +267,22 @@
       return rows;
     }
 
+    const spells = { sorc: [], wiz: [], meta: { sorcLevels: 1, wizLevels: 5, umLevels: 2, arcaneSpellpower: 1 } };
+    spells.sorc = readBlock(sorcHeader, "sorc");
+    spells.wiz = readBlock(wizHeader, "wiz");
+
+    // Write into window.state for backward compatibility
     window.state = window.state || {};
     window.state.data = window.state.data || {};
-    window.state.data.spells = window.state.data.spells || { sorc: [], wiz: [], meta: null };
-    window.state.data.spells.sorc = readBlock(sorcHeader, "sorc");
-    window.state.data.spells.wiz = readBlock(wizHeader, "wiz");
-    window.state.data.spells.meta = { sorcLevels: 1, wizLevels: 5, umLevels: 2, arcaneSpellpower: 1 };
+    window.state.data.spells = spells;
+
+    // If app provided a receiver, hand off the parsed objects
+    if (typeof window.receiveIngestedData === "function") {
+      const general = (window.state.data && window.state.data.general) ? window.state.data.general : null;
+      try { window.receiveIngestedData(general, spells); } catch (e) { /* ignore receiver errors */ }
+    }
+
+    return spells;
   }
 
   /* -------------------------
@@ -273,9 +292,7 @@
     const ws = wb.Sheets["General info"];
     if (!ws) throw new Error("Sheet 'General info' not found");
     const v = (addr, fallback = "") => (ws[addr] && ws[addr].v !== undefined) ? ws[addr].v : fallback;
-    window.state = window.state || {};
-    window.state.data = window.state.data || {};
-    window.state.data.general = {
+    const general = {
       characterName: String(v("A1", "")),
       playerName: String(v("B1", "")),
       alignment: String(v("C1", "")),
@@ -302,6 +319,19 @@
       feats: [],
       languages: []
     };
+
+    // Write into window.state for backward compatibility
+    window.state = window.state || {};
+    window.state.data = window.state.data || {};
+    window.state.data.general = general;
+
+    // Call receiver if present
+    if (typeof window.receiveIngestedData === "function") {
+      const spells = (window.state.data && window.state.data.spells) ? window.state.data.spells : { sorc: [], wiz: [], meta: null };
+      try { window.receiveIngestedData(general, spells); } catch (e) { /* ignore */ }
+    }
+
+    return general;
   }
 
   function ingestSpellsFromXlsx(wb) {
@@ -399,12 +429,22 @@
       return rows;
     }
 
+    const spells = { sorc: [], wiz: [], meta: { sorcLevels: 1, wizLevels: 5, umLevels: 2, arcaneSpellpower: 1 } };
+    spells.sorc = readBlock(sorcHeader, "sorc");
+    spells.wiz = readBlock(wizHeader, "wiz");
+
+    // Write into window.state for backward compatibility
     window.state = window.state || {};
     window.state.data = window.state.data || {};
-    window.state.data.spells = window.state.data.spells || { sorc: [], wiz: [], meta: null };
-    window.state.data.spells.sorc = readBlock(sorcHeader, "sorc");
-    window.state.data.spells.wiz = readBlock(wizHeader, "wiz");
-    window.state.data.spells.meta = { sorcLevels: 1, wizLevels: 5, umLevels: 2, arcaneSpellpower: 1 };
+    window.state.data.spells = spells;
+
+    // Call receiver if present
+    if (typeof window.receiveIngestedData === "function") {
+      const general = (window.state.data && window.state.data.general) ? window.state.data.general : null;
+      try { window.receiveIngestedData(general, spells); } catch (e) { /* ignore */ }
+    }
+
+    return spells;
   }
 
   /* -------------------------
@@ -423,14 +463,30 @@
     const generalCsv = await fetchCsvViaProxy(id, gids.general);
     const generalGrid = csvToGrid(generalCsv);
 
-    ingestSpellsFromGrid(spellsGrid);
-    ingestGeneralFromGrid(generalGrid);
+    // Parse into objects
+    const spells = ingestSpellsFromGrid(spellsGrid);
+    const general = ingestGeneralFromGrid(generalGrid);
 
+    // Ensure window.state updated for backward compatibility
     window.state = window.state || {};
+    window.state.data = window.state.data || {};
+    window.state.data.general = general;
+    window.state.data.spells = spells;
     window.state.loaded = true;
-    if (typeof setProgress === "function") setProgress(95, "Rendering…");
-    if (typeof render === "function") render();
-    if (typeof setProgress === "function") setProgress(100, "Done ✅");
+
+    // Prefer explicit receiver if app provided one
+    if (typeof window.receiveIngestedData === "function") {
+      try {
+        window.receiveIngestedData(general, spells);
+      } catch (e) {
+        // swallow receiver errors to avoid breaking the ingest flow
+        console.error("receiveIngestedData error:", e);
+      }
+    } else {
+      if (typeof setProgress === "function") setProgress(95, "Rendering…");
+      if (typeof render === "function") render();
+      if (typeof setProgress === "function") setProgress(100, "Done ✅");
+    }
   }
 
   // Expose API
