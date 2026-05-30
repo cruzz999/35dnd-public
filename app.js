@@ -1,7 +1,9 @@
 /* ========================================================================== 
    DnD Ink Sheet - app.js (drop-in replacement)
-   - Deterministic canvas pointer handling: canvas inert by default, active only when penOn
+   - Fix: avoid starting pan when pointerdown originates on interactive elements
+   - Pan threshold to avoid accidental capture on small moves
    - Canvas attached to #world so it moves with pan/zoom
+   - Canvas pointer-events authoritative via body.pen-active and inline styles
    - Delegated checkbox handling with requestAnimationFrame to avoid races
    - Defensive ink API guards
    ========================================================================== */
@@ -153,10 +155,19 @@ if (el.viewport) {
 }
 
 /* ----------------------------- Pan mode -------------------------------- */
+/* panDrag: active pan state
+   panPending: pointerdown started a potential pan but not yet committed
+   PAN_THRESHOLD: pixels to move before committing to pan (prevents accidental capture)
+*/
 let panDrag = { active: false, startX: 0, startY: 0, basePanX: 0, basePanY: 0 };
+let panPending = false;
+const PAN_THRESHOLD = 6; // pixels
 
-function beginPan(e) {
+function beginPanCommit() {
   panDrag.active = true;
+}
+function beginPanInit(e) {
+  panPending = true;
   panDrag.startX = e.clientX;
   panDrag.startY = e.clientY;
   panDrag.basePanX = state.pan.x;
@@ -172,17 +183,55 @@ function movePan(e) {
   if (window.ink && typeof window.ink.ensureCanvasSize === "function") window.ink.ensureCanvasSize();
   if (window.ink && typeof window.ink.redraw === "function") window.ink.redraw();
 }
-function endPan() { panDrag.active = false; }
+function endPan(e) {
+  panPending = false;
+  panDrag.active = false;
+  try { el.viewport && el.viewport.releasePointerCapture && el.viewport.releasePointerCapture(e?.pointerId); } catch (err) {}
+}
 
+/* Viewport pointer handling with interactive-element guard and threshold */
 if (el.viewport) {
   el.viewport.addEventListener("pointerdown", (e) => {
+    // If pen is active we don't start panning
     if (state.penOn) return;
-    beginPan(e);
-    el.viewport.setPointerCapture?.(e.pointerId);
+
+    // If the pointerdown started on an interactive element, don't begin pan.
+    // This prevents the pan code from stealing mouseup/change events for inputs.
+    const interactive = e.target && e.target.closest && e.target.closest('input, button, label, a, textarea, select, [contenteditable]');
+    if (interactive) return;
+
+    // Initialize pending pan; commit only after threshold movement
+    beginPanInit(e);
+    try { el.viewport.setPointerCapture?.(e.pointerId); } catch (err) {}
   });
-  el.viewport.addEventListener("pointermove", (e) => movePan(e));
-  el.viewport.addEventListener("pointerup", endPan);
-  el.viewport.addEventListener("pointercancel", endPan);
+
+  el.viewport.addEventListener("pointermove", (e) => {
+    if (!panPending && !panDrag.active) return;
+    if (!panDrag.active) {
+      const dx = Math.abs(e.clientX - panDrag.startX);
+      const dy = Math.abs(e.clientY - panDrag.startY);
+      if (dx + dy < PAN_THRESHOLD) return; // not enough movement yet
+      // commit to panning
+      beginPanCommit();
+    }
+    movePan(e);
+  });
+
+  el.viewport.addEventListener("pointerup", (e) => {
+    // If we never committed to a pan, let the click/mouseup proceed normally
+    if (!panDrag.active) {
+      panPending = false;
+      try { el.viewport.releasePointerCapture?.(e.pointerId); } catch (err) {}
+      return;
+    }
+    endPan(e);
+  });
+
+  el.viewport.addEventListener("pointercancel", (e) => {
+    panPending = false;
+    panDrag.active = false;
+    try { el.viewport.releasePointerCapture?.(e.pointerId); } catch (err) {}
+  });
 }
 
 /* ------------------------------ Inline Ink ------------------------------ */
@@ -234,7 +283,7 @@ const ink = (() => {
     if (ctx) ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     canvasEl.style.touchAction = "none";
-    // IMPORTANT: do not set pointerEvents here except to the authoritative default
+    // authoritative default: inert unless penOn is true
     canvasEl.style.pointerEvents = state.penOn ? 'auto' : 'none';
   }
 
@@ -526,14 +575,13 @@ function renderGeneral() {
   </div>
   `;
 
-  // Ability input wiring
+  // Ability input wiring (defer re-render to next frame)
   document.querySelectorAll('.ability-breakdown-grid input[data-ab][data-field]').forEach(inp => {
     inp.addEventListener('input', () => {
       const ab = inp.getAttribute('data-ab');
       const field = inp.getAttribute('data-field');
       const val = Number(inp.value);
       g.abilities[ab][field] = Number.isFinite(val) ? val : 0;
-      // Defer re-render to next frame to avoid interrupting input commit
       requestAnimationFrame(() => { renderGeneral(); if (window.ink && typeof window.ink.redraw === "function") window.ink.redraw(); });
     });
   });
