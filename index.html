@@ -24,17 +24,24 @@
       <button id="undo" class="btn">Undo</button>
       <button id="clearInk" class="btn">Clear</button>
       <!-- Add these near the other controls in the topbar -->
+<!-- Pen width control (replace existing penWidth control) -->
 <label style="display:flex;align-items:center;gap:6px;">
   <span style="font-size:13px;">Width</span>
-  <input id="penWidth" type="range" min="1" max="24" value="2" style="width:120px;">
-  <span id="penWidthLabel" style="min-width:28px;text-align:center;font-size:13px;">2</span>
+  <input id="penWidth" type="range" min="0.25" max="24" step="0.25" value="0.5" style="width:120px;">
+  <span id="penWidthLabel" style="min-width:36px;text-align:center;font-size:13px;">0.5</span>
 </label>
 
+<!-- Greyscale control (unchanged) -->
 <label style="display:flex;align-items:center;gap:6px;">
   <span style="font-size:13px;">Grey</span>
   <input id="penGrey" type="range" min="0" max="100" value="0" style="width:120px;">
   <span id="penGreyLabel" style="min-width:36px;text-align:center;font-size:13px;">#000</span>
 </label>
+
+<!-- Google Sheets input (auto-populated) -->
+<input id="gsUrl" placeholder="Google Sheets URL"
+  value="https://docs.google.com/spreadsheets/d/1P_Vslp-rxiTcntUZVLR2BjJrdeQqdWfPLeigs2Gnx_U/edit?usp=sharing"
+  style="width:60%" />
     </div>
 
 
