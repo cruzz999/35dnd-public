@@ -1,6 +1,5 @@
 app.js
 index.html
-persistence/idb.js
 src/ingest.js
 src/render.js
 src/utils.js
