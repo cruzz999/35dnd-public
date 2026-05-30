@@ -1,5 +1,5 @@
 /* ==========================================================================
-   DnD 3.5 Ink Sheet - app.js (uses external gs_ingest.js and ink.js)
+   DnD 3.5 Ink Sheet - app.js (fixed: ensure ink canvas sized after render/load)
    ========================================================================== */
 
 /* ----------------------------- DOM helpers ------------------------------ */
@@ -47,35 +47,6 @@ const state = {
     spells: { sorc: [], wiz: [], meta: null }
   }
 };
-// Merge any data left in window.state into the app's local state
-function mergeWindowStateIfPresent() {
-  try {
-    if (window.state && window.state.data) {
-      const g = window.state.data.general ?? null;
-      const s = window.state.data.spells ?? null;
-      let changed = false;
-      if (g && (!state.data || !state.data.general)) {
-        state.data = state.data || {};
-        state.data.general = g;
-        changed = true;
-      }
-      if (s && (!state.data || !state.data.spells)) {
-        state.data = state.data || {};
-        state.data.spells = s;
-        changed = true;
-      }
-      if (changed) {
-        state.loaded = true;
-        // Re-render and ensure ink canvas matches
-        if (typeof render === "function") render();
-        if (window.ink && typeof window.ink.ensureCanvasSize === "function") window.ink.ensureCanvasSize();
-        if (window.ink && typeof window.ink.redraw === "function") window.ink.redraw();
-      }
-    }
-  } catch (e) {
-    console.warn("mergeWindowStateIfPresent failed", e);
-  }
-}
 
 /* ------------------ ensureGs helper (defensive) ------------------------- */
 function ensureGs() {
@@ -136,6 +107,7 @@ function syncViewportHeight() {
 window.addEventListener("resize", () => {
   syncViewportHeight();
   applyWorldTransform();
+  if (window.ink && typeof window.ink.ensureCanvasSize === "function") window.ink.ensureCanvasSize();
   if (window.ink && typeof window.ink.redraw === "function") window.ink.redraw();
 });
 syncViewportHeight();
@@ -164,6 +136,8 @@ function setZoom(newZoom, anchorClientX = null, anchorClientY = null) {
   }
   state.zoom = newZoom;
   applyWorldTransform();
+  // After changing zoom, ensure ink canvas is resized to match new layout
+  if (window.ink && typeof window.ink.ensureCanvasSize === "function") window.ink.ensureCanvasSize();
   if (window.ink && typeof window.ink.redraw === "function") window.ink.redraw();
 }
 function resetView() {
@@ -171,6 +145,7 @@ function resetView() {
   state.pan.x = 20;
   state.pan.y = 20;
   applyWorldTransform();
+  if (window.ink && typeof window.ink.ensureCanvasSize === "function") window.ink.ensureCanvasSize();
   if (window.ink && typeof window.ink.redraw === "function") window.ink.redraw();
 }
 
@@ -180,6 +155,7 @@ function setView(viewName) {
   setProgress(1, `View: ${viewName}`);
   try {
     render();
+    // load ink strokes for the view
     if (window.ink && typeof window.ink.loadForView === "function") window.ink.loadForView(viewName);
   } catch (e) {
     console.error(e);
@@ -241,6 +217,7 @@ function movePan(e) {
   state.pan.x = panDrag.basePanX + dx;
   state.pan.y = panDrag.basePanY + dy;
   applyWorldTransform();
+  if (window.ink && typeof window.ink.ensureCanvasSize === "function") window.ink.ensureCanvasSize();
   if (window.ink && typeof window.ink.redraw === "function") window.ink.redraw();
 }
 function endPan() { panDrag.active = false; }
@@ -515,17 +492,19 @@ function render() {
       </div>
     `;
     applyWorldTransform();
-    if (window.ink) window.ink.redraw();
+    // ensure ink canvas matches layout after render
+    if (window.ink && typeof window.ink.ensureCanvasSize === "function") window.ink.ensureCanvasSize();
+    if (window.ink && typeof window.ink.redraw === "function") window.ink.redraw();
     return;
   }
   if (state.view === "General") renderGeneral();
   else if (state.view === "Spells") renderSpells();
   else el.app.innerHTML = `<div class="panel"><h2>${escapeHtml(state.view)}</h2><div class="hint">Not implemented yet.</div></div>`;
   applyWorldTransform();
-  if (window.ink) {
-    window.ink.ensureCanvasSize();
-    window.ink.redraw();
-  }
+
+  // CRITICAL: ensure the ink canvas is sized to the final layout AFTER render
+  if (window.ink && typeof window.ink.ensureCanvasSize === "function") window.ink.ensureCanvasSize();
+  if (window.ink && typeof window.ink.redraw === "function") window.ink.redraw();
 }
 
 /* --------------------------- XLSX loading (disabled) ------------------------------ */
@@ -536,47 +515,87 @@ if (el.file) {
   });
 }
 
+/* ---------------------- Merge helper (defensive) ---------------------- */
+// Merge any data left in window.state into the app's local state
+function mergeWindowStateIfPresent() {
+  try {
+    if (window.state && window.state.data) {
+      const g = window.state.data.general ?? null;
+      const s = window.state.data.spells ?? null;
+      let changed = false;
+      if (g && (!state.data || !state.data.general)) {
+        state.data = state.data || {};
+        state.data.general = g;
+        changed = true;
+      }
+      if (s && (!state.data || !state.data.spells)) {
+        state.data = state.data || {};
+        state.data.spells = s;
+        changed = true;
+      }
+      if (changed) {
+        state.loaded = true;
+        // Re-render and ensure ink canvas matches
+        if (typeof render === "function") render();
+        if (window.ink && typeof window.ink.ensureCanvasSize === "function") window.ink.ensureCanvasSize();
+        if (window.ink && typeof window.ink.redraw === "function") window.ink.redraw();
+      }
+    }
+  } catch (e) {
+    console.warn("mergeWindowStateIfPresent failed", e);
+  }
+}
+
 /* ---------------------- Hook Google Sheets button ---------------------- */
 window.addEventListener("DOMContentLoaded", () => {
-if (el.loadGs && el.gsUrl) {
-  el.loadGs.addEventListener("click", async () => {
-    try {
-      const url = el.gsUrl.value.trim();
-      if (!url) {
-        setProgress(0, "Paste a Google Sheets URL first.");
-        return;
-      }
-      const gs = ensureGs();
+  if (el.loadGs && el.gsUrl) {
+    el.loadGs.addEventListener("click", async () => {
+      try {
+        const url = el.gsUrl.value.trim();
+        if (!url) {
+          setProgress(0, "Paste a Google Sheets URL first.");
+          return;
+        }
+        const gs = ensureGs();
 
-      // Optionally patch gs.loadFromGoogleSheets once to call receiveIngestedData if present
-      if (!gs.__patchedForApp) {
-        const orig = gs.loadFromGoogleSheets.bind(gs);
-        gs.loadFromGoogleSheets = async function (sheetUrl) {
-          await orig(sheetUrl);
-          // If ingest wrote to window.state, hand it to the app receiver
-          try {
-            const general = window.state?.data?.general ?? null;
-            const spells = window.state?.data?.spells ?? null;
-            if (typeof window.receiveIngestedData === "function") {
-              window.receiveIngestedData(general, spells);
+        // Patch loadFromGoogleSheets once to call receiveIngestedData if present
+        if (!gs.__patchedForApp) {
+          const orig = gs.loadFromGoogleSheets.bind(gs);
+          gs.loadFromGoogleSheets = async function (sheetUrl) {
+            await orig(sheetUrl);
+            // If ingest wrote to window.state, hand it to the app receiver
+            try {
+              const general = window.state?.data?.general ?? null;
+              const spells = window.state?.data?.spells ?? null;
+              if (typeof window.receiveIngestedData === "function") {
+                window.receiveIngestedData(general, spells);
+              }
+            } catch (err) {
+              console.warn("post-ingest merge failed", err);
             }
-          } catch (err) {
-            console.warn("post-ingest merge failed", err);
-          }
-        };
-        gs.__patchedForApp = true;
+          };
+          gs.__patchedForApp = true;
+        }
+
+        await gs.loadFromGoogleSheets(url);
+
+        // Defensive merge in case gs_ingest wrote to window.state but didn't call the receiver
+        mergeWindowStateIfPresent();
+
+        // Ensure layout/render is up-to-date and ink canvas matches
+        if (typeof render === "function") render();
+        if (window.ink && typeof window.ink.ensureCanvasSize === "function") window.ink.ensureCanvasSize();
+        if (window.ink && typeof window.ink.redraw === "function") window.ink.redraw();
+
+        setProgress(100, "Done ✅");
+      } catch (e) {
+        console.error(e);
+        setProgress(0, "Google Sheets load failed (see console).");
       }
-
-      await gs.loadFromGoogleSheets(url);
-
-      // Defensive merge in case gs_ingest wrote to window.state but didn't call the receiver
-      mergeWindowStateIfPresent();
-    } catch (e) {
-      console.error(e);
-      setProgress(0, "Google Sheets load failed (see console).");
-    }
-  });
-}
+    });
+  } else {
+    console.warn("Google Sheets UI not present (#gsUrl / #loadGs).");
+  }
 
   // Auto-fill button wiring (if present)
   if (el.fillGs && el.gsUrl) {
@@ -661,5 +680,7 @@ if (el.loadGs && el.gsUrl) {
 
 /* --------------------------- Initial setup ----------------------------- */
 applyWorldTransform();
+// Ensure ink canvas is sized after initial render
+if (window.ink && typeof window.ink.ensureCanvasSize === "function") window.ink.ensureCanvasSize();
 if (window.ink && typeof window.ink.loadForView === "function") window.ink.loadForView(state.view);
 render();
