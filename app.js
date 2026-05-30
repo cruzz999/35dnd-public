@@ -57,6 +57,8 @@ const state = {
     general: null,
     spells: { sorc: [], wiz: [], meta: null },
   },
+     penWidth: 2,
+  penGrey: 0, // 0 = black, 100 = white
 };
 
 // Receive ingested data from gs_ingest and merge into app state
@@ -309,16 +311,21 @@ const ink = (() => {
     if (!ctx) return;
     const pts = stroke.pts || [];
     if (pts.length < 2) return;
+
     ctx.save();
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+
     if (stroke.erase) {
       ctx.globalCompositeOperation = "destination-out";
-      ctx.lineWidth = 18;
+      ctx.lineWidth = stroke.width ? Math.max(2, stroke.width*6) : 18;
       ctx.strokeStyle = "rgba(0,0,0,1)";
     } else {
       ctx.globalCompositeOperation = "source-over";
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = "#000";
+      ctx.lineWidth = stroke.width || 2;
+      ctx.strokeStyle = stroke.color || "#000";
     }
+
     ctx.beginPath();
     ctx.moveTo(pts[0].x, pts[0].y);
     for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
@@ -358,7 +365,9 @@ const ink = (() => {
     drawing = true;
     activePointerId = e.pointerId;
     const p = screenToWorld(e.clientX, e.clientY);
-    currentStroke = { erase: state.erasing, pts: [p] };
+    const grey = Math.round((state.penGrey || 0) * 2.55); // 0-255
+    const color = `rgb(${grey},${grey},${grey})`;
+    currentStroke = { erase: state.erasing, pts: [p], width: Number(state.penWidth) || 2, color };
     getStrokesForView(state.view).push(currentStroke);
     try { canvas.setPointerCapture(e.pointerId); } catch {}
     e.preventDefault();
@@ -415,7 +424,7 @@ const ink = (() => {
   window.addEventListener("resize", () => { ensureCanvasSize(); redraw(); });
   ensureCanvasSize();
 
-  return { redraw, loadForView, setPenMode, setEraser };
+  return { redraw, loadForView, setPenMode, setEraser, setPenWidth: (w) => { state.penWidth = w; }, setPenGrey: (g) => { state.penGrey = g; }, undo, clear, saveForView, _internal: { screenToWorld } };
 })();
 
 /* ----------------- Derived computations (General view) ----------------- */
@@ -719,16 +728,40 @@ window.addEventListener("DOMContentLoaded", () => {
     console.warn("Google Sheets UI not present (#gsUrl / #loadGs).");
   }
 
+  // Pen width control
+  const penWidthEl = document.getElementById("penWidth");
+  const penWidthLabel = document.getElementById("penWidthLabel");
+  if (penWidthEl) {
+    penWidthEl.value = state.penWidth || 2;
+    penWidthLabel.textContent = penWidthEl.value;
+    penWidthEl.addEventListener("input", () => {
+      const v = Number(penWidthEl.value) || 2;
+      penWidthLabel.textContent = v;
+      state.penWidth = v;
+      const inkApi = window.ink;
+      if (inkApi && typeof inkApi.setPenWidth === "function") inkApi.setPenWidth(v);
+    });
+  }
 
-
-
-
-
-
-
-
-
-
+  // Greyscale control
+  const penGreyEl = document.getElementById("penGrey");
+  const penGreyLabel = document.getElementById("penGreyLabel");
+  if (penGreyEl) {
+    penGreyEl.value = state.penGrey || 0;
+    const updateGreyLabel = (val) => {
+      const grey = Math.round(val * 2.55);
+      const hex = grey.toString(16).padStart(2, "0");
+      penGreyLabel.textContent = `#${hex}${hex}${hex}`;
+    };
+    updateGreyLabel(penGreyEl.value);
+    penGreyEl.addEventListener("input", () => {
+      const v = Number(penGreyEl.value) || 0;
+      state.penGrey = v;
+      updateGreyLabel(v);
+      const inkApi = window.ink;
+      if (inkApi && typeof inkApi.setPenGrey === "function") inkApi.setPenGrey(v);
+    });
+  }
 
 });
 
