@@ -23,6 +23,18 @@
       <button id="eraser" class="btn">Eraser</button>
       <button id="undo" class="btn">Undo</button>
       <button id="clearInk" class="btn">Clear</button>
+      <!-- Add these near the other controls in the topbar -->
+<label style="display:flex;align-items:center;gap:6px;">
+  <span style="font-size:13px;">Width</span>
+  <input id="penWidth" type="range" min="1" max="24" value="2" style="width:120px;">
+  <span id="penWidthLabel" style="min-width:28px;text-align:center;font-size:13px;">2</span>
+</label>
+
+<label style="display:flex;align-items:center;gap:6px;">
+  <span style="font-size:13px;">Grey</span>
+  <input id="penGrey" type="range" min="0" max="100" value="0" style="width:120px;">
+  <span id="penGreyLabel" style="min-width:36px;text-align:center;font-size:13px;">#000</span>
+</label>
     </div>
 
 
