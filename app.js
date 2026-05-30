@@ -57,7 +57,25 @@ const state = {
     spells: { sorc: [], wiz: [], meta: null },
   },
 };
+// Receive ingested data from gs_ingest and merge into app state
+window.receiveIngestedData = function (general, spells) {
+  // Defensive merge so UI keeps using its local `state`
+  state.data = state.data || {};
+  state.data.general = general || state.data.general;
+  state.data.spells = spells || state.data.spells;
+  state.loaded = true;
 
+  // Re-render and restore ink for current view
+  try {
+    setProgress(95, "Rendering…");
+    ink.loadForView(state.view);
+    render();
+    setProgress(100, "Done ✅");
+  } catch (err) {
+    console.error("receiveIngestedData render error:", err);
+    setProgress(0, "Render failed after ingest");
+  }
+};
 /* ------------------------------ Progress ------------------------------- */
 function setProgress(pct, text) {
   if (el.progressBar) el.progressBar.style.width = `${pct}%`;
