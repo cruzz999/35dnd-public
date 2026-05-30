@@ -1,11 +1,8 @@
 // ink.js
-// Robust ink layer: maps client -> world -> app using DOMMatrix inverse.
+// Robust ink layer: canvas lives in #world and pointer mapping uses DOMMatrix inverse.
 // Exposes window.ink API expected by app.js
 (function () {
   if (window.ink) return;
-
-  // Toggle this to true to print debug info for the next pointerDown event
-  const DEBUG_ONCE = false;
 
   function getState() {
     if (!window.state) {
@@ -60,26 +57,27 @@
     redraw();
   }
 
-  // Ensure canvas is a child of #app and sized to app's untransformed layout size.
+  // Ensure canvas is a child of #world and sized to world.clientWidth/Height (untransformed layout size).
   function ensureCanvasSize() {
     const canvas = el.canvas;
-    const appEl = el.app || document.getElementById("app");
-    if (!canvas || !appEl) return;
+    const worldEl = el.world || document.getElementById("world");
+    if (!canvas || !worldEl) return;
 
-    // Move canvas into app so it visually overlays the paper content
-    if (canvas.parentElement !== appEl) {
+    // Move canvas into world so it shares the same transform origin and coordinate space
+    if (canvas.parentElement !== worldEl) {
       canvas.style.position = "absolute";
       canvas.style.left = "0px";
       canvas.style.top = "0px";
       canvas.style.zIndex = 30;
-      appEl.appendChild(canvas);
+      worldEl.appendChild(canvas);
     }
 
-    // Size canvas to app's layout size (CSS pixels before world scale)
-    const w = Math.max(appEl.offsetWidth || 1200, 1200);
-    const h = Math.max(appEl.offsetHeight || 800, 800);
+    // Use the world's layout size (clientWidth/clientHeight) — this is the untransformed size
+    const w = Math.max(worldEl.clientWidth || 1200, 1200);
+    const h = Math.max(worldEl.clientHeight || 800, 800);
     const dpr = window.devicePixelRatio || 1;
 
+    // CSS size in layout (untransformed) pixels
     canvas.style.width = `${w}px`;
     canvas.style.height = `${h}px`;
 
@@ -96,72 +94,53 @@
     canvas.style.touchAction = "none";
   }
 
-  // Map client coordinates -> app-local coordinates by inverting the world transform.
+  // Map client coordinates -> world-local coordinates by inverting the world transform.
+  // Returns coordinates in the world's untransformed layout coordinate space (suitable for drawing on the canvas sized to world.clientWidth/Height).
   function screenToWorld(clientX, clientY) {
     const canvas = el.canvas;
     const worldEl = el.world || document.getElementById("world");
-    const appEl = el.app || document.getElementById("app");
     const st = getState();
 
-    if (!canvas || !worldEl || !appEl) {
-      // fallback: simple canvas bounding rect mapping
+    if (!canvas || !worldEl) {
       const rect = canvas ? canvas.getBoundingClientRect() : { left: 0, top: 0 };
       return { x: clientX - (rect.left || 0), y: clientY - (rect.top || 0) };
     }
 
-    // 1) point relative to world element's visual origin
+    // 1) point relative to world element's visual origin (screen space)
     const worldRect = worldEl.getBoundingClientRect();
     const px = clientX - worldRect.left;
     const py = clientY - worldRect.top;
 
-    // 2) get computed transform of world (should be translate + scale)
+    // 2) get computed transform of world (translate + scale)
     const style = getComputedStyle(worldEl);
     const transform = style.transform || "none";
 
-    // If no transform, fall back to reversing state.pan/state.zoom
     if (transform === "none") {
+      // No transform: reverse pan/zoom if app uses state, otherwise px/py are already world-local
       const x = (px - (st.pan?.x || 0)) / (st.zoom || 1);
       const y = (py - (st.pan?.y || 0)) / (st.zoom || 1);
-      const appOffsetX = appEl.offsetLeft || 0;
-      const appOffsetY = appEl.offsetTop || 0;
-      return { x: x - appOffsetX, y: y - appOffsetY };
+      return { x, y };
     }
 
     // 3) invert the transform matrix and map the point back to world-local coords
     try {
-      // DOMMatrix expects the transform string like "matrix(a,b,c,d,tx,ty)"
       const m = new DOMMatrixReadOnly(transform);
       const inv = m.inverse();
       const pt = new DOMPoint(px, py);
-      const unmapped = pt.matrixTransform(inv); // coordinates in world-local space
+      const unmapped = pt.matrixTransform(inv); // coordinates in world-local (untransformed) space
 
-      // 4) convert world-local to app-local by subtracting app's offset inside world
-      const appOffsetX = appEl.offsetLeft || 0;
-      const appOffsetY = appEl.offsetTop || 0;
-      const appLocalX = unmapped.x - appOffsetX;
-      const appLocalY = unmapped.y - appOffsetY;
-
-      // Debugging hook (prints once if DEBUG_ONCE true)
-      if (DEBUG_ONCE) {
-        // eslint-disable-next-line no-console
-        console.log("ink debug mapping:", {
-          clientX, clientY, worldRect, px, py, transform, unmappedX: unmapped.x, unmappedY: unmapped.y,
-          appOffsetX, appOffsetY, appLocalX, appLocalY, statePan: st.pan, stateZoom: st.zoom
-        });
-      }
-
-      return { x: appLocalX, y: appLocalY };
+      // unmapped.x/unmapped.y are already in the same coordinate space as world.clientWidth/Height,
+      // which is how the canvas is sized above. Use them directly for drawing.
+      return { x: unmapped.x, y: unmapped.y };
     } catch (err) {
       // fallback to reversing pan/zoom if DOMMatrix fails
       const x = (px - (st.pan?.x || 0)) / (st.zoom || 1);
       const y = (py - (st.pan?.y || 0)) / (st.zoom || 1);
-      const appOffsetX = appEl.offsetLeft || 0;
-      const appOffsetY = appEl.offsetTop || 0;
-      return { x: x - appOffsetX, y: y - appOffsetY };
+      return { x, y };
     }
   }
 
-  // Drawing helpers
+  // Draw helpers
   function drawStroke(stroke) {
     if (!ctx || !stroke || !stroke.pts || stroke.pts.length < 2) return;
     ctx.save();
