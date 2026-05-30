@@ -66,30 +66,36 @@
   }
 
   // Size canvas to match the app content area (same as original inline code)
-  function ensureCanvasSize() {
-    const canvas = el.canvas;
-    if (!canvas || !ctx) return;
+// Replace existing ensureCanvasSize with this exact function
+function ensureCanvasSize() {
+  const canvas = el.canvas;
+  if (!canvas || !ctx) return;
 
-    const appEl = el.app || document.getElementById("app");
-    const w = Math.max(appEl?.scrollWidth || 0, 1200);
-    const h = Math.max(appEl?.scrollHeight || 0, 800);
-    const dpr = window.devicePixelRatio || 1;
+  const appEl = el.app || document.getElementById("app");
+  // Use the app's scroll size exactly (no hardcoded 1200/800)
+  const w = Math.max(1, Math.floor(appEl?.scrollWidth || 1));
+  const h = Math.max(1, Math.floor(appEl?.scrollHeight || 1));
+  const dpr = window.devicePixelRatio || 1;
 
-    canvas.style.position = "absolute";
-    canvas.style.left = "0px";
-    canvas.style.top = "0px";
-    canvas.style.width = `${w}px`;
-    canvas.style.height = `${h}px`;
+  // CSS size must match app layout size
+  canvas.style.position = "absolute";
+  canvas.style.left = "0px";
+  canvas.style.top = "0px";
+  canvas.style.width = `${w}px`;
+  canvas.style.height = `${h}px`;
 
-    canvas.width = Math.floor(w * dpr);
-    canvas.height = Math.floor(h * dpr);
+  // Backing store in device pixels
+  canvas.width = Math.floor(w * dpr);
+  canvas.height = Math.floor(h * dpr);
 
-    ctx = canvas.getContext("2d");
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  // Keep drawing coordinates in CSS pixels
+  ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-    // critical on Android
-    canvas.style.touchAction = "none";
-  }
+  // critical on Android
+  canvas.style.touchAction = "none";
+}
+
 
   // Map client coordinates to world/app coordinates using viewport rect and state pan/zoom
   function screenToWorld(clientX, clientY) {
