@@ -1,8 +1,8 @@
 /* ========================================================================== 
    DnD 3.5 Ink Sheet - app.js (drop-in replacement)
-   - Merged fixes: robust merge of ingested data, reliable buff wiring
+   - Fix: checkbox handling via event delegation (single handler on #app)
    - Canvas attached to #world so ink moves with pan/zoom
-   - Ink readiness guards for controls
+   - Robust merge of ingested data and ink readiness guards
    ========================================================================== */
 
 /* ----------------------------- DOM helpers ------------------------------ */
@@ -63,7 +63,7 @@ function nextFrame() { return new Promise((resolve) => requestAnimationFrame(res
 
 /* ---------------------------- Utilities -------------------------------- */
 function escapeHtml(s) {
-  return String(s).replace(/[&<>\\'"]/g, (m) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#039;" }[m]));
+  return String(s).replace(/[&<>\'"]/g, (m) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#039;" }[m]));
 }
 function fmtSign(n) { n = Number(n) || 0; return (n >= 0 ? "+" : "") + n; }
 function abilityMod(score) { return Math.floor((Number(score) - 10) / 2); }
@@ -535,25 +535,7 @@ function renderGeneral() {
   </div>
   `;
 
-  // Attach buff handlers using addEventListener (safer across re-renders)
-  const mage = $("buff_mage");
-  const shield = $("buff_shield");
-  if (mage) {
-    mage.addEventListener('change', () => {
-      g.buffs.mageArmor = mage.checked ? 4 : 0;
-      // Re-render to update totals and headers
-      renderGeneral();
-      if (window.ink && typeof window.ink.redraw === "function") window.ink.redraw();
-    });
-  }
-  if (shield) {
-    shield.addEventListener('change', () => {
-      g.buffs.shieldSpell = shield.checked ? 4 : 0;
-      renderGeneral();
-      if (window.ink && typeof window.ink.redraw === "function") window.ink.redraw();
-    });
-  }
-
+  // Note: checkbox handlers are handled via delegated listener attached once during DOMContentLoaded.
   // Ability input wiring
   document.querySelectorAll('.ability-breakdown-grid input[data-ab][data-field]').forEach(inp => {
     inp.addEventListener('input', () => {
@@ -681,6 +663,11 @@ function mergeWindowStateIfPresent() {
 
       // Always copy general if present (replace current general)
       if (g) {
+        // Ensure numeric buff fields are numbers
+        g.buffs = g.buffs || {};
+        g.buffs.mageArmor = Number(g.buffs.mageArmor) || 0;
+        g.buffs.shieldSpell = Number(g.buffs.shieldSpell) || 0;
+
         state.data = state.data || {};
         state.data.general = g;
         changed = true;
@@ -937,6 +924,35 @@ window.addEventListener("DOMContentLoaded", () => {
     updatePenLabel();
     updateEraserLabel();
   })();
+
+  /* ---------------------------------------------------------------------
+     Checkbox handling: single delegated listener on #app
+     This avoids attaching/removing listeners on every render and keeps
+     checkbox state in sync with state.data.general.buffs.
+     --------------------------------------------------------------------- */
+  if (el.app) {
+    el.app.addEventListener('change', (ev) => {
+      const tgt = ev.target;
+      if (!tgt) return;
+      // Mage Armor checkbox
+      if (tgt.id === 'buff_mage' && state.data && state.data.general) {
+        const g = state.data.general;
+        g.buffs = g.buffs || {};
+        g.buffs.mageArmor = tgt.checked ? 4 : 0;
+        // Re-render to update totals
+        renderGeneral();
+        if (window.ink && typeof window.ink.redraw === "function") window.ink.redraw();
+      }
+      // Shield checkbox
+      if (tgt.id === 'buff_shield' && state.data && state.data.general) {
+        const g = state.data.general;
+        g.buffs = g.buffs || {};
+        g.buffs.shieldSpell = tgt.checked ? 4 : 0;
+        renderGeneral();
+        if (window.ink && typeof window.ink.redraw === "function") window.ink.redraw();
+      }
+    });
+  }
 });
 
 /* --------------------------- Initial setup ----------------------------- */
