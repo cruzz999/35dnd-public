@@ -1,9 +1,8 @@
 /* ========================================================================== 
    DnD 3.5 Ink Sheet - app.js (drop-in replacement)
-   - Inline ink restored to window.ink
-   - ensureCanvasSize exposed so other code can call it
-   - Pen width (float) and greyscale controls supported
-   - Google Sheets URL auto-populated if empty
+   - Merged fixes: robust merge of ingested data, reliable buff wiring
+   - Canvas attached to #world so ink moves with pan/zoom
+   - Ink readiness guards for controls
    ========================================================================== */
 
 /* ----------------------------- DOM helpers ------------------------------ */
@@ -42,8 +41,8 @@ const state = {
   zoom: 1.0,
   penOn: false,
   erasing: false,
-  penWidth: 0.5, // default hairline width (CSS pixels)
-  penGrey: 0, // 0 = black, 100 = white
+  penWidth: 0.5,
+  penGrey: 0,
   strokesByView: {},
   data: { general: null, spells: { sorc: [], wiz: [], meta: null } }
 };
@@ -110,7 +109,6 @@ function setZoom(newZoom, anchorClientX = null, anchorClientY = null) {
   }
   state.zoom = newZoom;
   applyWorldTransform();
-  // After changing zoom, ensure ink canvas is resized to match new layout
   if (window.ink && typeof window.ink.ensureCanvasSize === "function") window.ink.ensureCanvasSize();
   if (window.ink && typeof window.ink.redraw === "function") window.ink.redraw();
 }
@@ -129,7 +127,6 @@ function setView(viewName) {
   setProgress(1, `View: ${viewName}`);
   try {
     render();
-    // load ink strokes for the view
     if (window.ink && typeof window.ink.loadForView === "function") window.ink.loadForView(viewName);
   } catch (e) {
     console.error(e);
@@ -223,7 +220,6 @@ const ink = (() => {
     redraw();
   }
 
-  // Ensure canvas is a child of #app and sized to app.scrollWidth/scrollHeight (exact)
   // Ensure canvas is a child of #world (so it inherits pan/zoom) and sized to world scroll size
   function ensureCanvasSize() {
     const canvasEl = canvas;
@@ -242,22 +238,18 @@ const ink = (() => {
     }
 
     // Size to the parent's scroll size (world/app content size)
-    // Use scrollWidth/scrollHeight so canvas covers the full paper area, not just viewport
     const w = Math.max(1, Math.floor(parentEl.scrollWidth || parentEl.clientWidth || 1));
     const h = Math.max(1, Math.floor(parentEl.scrollHeight || parentEl.clientHeight || 1));
     const dpr = window.devicePixelRatio || 1;
 
-    // Set CSS size and backing buffer size
     canvasEl.style.width = `${w}px`;
     canvasEl.style.height = `${h}px`;
     canvasEl.width = Math.floor(w * dpr);
     canvasEl.height = Math.floor(h * dpr);
 
-    // Reset transform on the 2D context to account for DPR
     ctx = canvasEl.getContext("2d");
     if (ctx) ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-    // Make sure pointer events reflect pen state
     canvasEl.style.touchAction = "none";
     canvasEl.style.pointerEvents = state.penOn ? "auto" : "none";
   }
@@ -543,11 +535,26 @@ function renderGeneral() {
   </div>
   `;
 
+  // Attach buff handlers using addEventListener (safer across re-renders)
   const mage = $("buff_mage");
   const shield = $("buff_shield");
-  if (mage) mage.onchange = () => { g.buffs.mageArmor = mage.checked ? 4 : 0; renderGeneral(); if (window.ink) window.ink.redraw(); };
-  if (shield) shield.onchange = () => { g.buffs.shieldSpell = shield.checked ? 4 : 0; renderGeneral(); if (window.ink) window.ink.redraw(); };
+  if (mage) {
+    mage.addEventListener('change', () => {
+      g.buffs.mageArmor = mage.checked ? 4 : 0;
+      // Re-render to update totals and headers
+      renderGeneral();
+      if (window.ink && typeof window.ink.redraw === "function") window.ink.redraw();
+    });
+  }
+  if (shield) {
+    shield.addEventListener('change', () => {
+      g.buffs.shieldSpell = shield.checked ? 4 : 0;
+      renderGeneral();
+      if (window.ink && typeof window.ink.redraw === "function") window.ink.redraw();
+    });
+  }
 
+  // Ability input wiring
   document.querySelectorAll('.ability-breakdown-grid input[data-ab][data-field]').forEach(inp => {
     inp.addEventListener('input', () => {
       const ab = inp.getAttribute('data-ab');
@@ -555,11 +562,15 @@ function renderGeneral() {
       const val = Number(inp.value);
       g.abilities[ab][field] = Number.isFinite(val) ? val : 0;
       renderGeneral();
-      if (window.ink) window.ink.redraw();
+      if (window.ink && typeof window.ink.redraw === "function") window.ink.redraw();
     });
   });
+
+  // Ensure canvas sizing after DOM changes so pointer mapping remains correct
+  if (window.ink && typeof window.ink.ensureCanvasSize === "function") window.ink.ensureCanvasSize();
 }
 
+/* ---------------------- Spell table rendering -------------------------- */
 function renderSpellTable(rows, meta, castingMod, showPrep) {
   if (!rows || !rows.length) return `<div class="hint">No spells loaded.</div>`;
   return `
@@ -628,12 +639,12 @@ function renderSpells() {
   `;
 }
 
+/* --------------------------- Main render wrapper ----------------------- */
 function render() {
   if (!el.app) return;
   if (!state.loaded) {
     el.app.innerHTML = `<div class="panel"><h2>Load</h2><div class="hint"> Load via Google Sheets (recommended on Boox). </div></div>`;
     applyWorldTransform();
-    // ensure ink canvas matches layout after render
     if (window.ink && typeof window.ink.ensureCanvasSize === "function") window.ink.ensureCanvasSize();
     if (window.ink && typeof window.ink.redraw === "function") window.ink.redraw();
     return;
@@ -659,7 +670,7 @@ if (el.file) {
   });
 }
 
-/* ---------------------- Merge helper (defensive) ---------------------- */
+/* ---------------------- Merge helper (robust) ------------------------- */
 // Merge any data left in window.state into the app's local state
 function mergeWindowStateIfPresent() {
   try {
@@ -667,11 +678,23 @@ function mergeWindowStateIfPresent() {
       const g = window.state.data.general ?? null;
       const s = window.state.data.spells ?? null;
       let changed = false;
-      if (g && (!state.data || !state.data.general)) { state.data = state.data || {}; state.data.general = g; changed = true; }
-      if (s && (!state.data || !state.data.spells)) { state.data = state.data || {}; state.data.spells = s; changed = true; }
+
+      // Always copy general if present (replace current general)
+      if (g) {
+        state.data = state.data || {};
+        state.data.general = g;
+        changed = true;
+      }
+
+      // Always copy spells if present (replace current spells)
+      if (s) {
+        state.data = state.data || {};
+        state.data.spells = s;
+        changed = true;
+      }
+
       if (changed) {
         state.loaded = true;
-        // Re-render and ensure ink canvas matches
         if (typeof render === "function") render();
         if (window.ink && typeof window.ink.ensureCanvasSize === "function") window.ink.ensureCanvasSize();
         if (window.ink && typeof window.ink.redraw === "function") window.ink.redraw();
@@ -697,7 +720,6 @@ window.addEventListener("DOMContentLoaded", () => {
           const orig = gs.loadFromGoogleSheets.bind(gs);
           gs.loadFromGoogleSheets = async function (sheetUrl) {
             await orig(sheetUrl);
-            // If ingest wrote to window.state, hand it to the app receiver
             try {
               const general = window.state?.data?.general ?? null;
               const spells = window.state?.data?.spells ?? null;
@@ -711,7 +733,6 @@ window.addEventListener("DOMContentLoaded", () => {
         await gs.loadFromGoogleSheets(url);
         // Defensive merge in case gs_ingest wrote to window.state but didn't call the receiver
         mergeWindowStateIfPresent();
-        // Ensure layout/render is up-to-date and ink canvas matches
         if (typeof render === "function") render();
         if (window.ink && typeof window.ink.ensureCanvasSize === "function") window.ink.ensureCanvasSize();
         if (window.ink && typeof window.ink.redraw === "function") window.ink.redraw();
@@ -748,7 +769,6 @@ window.addEventListener("DOMContentLoaded", () => {
     if (el.undo) el.undo.disabled = true;
     if (el.clearInk) el.clearInk.disabled = true;
 
-    // If window.ink is already present, enable immediately; otherwise wait a short time for it
     const enableControls = () => {
       if (el.penToggle) el.penToggle.disabled = false;
       if (el.eraser) el.eraser.disabled = false;
@@ -756,21 +776,16 @@ window.addEventListener("DOMContentLoaded", () => {
       if (el.clearInk) el.clearInk.disabled = false;
     };
 
-    // If ink exists now, enable and wire; otherwise poll briefly
     const inkReadyCheck = () => {
       if (window.ink) {
         enableControls();
-        // wire handlers now that ink exists
         if (el.penToggle) {
           el.penToggle.addEventListener("click", () => {
             state.penOn = !state.penOn;
             const inkApi = safeInk();
             if (inkApi && typeof inkApi.setPenMode === "function") {
               try { inkApi.setPenMode(state.penOn); } catch (e) { console.error("ink.setPenMode error", e); }
-            } else if (inkApi && typeof inkApi.setPenMode !== "function" && typeof inkApi.setPenMode !== "undefined") {
-              // no-op
             }
-            // Ensure canvas pointer-events reflect pen state
             const canvas = document.getElementById("inkWorld");
             if (canvas) canvas.style.pointerEvents = state.penOn ? "auto" : "none";
             updatePenLabel();
@@ -803,13 +818,10 @@ window.addEventListener("DOMContentLoaded", () => {
           });
         }
       } else {
-        // try again shortly, but don't poll forever
         setTimeout(() => {
           if (!window.ink) {
-            // final fallback: enable controls but keep safeInk warnings
             enableControls();
             console.warn("Ink API not present after wait; controls enabled but may warn on use.");
-            // still wire handlers so safeInk will warn instead of throwing
             if (el.penToggle) {
               el.penToggle.addEventListener("click", () => {
                 state.penOn = !state.penOn;
@@ -857,7 +869,7 @@ window.addEventListener("DOMContentLoaded", () => {
 
     inkReadyCheck();
 
-    // Pen width control (float, small min)
+    // Pen width control
     const penWidthEl = document.getElementById("penWidth");
     const penWidthLabel = document.getElementById("penWidthLabel");
     if (penWidthEl) {
@@ -872,11 +884,10 @@ window.addEventListener("DOMContentLoaded", () => {
       });
     }
 
-    // ---------- Add writable space button ----------
+    // Add writable space button
     const addWriteSpaceBtn = document.getElementById("addWriteSpace");
     if (addWriteSpaceBtn) {
       addWriteSpaceBtn.addEventListener("click", () => {
-        // Create a new writeable panel and append to #app below the current content
         const ws = document.createElement("div");
         ws.className = "panel write-space";
         ws.setAttribute("contenteditable", "true");
@@ -884,7 +895,6 @@ window.addEventListener("DOMContentLoaded", () => {
         const appEl = document.getElementById("app");
         if (appEl) {
           appEl.appendChild(ws);
-          // Ensure ink canvas and layout update
           if (window.ink && typeof window.ink.ensureCanvasSize === "function") window.ink.ensureCanvasSize();
           if (window.ink && typeof window.ink.redraw === "function") window.ink.redraw();
           ws.focus();
@@ -892,8 +902,7 @@ window.addEventListener("DOMContentLoaded", () => {
       });
     }
 
-    // ---------- Landscape mode for Spells view ----------
-    // Ensure render() toggles a class on #app so CSS can switch to landscape
+    // Landscape mode for Spells view: wrap render to ensure canvas sizing after layout change
     const originalRender = render;
     render = function () {
       originalRender();
@@ -901,7 +910,6 @@ window.addEventListener("DOMContentLoaded", () => {
       if (appEl) {
         if (state.view === "Spells") appEl.classList.add("landscape"); else appEl.classList.remove("landscape");
       }
-      // After toggling layout, ensure ink canvas matches the new size
       if (window.ink && typeof window.ink.ensureCanvasSize === "function") window.ink.ensureCanvasSize();
       if (window.ink && typeof window.ink.redraw === "function") window.ink.redraw();
     };
@@ -933,7 +941,6 @@ window.addEventListener("DOMContentLoaded", () => {
 
 /* --------------------------- Initial setup ----------------------------- */
 applyWorldTransform();
-// Ensure ink canvas is sized after initial render
 if (window.ink && typeof window.ink.ensureCanvasSize === "function") window.ink.ensureCanvasSize();
 if (window.ink && typeof window.ink.loadForView === "function") window.ink.loadForView(state.view);
 render();
