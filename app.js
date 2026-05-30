@@ -1,8 +1,9 @@
 /* ========================================================================== 
-   DnD 3.5 Ink Sheet - app.js (drop-in replacement)
-   - Fix: checkbox handling via event delegation (single handler on #app)
-   - Canvas attached to #world so ink moves with pan/zoom
-   - Robust merge of ingested data and ink readiness guards
+   DnD Ink Sheet - app.js (drop-in replacement)
+   - Robust ink canvas attached to #world so it moves with pan/zoom
+   - Canvas pointer-events controlled by body.pen-active and kept in sync
+   - Delegated checkbox handling for buffs using requestAnimationFrame to avoid races
+   - Defensive guards around ink API usage
    ========================================================================== */
 
 /* ----------------------------- DOM helpers ------------------------------ */
@@ -63,7 +64,7 @@ function nextFrame() { return new Promise((resolve) => requestAnimationFrame(res
 
 /* ---------------------------- Utilities -------------------------------- */
 function escapeHtml(s) {
-  return String(s).replace(/[&<>\'"]/g, (m) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#039;" }[m]));
+  return String(s).replace(/[&<>\\'"]/g, (m) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#039;" }[m]));
 }
 function fmtSign(n) { n = Number(n) || 0; return (n >= 0 ? "+" : "") + n; }
 function abilityMod(score) { return Math.floor((Number(score) - 10) / 2); }
@@ -233,7 +234,7 @@ const ink = (() => {
       canvasEl.style.position = "absolute";
       canvasEl.style.left = "0px";
       canvasEl.style.top = "0px";
-      canvasEl.style.zIndex = 30;
+      canvasEl.style.zIndex = 5;
       parentEl.appendChild(canvasEl);
     }
 
@@ -352,22 +353,20 @@ const ink = (() => {
     canvas.addEventListener("pointercancel", endStroke);
     canvas.addEventListener("lostpointercapture", endStroke);
     canvas.addEventListener("pointerleave", endStroke);
-    canvas.style.pointerEvents = "none";
+    canvas.style.pointerEvents = state.penOn ? "auto" : "none";
     canvas.style.touchAction = "none";
   }
 
   function setPenMode(on) {
     state.penOn = !!on;
-     // keep body class in sync so CSS can enable/disable canvas pointer events
-document.body.classList.toggle('pen-active', !!state.penOn);
-const canvas = document.getElementById('inkWorld');
-if (canvas) {
-  canvas.style.pointerEvents = state.penOn ? 'auto' : 'none';
-  canvas.style.zIndex = state.penOn ? '40' : '5';
-}
     if (el.penToggle) el.penToggle.textContent = state.penOn ? "Pen: ON" : "Pen: OFF";
     if (canvas) canvas.style.pointerEvents = state.penOn ? "auto" : "none";
     if (!state.penOn) { drawing = false; currentStroke = null; activePointerId = null; }
+    // Keep body class in sync
+    if (state.penOn) document.body.classList.add('pen-active');
+    else document.body.classList.remove('pen-active');
+    // Keep inline z-index consistent
+    if (canvas) canvas.style.zIndex = state.penOn ? '40' : '5';
   }
 
   function setEraser(on) {
@@ -542,7 +541,6 @@ function renderGeneral() {
   </div>
   `;
 
-  // Note: checkbox handlers are handled via delegated listener attached once during DOMContentLoaded.
   // Ability input wiring
   document.querySelectorAll('.ability-breakdown-grid input[data-ab][data-field]').forEach(inp => {
     inp.addEventListener('input', () => {
@@ -668,19 +666,15 @@ function mergeWindowStateIfPresent() {
       const s = window.state.data.spells ?? null;
       let changed = false;
 
-      // Always copy general if present (replace current general)
       if (g) {
-        // Ensure numeric buff fields are numbers
         g.buffs = g.buffs || {};
         g.buffs.mageArmor = Number(g.buffs.mageArmor) || 0;
         g.buffs.shieldSpell = Number(g.buffs.shieldSpell) || 0;
-
         state.data = state.data || {};
         state.data.general = g;
         changed = true;
       }
 
-      // Always copy spells if present (replace current spells)
       if (s) {
         state.data = state.data || {};
         state.data.spells = s;
@@ -699,6 +693,14 @@ function mergeWindowStateIfPresent() {
 
 /* ---------------------- Hook Google Sheets button ---------------------- */
 window.addEventListener("DOMContentLoaded", () => {
+  // Ensure body class matches initial pen state
+  document.body.classList.toggle('pen-active', !!state.penOn);
+  const canvasInit = document.getElementById('inkWorld');
+  if (canvasInit) {
+    canvasInit.style.pointerEvents = state.penOn ? 'auto' : 'none';
+    canvasInit.style.zIndex = state.penOn ? '40' : '5';
+  }
+
   // Auto-populate GS URL if empty
   const AUTO_SHEET = "https://docs.google.com/spreadsheets/d/1P_Vslp-rxiTcntUZVLR2BjJrdeQqdWfPLeigs2Gnx_U/edit?usp=sharing";
   if (el.gsUrl && !el.gsUrl.value) el.gsUrl.value = AUTO_SHEET;
@@ -709,7 +711,6 @@ window.addEventListener("DOMContentLoaded", () => {
         const url = el.gsUrl.value.trim();
         if (!url) { setProgress(0, "Paste a Google Sheets URL first."); return; }
         const gs = ensureGs();
-        // Patch loadFromGoogleSheets once to call receiveIngestedData if present
         if (!gs.__patchedForApp) {
           const orig = gs.loadFromGoogleSheets.bind(gs);
           gs.loadFromGoogleSheets = async function (sheetUrl) {
@@ -725,7 +726,6 @@ window.addEventListener("DOMContentLoaded", () => {
           gs.__patchedForApp = true;
         }
         await gs.loadFromGoogleSheets(url);
-        // Defensive merge in case gs_ingest wrote to window.state but didn't call the receiver
         mergeWindowStateIfPresent();
         if (typeof render === "function") render();
         if (window.ink && typeof window.ink.ensureCanvasSize === "function") window.ink.ensureCanvasSize();
@@ -776,21 +776,19 @@ window.addEventListener("DOMContentLoaded", () => {
         if (el.penToggle) {
           el.penToggle.addEventListener("click", () => {
             state.penOn = !state.penOn;
-             if (state.penOn) document.body.classList.add('pen-active');
-else document.body.classList.remove('pen-active');
-
-// Defensive: ensure canvas inline style matches state (no ambiguity)
-const canvas = document.getElementById('inkWorld');
-if (canvas) {
-  canvas.style.pointerEvents = state.penOn ? 'auto' : 'none';
-  canvas.style.zIndex = state.penOn ? '40' : '5';
-}
             const inkApi = safeInk();
             if (inkApi && typeof inkApi.setPenMode === "function") {
               try { inkApi.setPenMode(state.penOn); } catch (e) { console.error("ink.setPenMode error", e); }
+            } else if (inkApi && typeof inkApi.setPenMode === "undefined") {
+              // no-op
             }
-            
-            if (canvas) canvas.style.pointerEvents = state.penOn ? "auto" : "none";
+            // authoritative body class and inline canvas style
+            if (state.penOn) document.body.classList.add('pen-active'); else document.body.classList.remove('pen-active');
+            const canvas = document.getElementById('inkWorld');
+            if (canvas) {
+              canvas.style.pointerEvents = state.penOn ? 'auto' : 'none';
+              canvas.style.zIndex = state.penOn ? '40' : '5';
+            }
             updatePenLabel();
           });
         }
@@ -828,21 +826,16 @@ if (canvas) {
             if (el.penToggle) {
               el.penToggle.addEventListener("click", () => {
                 state.penOn = !state.penOn;
-                 if (state.penOn) document.body.classList.add('pen-active');
-else document.body.classList.remove('pen-active');
-
-// Defensive: ensure canvas inline style matches state (no ambiguity)
-const canvas = document.getElementById('inkWorld');
-if (canvas) {
-  canvas.style.pointerEvents = state.penOn ? 'auto' : 'none';
-  canvas.style.zIndex = state.penOn ? '40' : '5';
-}
                 const inkApi = safeInk();
                 if (inkApi && typeof inkApi.setPenMode === "function") {
                   try { inkApi.setPenMode(state.penOn); } catch (e) { console.error("ink.setPenMode error", e); }
                 }
-                const canvas = document.getElementById("inkWorld");
-                if (canvas) canvas.style.pointerEvents = state.penOn ? "auto" : "none";
+                if (state.penOn) document.body.classList.add('pen-active'); else document.body.classList.remove('pen-active');
+                const canvas = document.getElementById('inkWorld');
+                if (canvas) {
+                  canvas.style.pointerEvents = state.penOn ? 'auto' : 'none';
+                  canvas.style.zIndex = state.penOn ? '40' : '5';
+                }
                 updatePenLabel();
               });
             }
@@ -952,29 +945,23 @@ if (canvas) {
 
   /* ---------------------------------------------------------------------
      Checkbox handling: single delegated listener on #app
-     This avoids attaching/removing listeners on every render and keeps
-     checkbox state in sync with state.data.general.buffs.
+     Use requestAnimationFrame to let the browser commit the input state
+     before we re-render and replace the DOM.
      --------------------------------------------------------------------- */
   if (el.app) {
     el.app.addEventListener('change', (ev) => {
       const tgt = ev.target;
       if (!tgt) return;
-      // Mage Armor checkbox
-      if (tgt.id === 'buff_mage' && state.data && state.data.general) {
-        const g = state.data.general;
+      if (!state.data || !state.data.general) return;
+      const g = state.data.general;
+      if (tgt.id === 'buff_mage') {
         g.buffs = g.buffs || {};
         g.buffs.mageArmor = tgt.checked ? 4 : 0;
-        // Re-render to update totals
-        renderGeneral();
-        if (window.ink && typeof window.ink.redraw === "function") window.ink.redraw();
-      }
-      // Shield checkbox
-      if (tgt.id === 'buff_shield' && state.data && state.data.general) {
-        const g = state.data.general;
+        requestAnimationFrame(() => { renderGeneral(); if (window.ink && typeof window.ink.redraw === "function") window.ink.redraw(); });
+      } else if (tgt.id === 'buff_shield') {
         g.buffs = g.buffs || {};
         g.buffs.shieldSpell = tgt.checked ? 4 : 0;
-        renderGeneral();
-        if (window.ink && typeof window.ink.redraw === "function") window.ink.redraw();
+        requestAnimationFrame(() => { renderGeneral(); if (window.ink && typeof window.ink.redraw === "function") window.ink.redraw(); });
       }
     });
   }
