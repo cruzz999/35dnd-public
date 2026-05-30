@@ -47,6 +47,35 @@ const state = {
     spells: { sorc: [], wiz: [], meta: null }
   }
 };
+// Merge any data left in window.state into the app's local state
+function mergeWindowStateIfPresent() {
+  try {
+    if (window.state && window.state.data) {
+      const g = window.state.data.general ?? null;
+      const s = window.state.data.spells ?? null;
+      let changed = false;
+      if (g && (!state.data || !state.data.general)) {
+        state.data = state.data || {};
+        state.data.general = g;
+        changed = true;
+      }
+      if (s && (!state.data || !state.data.spells)) {
+        state.data = state.data || {};
+        state.data.spells = s;
+        changed = true;
+      }
+      if (changed) {
+        state.loaded = true;
+        // Re-render and ensure ink canvas matches
+        if (typeof render === "function") render();
+        if (window.ink && typeof window.ink.ensureCanvasSize === "function") window.ink.ensureCanvasSize();
+        if (window.ink && typeof window.ink.redraw === "function") window.ink.redraw();
+      }
+    }
+  } catch (e) {
+    console.warn("mergeWindowStateIfPresent failed", e);
+  }
+}
 
 /* ------------------ ensureGs helper (defensive) ------------------------- */
 function ensureGs() {
@@ -509,24 +538,45 @@ if (el.file) {
 
 /* ---------------------- Hook Google Sheets button ---------------------- */
 window.addEventListener("DOMContentLoaded", () => {
-  if (el.loadGs && el.gsUrl) {
-    el.loadGs.addEventListener("click", async () => {
-      try {
-        const url = el.gsUrl.value.trim();
-        if (!url) {
-          setProgress(0, "Paste a Google Sheets URL first.");
-          return;
-        }
-        const gs = ensureGs();
-        await gs.loadFromGoogleSheets(url);
-      } catch (e) {
-        console.error(e);
-        setProgress(0, "Google Sheets load failed (see console).");
+if (el.loadGs && el.gsUrl) {
+  el.loadGs.addEventListener("click", async () => {
+    try {
+      const url = el.gsUrl.value.trim();
+      if (!url) {
+        setProgress(0, "Paste a Google Sheets URL first.");
+        return;
       }
-    });
-  } else {
-    console.warn("Google Sheets UI not present (#gsUrl / #loadGs).");
-  }
+      const gs = ensureGs();
+
+      // Optionally patch gs.loadFromGoogleSheets once to call receiveIngestedData if present
+      if (!gs.__patchedForApp) {
+        const orig = gs.loadFromGoogleSheets.bind(gs);
+        gs.loadFromGoogleSheets = async function (sheetUrl) {
+          await orig(sheetUrl);
+          // If ingest wrote to window.state, hand it to the app receiver
+          try {
+            const general = window.state?.data?.general ?? null;
+            const spells = window.state?.data?.spells ?? null;
+            if (typeof window.receiveIngestedData === "function") {
+              window.receiveIngestedData(general, spells);
+            }
+          } catch (err) {
+            console.warn("post-ingest merge failed", err);
+          }
+        };
+        gs.__patchedForApp = true;
+      }
+
+      await gs.loadFromGoogleSheets(url);
+
+      // Defensive merge in case gs_ingest wrote to window.state but didn't call the receiver
+      mergeWindowStateIfPresent();
+    } catch (e) {
+      console.error(e);
+      setProgress(0, "Google Sheets load failed (see console).");
+    }
+  });
+}
 
   // Auto-fill button wiring (if present)
   if (el.fillGs && el.gsUrl) {
