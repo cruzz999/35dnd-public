@@ -121,4 +121,80 @@ input, textarea, select, button {
   pointer-events:none; /* app toggles this when pen is ON */
   z-index:30;
 }
+/* ---------- Layout polish and paper centering ---------- */
+
+/* Constrain and center the paper so it doesn't overflow awkwardly */
+.app {
+  width: 1000px;                 /* comfortable reading width */
+  max-width: calc(100vw - 80px); /* keep margins on small screens */
+  margin: 12px auto;             /* center horizontally and add vertical breathing room */
+  padding: 20px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+  border-radius: 10px;
+  overflow: visible;
+}
+
+/* Make the world container match the app size and avoid extra whitespace */
+.world {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 20px 0;
+}
+
+/* Ensure the ink canvas overlays the paper exactly */
+.ink {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none; /* toggled by app when pen is ON */
+  z-index: 30;
+}
+
+/* Ability grid: fixed label column, flexible numeric columns */
+.ability-breakdown-grid {
+  display: grid;
+  grid-template-columns: 110px repeat(6, minmax(56px, 1fr));
+  gap: 8px;
+  align-items: center;
+}
+
+/* Make numeric inputs compact and full-width of their cell */
+.ability-breakdown-grid input[type="number"] {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid #e6e6e6;
+  background: #fff;
+  font-size: 13px;
+}
+
+/* Table improvements for spells and feats */
+.table th, .table td {
+  padding: 8px 10px;
+  font-size: 13px;
+  vertical-align: middle;
+}
+.table thead th {
+  background: #fafafa;
+  font-weight: 600;
+  border-bottom: 2px solid #eee;
+}
+
+/* Reduce topbar height slightly and keep viewport calc consistent */
+.topbar { padding: 8px 12px; }
+.viewport { height: calc(100vh - 96px); }
+
+/* Keep form controls selectable while preventing accidental selection elsewhere */
+.world, .app { -webkit-user-select: none; user-select: none; }
+input, textarea, select, button { user-select: text; }
+
+/* Small responsive tweaks */
+@media (max-width: 900px) {
+  .app { width: calc(100vw - 40px); padding: 14px; }
+  .ability-breakdown-grid { grid-template-columns: 90px repeat(6, minmax(48px, 1fr)); }
+}
 
