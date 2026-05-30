@@ -1,304 +1,224 @@
-:root{
-  --bg:#f6f6f6;
-  --panel:#fff;
-  --muted:#666;
-  --accent:#222;
-  --accent-2:#0a84ff;
-  --shadow: rgba(0,0,0,0.08);
-  --glass: rgba(255,255,255,0.6);
-  font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+/* styles.css - cleaned and single-definition layout
+   - ability-breakdown-grid defined once (7 columns)
+   - compact numeric columns, centered inputs
+   - boxed panels, spells table wrapper, writeable area
+*/
+
+/* Reset / base */
+:root {
+  --panel-bg: #fff;
+  --panel-border: rgba(0,0,0,0.08);
+  --muted: #666;
+  --accent: #4caf50;
+  --paper-width-landscape: 1120px;
+  --ability-col-width: 56px;
+  --ability-input-width: 44px;
 }
 
-*{box-sizing:border-box}
-html,body{height:100%;margin:0;background:var(--bg);color:var(--accent)}
-.topbar{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:12px;
-  padding:10px 14px;
-  background:linear-gradient(180deg,var(--panel),#f7f7f7);
-  border-bottom:1px solid #e6e6e6;
-  position:sticky;
-  top:0;
-  z-index:40;
-}
-.brand{font-weight:700}
-.controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.input{
-  padding:8px 10px;border-radius:6px;border:1px solid #ddd;background:#fff;min-width:260px;
-}
-.btn{
-  padding:8px 10px;border-radius:6px;border:1px solid #ddd;background:#fff;cursor:pointer;
-  box-shadow:0 1px 0 rgba(0,0,0,0.02);
-}
-.btn:active{transform:translateY(1px)}
-.viewport{
-  width:100%;
-  height:calc(100vh - 112px);
-  overflow:hidden;
-  position:relative;
-  background:linear-gradient(180deg,#fafafa,#f3f3f3);
-}
-.world{
-  position:absolute;
-  left:0;top:0;
-  transform-origin:0 0;
-  will-change:transform;
-  padding:20px;
-}
-.app{
-  width:1200px;
-  min-height:800px;
-  background:var(--panel);
-  box-shadow:0 6px 18px var(--shadow);
-  border-radius:8px;
-  padding:18px;
-  color:var(--accent);
-}
-.panel{background:var(--panel);padding:12px;border-radius:8px;margin-bottom:12px}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.hint{color:var(--muted);font-size:13px;margin-top:6px}
-.ability-breakdown-grid{
-  display:grid;
-  grid-template-columns:80px repeat(6,1fr);
-  gap:6px;
-  align-items:center;
-}
-.hdr{font-weight:600;color:var(--muted);font-size:12px}
-.val{padding:6px}
-.table{width:100%;border-collapse:collapse}
-.table th,.table td{border:1px solid #eee;padding:6px;text-align:left;font-size:13px}
-.statusbar{
-  display:flex;align-items:center;gap:12px;padding:8px 14px;border-top:1px solid #eee;background:transparent;
-  position:fixed;left:0;right:0;bottom:0;z-index:50;
-}
-.status{font-size:13px;color:var(--muted)}
-.progress{flex:1;height:8px;background:#eee;border-radius:999px;overflow:hidden}
-.progressBar{height:100%;width:0;background:linear-gradient(90deg,var(--accent-2),#0066ff)}
-.ink{position:absolute;left:0;top:0;pointer-events:none;z-index:30}
-.file-ui{position:fixed;right:12px;bottom:72px;background:var(--panel);padding:8px;border-radius:8px;border:1px solid #eee;box-shadow:0 6px 18px var(--shadow)}
-.file-label{font-size:12px;color:var(--muted)}
-@media (max-width:900px){
-  .grid{grid-template-columns:1fr}
-  .input{min-width:140px}
-}
-/* Prevent accidental text selection while panning the paper */
-.world, .app, .ink {
-  -webkit-user-select: none;
-  -moz-user-select: none;
-  -ms-user-select: none;
-  user-select: none;
-  -webkit-touch-callout: none;
-  touch-action: none; /* pointer events handled by app for pan/zoom */
-}
-
-/* Allow text selection in form controls */
-input, textarea, select, button {
-  -webkit-user-select: text;
-  user-select: text;
-  touch-action: manipulation;
-}
-
-/* Slightly reduce topbar height and ensure consistent viewport calc */
-.topbar {
-  padding: 8px 12px;
-}
-.viewport {
-  height: calc(100vh - 96px); /* tuned to match smaller topbar */
-}
-
-/* Make controls wrap more gracefully on narrow screens */
-.controls { gap: 6px; align-items:center; flex-wrap:wrap; }
-.view-buttons, .nav-controls { display:flex; gap:6px; align-items:center; }
-
-/* Ensure the ink canvas covers the paper and doesn't capture pointer when pen off */
-.ink {
-  position:absolute;
-  left:0; top:0;
-  width:100%;
-  height:100%;
-  pointer-events:none; /* app toggles this when pen is ON */
-  z-index:30;
-}
-/* ---------- Layout polish and paper centering ---------- */
-
-/* Constrain and center the paper so it doesn't overflow awkwardly */
-.app {
-  width: 1000px;                 /* comfortable reading width */
-  max-width: calc(100vw - 80px); /* keep margins on small screens */
-  margin: 12px auto;             /* center horizontally and add vertical breathing room */
-  padding: 20px;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.08);
-  border-radius: 10px;
-  overflow: visible;
-}
-
-/* Make the world container match the app size and avoid extra whitespace */
-.world {
-  display: flex;
-  justify-content: center;
-  align-items: flex-start;
-  padding: 20px 0;
-}
-
-/* Ensure the ink canvas overlays the paper exactly */
-.ink {
-  position: absolute;
-  left: 0;
-  top: 0;
-  width: 100%;
+html, body {
   height: 100%;
-  pointer-events: none; /* toggled by app when pen is ON */
-  z-index: 30;
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+  background: #f7f7f7;
+  color: #111;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* Ability grid: fixed label column, flexible numeric columns */
-.ability-breakdown-grid {
-  display: grid;
-  grid-template-columns: 110px repeat(6, minmax(56px, 1fr));
+/* Topbar and controls */
+.topbar {
+  height: 64px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  background: #f5f5f5;
+  box-shadow: 0 1px 0 rgba(0,0,0,0.06);
+  z-index: 60;
+}
+.topbar .controls {
+  display: flex;
   gap: 8px;
   align-items: center;
 }
+.topbar .controls label {
+  margin: 0 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
 
-/* Make numeric inputs compact and full-width of their cell */
-.ability-breakdown-grid input[type="number"] {
-  width: 100%;
-  box-sizing: border-box;
-  padding: 6px 8px;
-  border-radius: 6px;
-  border: 1px solid #e6e6e6;
+/* Viewport, world, app */
+#viewport {
+  position: relative;
+  overflow: auto;
   background: #fff;
-  font-size: 13px;
+}
+#world {
+  transform-origin: 0 0;
+  position: relative;
+}
+#app {
+  position: relative;
+  background: transparent;
+  min-width: 320px;
+  padding: 12px;
+  box-sizing: border-box;
 }
 
-/* Table improvements for spells and feats */
-.table th, .table td {
-  padding: 8px 10px;
-  font-size: 13px;
-  vertical-align: middle;
-}
-.table thead th {
-  background: #fafafa;
-  font-weight: 600;
-  border-bottom: 2px solid #eee;
+/* Panel boxes */
+.panel {
+  border: 1px solid var(--panel-border);
+  background: var(--panel-bg);
+  padding: 10px;
+  border-radius: 6px;
+  box-shadow: 0 1px 0 rgba(0,0,0,0.03);
+  margin-bottom: 10px;
 }
 
-/* Reduce topbar height slightly and keep viewport calc consistent */
-.topbar { padding: 8px 12px; }
-.viewport { height: calc(100vh - 96px); }
+/* Headings and small text */
+.panel h2 { margin: 0 0 8px 0; font-size: 18px; }
+.panel h3 { margin: 0 0 8px 0; font-size: 15px; }
+.hint { color: var(--muted); font-size: 13px; margin-top: 6px; }
 
-/* Keep form controls selectable while preventing accidental selection elsewhere */
-.world, .app { -webkit-user-select: none; user-select: none; }
-input, textarea, select, button { user-select: text; }
-
-/* Small responsive tweaks */
-@media (max-width: 900px) {
-  .app { width: calc(100vw - 40px); padding: 14px; }
-  .ability-breakdown-grid { grid-template-columns: 90px repeat(6, minmax(48px, 1fr)); }
+/* Grid container used across the app */
+.grid {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
-/* ---------- Tighten General abilities grid ---------- */
+/* ---------- Ability breakdown grid (single authoritative definition) ----------
+   Columns: label + 6 numeric columns (Point buy, ASI, Items, Buffs, Total, Mod)
+   This must match the renderer which outputs 7 cells per row.
+*/
 .ability-breakdown-grid {
   display: grid;
-  grid-template-columns: 1.2fr repeat(5, 0.9fr) 0.9fr 0.9fr; /* label + narrow numeric columns */
+  grid-template-columns: 1.4fr repeat(6, var(--ability-col-width));
   gap: 6px;
   align-items: center;
   font-size: 13px;
-}
-
-/* Make the small numeric columns centered and compact */
-.ability-breakdown-grid .val {
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  padding:4px;
-}
-
-/* Inputs centered and constrained */
-.ability-breakdown-grid input[type="number"] {
-  width: 48px;
-  text-align: center;
-  padding:4px;
+  width: 100%;
   box-sizing: border-box;
+}
+
+/* Column header style */
+.ability-breakdown-grid .hdr {
+  font-weight: 600;
+  text-align: center;
+  font-size: 12px;
+}
+
+/* Numeric cells centered and compact */
+.ability-breakdown-grid .val {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 4px;
+  min-height: 28px;
+  box-sizing: border-box;
+}
+
+/* Inputs: small, centered, consistent */
+.ability-breakdown-grid input[type="number"],
+.ability-breakdown-grid input[type="text"] {
+  width: var(--ability-input-width);
+  height: 26px;
+  text-align: center;
+  padding: 2px 4px;
+  box-sizing: border-box;
+  border: 1px solid rgba(0,0,0,0.08);
+  border-radius: 4px;
   font-size: 13px;
-}
-
-/* Total and Mod columns: bold and centered */
-.ability-breakdown-grid .val strong {
-  display:block;
-  text-align:center;
-  min-width:36px;
-}
-
-/* Panel boxes around sections */
-.panel {
-  border: 1px solid rgba(0,0,0,0.06);
   background: #fff;
-  padding: 12px;
-  border-radius: 8px;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
 }
 
-/* Slightly tighter spacing for the General page */
-.panel h3 { margin-top:0; margin-bottom:8px; }
-.grid { gap:10px; }
+/* Totals and Mods: bold and centered */
+.ability-breakdown-grid .val strong {
+  display: block;
+  text-align: center;
+  min-width: 40px;
+  font-weight: 700;
+}
 
-/* Prep/writeable space style */
+/* Feats and languages lists */
+.panel ul { margin: 6px 0 0 18px; padding: 0; }
+
+/* Writeable space */
 .write-space {
-  border: 1px dashed rgba(0,0,0,0.12);
-  background: rgba(0,0,0,0.02);
-  min-height: 160px;
+  border: 1px dashed rgba(0,0,0,0.10);
+  background: rgba(255,255,255,0.98);
+  min-height: 120px;
   margin: 8px 0;
   padding: 8px;
   border-radius: 6px;
   box-sizing: border-box;
   overflow: auto;
   resize: vertical;
-}
-
-/* Make write-space contenteditable look like paper */
-.write-space[contenteditable="true"] {
-  outline: none;
-  caret-color: #111;
-  font-family: inherit;
   font-size: 14px;
-  color: #111;
 }
+.write-space[contenteditable="true"] { outline: none; caret-color: #111; }
 
-/* Spells table: fixed layout and prevent overflow by using landscape container */
-.table { table-layout: fixed; width: 100%; word-wrap: break-word; }
-.table th, .table td { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-
-/* Landscape mode for spells: wider app width and horizontal scroll if needed */
-#app.landscape {
-  width: 1120px; /* A4 landscape-ish width in CSS px */
-  max-width: none;
-}
-
-/* When in landscape, allow horizontal scroll inside viewport */
-#viewport { overflow: auto; }
-
-/* Make prep boxes (if present) visually writable */
-.prep-box {
-  display:inline-block;
-  width:48px;
-  height:18px;
-  border:1px solid rgba(0,0,0,0.08);
-  background: rgba(255,255,255,0.9);
-  vertical-align:middle;
-  text-align:center;
-  line-height:18px;
-  font-size:12px;
-  border-radius:3px;
-}
-
-/* Responsive tweak: on narrow screens, allow table to scroll horizontally */
+/* Spells table and wrapper */
 .table-wrapper {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
 }
+.table {
+  table-layout: fixed;
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--panel-bg);
+}
+.table th, .table td {
+  padding: 6px 8px;
+  border: 1px solid rgba(0,0,0,0.06);
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
-/* Small UI niceties for topbar controls */
-.topbar .controls label { margin: 0 6px; display:inline-flex; align-items:center; gap:6px; }
+/* Prep boxes */
+.prep-box {
+  display: inline-block;
+  width: 48px;
+  height: 20px;
+  border: 1px solid rgba(0,0,0,0.08);
+  border-radius: 3px;
+  text-align: center;
+  line-height: 20px;
+  font-size: 12px;
+  background: #fff;
+}
 
+/* Landscape container for spells view */
+#app.landscape {
+  width: var(--paper-width-landscape);
+  max-width: none;
+}
+
+/* Canvas ink styling */
+canvas.ink {
+  display: block;
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 30;
+  touch-action: none;
+}
+
+/* Small responsive tweaks */
+@media (max-width: 720px) {
+  .ability-breakdown-grid {
+    grid-template-columns: 1fr repeat(6, 48px);
+    font-size: 12px;
+  }
+  :root { --ability-col-width: 48px; --ability-input-width: 40px; }
+}
+
+/* Utility */
+.hidden { display: none !important; }
+.center { text-align: center; }
+.small { font-size: 12px; color: var(--muted); }
