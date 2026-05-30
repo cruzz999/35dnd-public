@@ -1,9 +1,0 @@
-https://raw.githubusercontent.com/cruzz999/35dnd-public/8b68b3fe074e2063d9eff8382323f9a27a68c3ab/app.js
-https://raw.githubusercontent.com/cruzz999/35dnd-public/8b68b3fe074e2063d9eff8382323f9a27a68c3ab/data/slots.js
-https://raw.githubusercontent.com/cruzz999/35dnd-public/8b68b3fe074e2063d9eff8382323f9a27a68c3ab/index.html
-https://raw.githubusercontent.com/cruzz999/35dnd-public/8b68b3fe074e2063d9eff8382323f9a27a68c3ab/persistence/idb.js
-https://raw.githubusercontent.com/cruzz999/35dnd-public/8b68b3fe074e2063d9eff8382323f9a27a68c3ab/src/ingest.js
-https://raw.githubusercontent.com/cruzz999/35dnd-public/8b68b3fe074e2063d9eff8382323f9a27a68c3ab/src/render.js
-https://raw.githubusercontent.com/cruzz999/35dnd-public/8b68b3fe074e2063d9eff8382323f9a27a68c3ab/src/utils.js
-https://raw.githubusercontent.com/cruzz999/35dnd-public/8b68b3fe074e2063d9eff8382323f9a27a68c3ab/styles.css
-https://raw.githubusercontent.com/cruzz999/35dnd-public/8b68b3fe074e2063d9eff8382323f9a27a68c3ab/xlsx.full.min.js

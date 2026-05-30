@@ -1,5 +1,4 @@
 app.js
-data/slots.js
 index.html
 persistence/idb.js
 src/ingest.js
