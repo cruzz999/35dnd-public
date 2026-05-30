@@ -1,6 +1,6 @@
 // ink.js
-// Robust ink layer: canvas lives in #world and pointer mapping uses DOMMatrix inverse.
-// Exposes window.ink API expected by app.js
+// Fix: canvas sized to world.clientWidth/Height; mapping uses DOMMatrix inverse.
+// Drop-in replacement: exposes window.ink API expected by app.js
 (function () {
   if (window.ink) return;
 
@@ -72,9 +72,9 @@
       worldEl.appendChild(canvas);
     }
 
-    // Use the world's layout size (clientWidth/clientHeight) — this is the untransformed size
-    const w = Math.max(worldEl.clientWidth || 1200, 1200);
-    const h = Math.max(worldEl.clientHeight || 800, 800);
+    // Use the world's layout size (clientWidth/clientHeight) — exact, no hardcoded minimums
+    const w = Math.max(1, Math.floor(worldEl.clientWidth || 1));
+    const h = Math.max(1, Math.floor(worldEl.clientHeight || 1));
     const dpr = window.devicePixelRatio || 1;
 
     // CSS size in layout (untransformed) pixels
@@ -129,8 +129,7 @@
       const pt = new DOMPoint(px, py);
       const unmapped = pt.matrixTransform(inv); // coordinates in world-local (untransformed) space
 
-      // unmapped.x/unmapped.y are already in the same coordinate space as world.clientWidth/Height,
-      // which is how the canvas is sized above. Use them directly for drawing.
+      // Use unmapped.x/unmapped.y directly; canvas is sized to world.clientWidth/Height
       return { x: unmapped.x, y: unmapped.y };
     } catch (err) {
       // fallback to reversing pan/zoom if DOMMatrix fails
