@@ -236,18 +236,22 @@ export async function loadFromGoogleSheets(url, state, render, setProgress) {
   }
 
   // 3) google export gids (try common gids and also try gid=0 last)
-  if (sheetId) {
-    const candidateGids = [0, 2004670713, 1231385124, 2140364605];
-    for (const gid of candidateGids) {
-      try {
-        const exportUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${gid}`;
-        const res = await tryAndParse(exportUrl, 'google-export', { gid });
-        if (res.ok) {
-          applySheetRowToGeneralDetailed(res.first, state, render);
-          setProgress?.(100, `Sheet loaded (gid=${gid})`);
-          return { ok:true, tried };
-        }
-      } catch (e) { tried.push({ method:'google-export-ex', gid, error:String(e) }); }
+  if (sheetId) {// Always load the General tab (gid = 2004670713)
+const correctGid = 2004670713;
+const exportUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${correctGid}`;
+const r = await tryFetchText(exportUrl);
+tried.push({ method: 'google-export-fixed', gid: correctGid, url: exportUrl, result: r });
+
+if (r.ok && r.text) {
+  const rows = parseCsv(r.text);
+  const objs = csvRowsToObjects(rows);
+  const first = objs.find(o => Object.values(o||{}).some(v => String(v||'').trim() !== ''));
+  if (first) {
+    applySheetRowToGeneralDetailed(first, state, render);
+    setProgress?.(100, `Sheet loaded (General gid=${correctGid})`);
+    return { ok:true, tried };
+  }
+}
     }
 
     // 4) published CSV
