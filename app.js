@@ -663,39 +663,9 @@ function render() {
 
 /* --------------------------- XLSX loading ------------------------------ */
 if (el.file) {
-  el.file.addEventListener("change", async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    try {
-      setProgress(5, "Reading file…");
-      await nextFrame();
-      const buf = await file.arrayBuffer();
-      setProgress(20, "Parsing workbook…");
-      await nextFrame();
-      if (typeof XLSX === "undefined") throw new Error("XLSX library not loaded (xlsx.full.min.js)");
-      const wb = XLSX.read(buf, { type: "array" });
-
-      // Delegate ingest to external module
-      try {
-        const gs = ensureGs();
-        setProgress(45, "Ingesting General…");
-        gs.ingestGeneralFromXlsx(wb);
-        setProgress(65, "Ingesting Spells…");
-        gs.ingestSpellsFromXlsx(wb);
-      } catch (ingestErr) {
-        console.error("Ingest error:", ingestErr);
-        throw ingestErr;
-      }
-
-      state.loaded = true;
-      setProgress(90, "Rendering…");
-      ink.loadForView(state.view);
-      render();
-      setProgress(100, "Done ✅");
-    } catch (err) {
-      console.error(err);
-      setProgress(0, "XLSX load error (see console)");
-    }
+  el.file.addEventListener("change", () => {
+    setProgress(0, "XLSX uploads are disabled. Use Google Sheets URL instead.");
+    el.file.value = "";
   });
 }
 
