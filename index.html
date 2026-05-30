@@ -10,28 +10,27 @@
   <div class="topbar">
     <div class="brand">35 DnD Ink Sheet</div>
     <div class="controls">
-  <input id="gsUrl" class="input" placeholder="Paste Google Sheets URL here" />
-  <button id="fillGs" class="btn" title="Auto-fill the known sheet">Auto‑fill</button>
-  <button id="loadGs" class="btn">Load Google Sheets</button>
+      <input id="gsUrl" class="input" placeholder="Paste Google Sheets URL here" />
+      <button id="fillGs" class="btn" title="Auto-fill the known sheet">Auto‑fill</button>
+      <button id="loadGs" class="btn">Load Google Sheets</button>
 
-  <div class="view-buttons" role="toolbar" aria-label="Views">
-    <button id="viewGeneral" class="btn">General</button>
-    <button id="viewSpells" class="btn">Spells</button>
-    <button id="viewSlots" class="btn">Slots</button>
-    <button id="viewSkills" class="btn">Skills</button>
-  </div>
+      <div class="view-buttons" role="toolbar" aria-label="Views">
+        <button id="viewGeneral" class="btn">General</button>
+        <button id="viewSpells" class="btn">Spells</button>
+        <button id="viewSlots" class="btn">Slots</button>
+        <button id="viewSkills" class="btn">Skills</button>
+      </div>
 
-  <div class="nav-controls">
-    <button id="zoomOut" class="btn">−</button>
-    <button id="zoomIn" class="btn">+</button>
-    <button id="zoomReset" class="btn">Reset</button>
-    <button id="penToggle" class="btn">Pen: OFF</button>
-    <button id="eraser" class="btn">Eraser</button>
-    <button id="undo" class="btn">Undo</button>
-    <button id="clearInk" class="btn">Clear</button>
-  </div>
-</div>
-
+      <div class="nav-controls">
+        <button id="zoomOut" class="btn">−</button>
+        <button id="zoomIn" class="btn">+</button>
+        <button id="zoomReset" class="btn">Reset</button>
+        <button id="penToggle" class="btn">Pen: OFF</button>
+        <button id="eraser" class="btn">Eraser</button>
+        <button id="undo" class="btn">Undo</button>
+        <button id="clearInk" class="btn">Clear</button>
+      </div>
+    </div>
   </div>
 
   <div id="viewport" class="viewport">
@@ -48,41 +47,14 @@
     </div>
   </div>
 
-  <template id="hint-template">
-    <div class="hint">Use the Google Sheets URL above to load your character sheet. XLSX uploads are disabled.</div>
-  </template>
-
-  <!-- Optional: keep a disabled file input if you want a visual placeholder -->
   <div class="file-ui">
     <label class="file-label">XLSX uploads disabled</label>
     <input id="file" type="file" accept=".xlsx" style="display:none" />
   </div>
 
-  <!-- gs_ingest must be loaded before app.js -->
+  <!-- Load order: gs_ingest (ingest), ink (drawing), app (UI) -->
   <script src="gs_ingest.js"></script>
+  <script src="ink.js"></script>
   <script src="app.js"></script>
-  <script>
-  // Auto-fill the known Google Sheet URL and focus the input
-  (function () {
-    const AUTO_SHEET = "https://docs.google.com/spreadsheets/d/1P_Vslp-rxiTcntUZVLR2BjJrdeQqdWfPLeigs2Gnx_U/edit?usp=sharing";
-    const fillBtn = document.getElementById("fillGs");
-    const gsInput = document.getElementById("gsUrl");
-    const loadBtn = document.getElementById("loadGs");
-
-    if (fillBtn && gsInput) {
-      fillBtn.addEventListener("click", () => {
-        gsInput.value = AUTO_SHEET;
-        gsInput.focus();
-      });
-    }
-
-    // Optional: pressing Enter in the input triggers load
-    if (gsInput && loadBtn) {
-      gsInput.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") loadBtn.click();
-      });
-    }
-  })();
-</script>
 </body>
 </html>
