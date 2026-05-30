@@ -3,13 +3,6 @@
  *
  * Replace your existing app.js with this file. It preserves the original
  * behavior while delegating render and ingest to src/ modules.
- *
- * After replacing, create the files:
- *  - src/utils.js
- *  - src/ingest.js
- *  - src/render.js
- *
- * Then hard-reload the page and run the smoke checks in the console.
  */
 
 /* ----------------------------- DOM helpers ------------------------------ */
@@ -65,21 +58,22 @@ let renderModule = null;
 let ingestModule = null;
 
 async function loadModules() {
+  // Robust loader: expose modules on window for debugging and log failures.
   try {
     renderModule = await import('./src/render.js');
-    // expose for debugging and for other code that checks window.renderModule
     window.renderModule = renderModule;
+    console.log('render module loaded');
   } catch (e) {
-    console.warn('Could not load src/render.js', e);
+    console.error('render import failed', e);
   }
   try {
     ingestModule = await import('./src/ingest.js');
     window.ingestModule = ingestModule;
+    console.log('ingest module loaded');
   } catch (e) {
-    console.warn('Could not load src/ingest.js', e);
+    console.error('ingest import failed', e);
   }
 }
-
 
 /* ------------------------------ Viewport & Ink ------------------------- */
 function applyWorldTransform() {
@@ -322,9 +316,22 @@ if (el.zoomReset) el.zoomReset.addEventListener('click', () => resetView(), { pa
 
 if (el.penToggle) {
   el.penToggle.addEventListener('click', () => {
+    // Toggle pen state
     state.penOn = !state.penOn;
-    if (window.__ink && typeof window.__ink.setPenMode === 'function') window.__ink.setPenMode(state.penOn);
-    else if (el.ink) el.ink.style.pointerEvents = state.penOn ? 'auto' : 'none';
+
+    // Prefer ink API if available
+    if (window.__ink && typeof window.__ink.setPenMode === 'function') {
+      try { window.__ink.setPenMode(state.penOn); } catch (e) { console.warn('ink.setPenMode failed', e); }
+    }
+
+    // Ensure canvas receives pointer events even if ink API isn't wired yet
+    const canvas = document.getElementById('inkWorld');
+    if (canvas) {
+      canvas.style.pointerEvents = state.penOn ? 'auto' : 'none';
+    }
+
+    // Update UI label if present
+    if (el.penToggle) el.penToggle.textContent = `Pen: ${state.penOn ? 'ON' : 'OFF'}`;
   }, { passive: true });
 }
 if (el.eraser) el.eraser.addEventListener('click', () => { state.erasing = !state.erasing; if (window.__ink && window.__ink.setEraser) window.__ink.setEraser(state.erasing); }, { passive: true });
@@ -433,4 +440,35 @@ if (el.file) {
     const defaultSheet = 'https://docs.google.com/spreadsheets/d/1P_Vslp-rxiTcntUZVLR2BjJrdeQqdWfPLeigs2Gnx_U/edit?usp=sharing';
     if (el.gsUrl && (!el.gsUrl.value || el.gsUrl.value.trim() === '')) el.gsUrl.value = defaultSheet;
   } catch (e) {}
+})();
+
+// Defensive: ensure ink is initialized and canvas pointer-events are consistent.
+// If the ink closure ran before the DOM had #inkWorld, re-run a lightweight attach.
+(function ensureInkReady() {
+  const canvas = document.getElementById('inkWorld');
+  // If canvas exists but pointer-events are none, set to none by default (pen off)
+  if (canvas && getComputedStyle(canvas).pointerEvents === 'none') {
+    // keep default none until user toggles pen; but ensure ink API is exposed
+    if (window.__ink && typeof window.__ink.setPenMode === 'function') {
+      try { window.__ink.setPenMode(!!state.penOn); } catch (e) { /* ignore */ }
+    }
+  }
+  // If canvas missing, retry a few times (handles DOM timing)
+  if (!canvas) {
+    let tries = 0;
+    const t = setInterval(() => {
+      tries++;
+      const c = document.getElementById('inkWorld');
+      if (c) {
+        // ensure pointer-events reflect pen state
+        c.style.pointerEvents = state.penOn ? 'auto' : 'none';
+        if (window.__ink && typeof window.__ink.setPenMode === 'function') {
+          try { window.__ink.setPenMode(!!state.penOn); } catch (e) {}
+        }
+        clearInterval(t);
+      } else if (tries > 40) {
+        clearInterval(t);
+      }
+    }, 50);
+  }
 })();
