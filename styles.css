@@ -1,238 +1,85 @@
-:root {
-  --bg: #ffffff;
-  --fg: #000000;
-  --border: #000000;
-  --muted: #444444;
-  --radius: 6px;
-  --pad: 10px;
-  --font: 17px;
-  --line: 1.35;
+:root{
+  --bg:#f6f6f6;
+  --panel:#fff;
+  --muted:#666;
+  --accent:#222;
+  --accent-2:#0a84ff;
+  --shadow: rgba(0,0,0,0.08);
+  --glass: rgba(255,255,255,0.6);
+  font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
 }
 
-html, body {
-  margin: 0;
-  padding: 0;
-  background: var(--bg);
-  color: var(--fg);
-  font-family: system-ui, Arial, sans-serif;
-  font-size: var(--font);
-  line-height: var(--line);
-  /* Paper mode: no page scroll */
-  overflow: hidden;
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--accent)}
+.topbar{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:10px 14px;
+  background:linear-gradient(180deg,var(--panel),#f7f7f7);
+  border-bottom:1px solid #e6e6e6;
+  position:sticky;
+  top:0;
+  z-index:40;
 }
-
-/* ---------------- Top bar ---------------- */
-.topbar {
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 8px 10px;
-  border-bottom: 2px solid var(--border);
-  background: var(--bg);
-  position: sticky;
-  top: 0;
-  z-index: 1000;
+.brand{font-weight:700}
+.controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.input{
+  padding:8px 10px;border-radius:6px;border:1px solid #ddd;background:#fff;min-width:260px;
 }
-
-.topbar .left,
-.topbar .right {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
+.btn{
+  padding:8px 10px;border-radius:6px;border:1px solid #ddd;background:#fff;cursor:pointer;
+  box-shadow:0 1px 0 rgba(0,0,0,0.02);
 }
-
-.topbar button {
-  border: 2px solid var(--border);
-  background: var(--bg);
-  color: var(--fg);
-  padding: 8px 10px;
-  border-radius: var(--radius);
-  font-size: 16px;
+.btn:active{transform:translateY(1px)}
+.viewport{
+  width:100%;
+  height:calc(100vh - 112px);
+  overflow:hidden;
+  position:relative;
+  background:linear-gradient(180deg,#fafafa,#f3f3f3);
 }
-
-.topbar input[type="file"] {
-  font-size: 14px;
+.world{
+  position:absolute;
+  left:0;top:0;
+  transform-origin:0 0;
+  will-change:transform;
+  padding:20px;
 }
-
-.topbar input[type="text"] {
-  border: 2px solid var(--border);
-  background: var(--bg);
-  color: var(--fg);
-  padding: 6px 8px;
-  border-radius: var(--radius);
-  font-size: 16px;
-  width: 420px;
-  max-width: 100%;
+.app{
+  width:1200px;
+  min-height:800px;
+  background:var(--panel);
+  box-shadow:0 6px 18px var(--shadow);
+  border-radius:8px;
+  padding:18px;
+  color:var(--accent);
 }
-
-.sep {
-  display: inline-block;
-  width: 1px;
-  height: 22px;
-  background: #999;
-  margin: 0 8px;
+.panel{background:var(--panel);padding:12px;border-radius:8px;margin-bottom:12px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.hint{color:var(--muted);font-size:13px;margin-top:6px}
+.ability-breakdown-grid{
+  display:grid;
+  grid-template-columns:80px repeat(6,1fr);
+  gap:6px;
+  align-items:center;
 }
-
-.progress {
-  width: 220px;
-  height: 12px;
-  border: 2px solid var(--border);
-  border-radius: var(--radius);
-  overflow: hidden;
+.hdr{font-weight:600;color:var(--muted);font-size:12px}
+.val{padding:6px}
+.table{width:100%;border-collapse:collapse}
+.table th,.table td{border:1px solid #eee;padding:6px;text-align:left;font-size:13px}
+.statusbar{
+  display:flex;align-items:center;gap:12px;padding:8px 14px;border-top:1px solid #eee;background:transparent;
+  position:fixed;left:0;right:0;bottom:0;z-index:50;
 }
-
-#progressBar {
-  height: 100%;
-  width: 0%;
-  background: var(--fg);
-  transition: width 0.15s linear;
-}
-
-/* ---------------- Paper viewport ---------------- */
-#viewport {
-  position: relative;
-  width: 100vw;
-  height: calc(100vh - 64px); /* JS can override to true topbar height */
-  overflow: hidden;
-  background: var(--bg);
-
-  /* Stylus stability: prevent browser gesture stealing */
-  touch-action: none;
-  user-select: none;
-  -webkit-user-select: none;
-  -webkit-touch-callout: none;
-}
-
-#world {
-  position: absolute;
-  left: 0;
-  top: 0;
-  transform-origin: 0 0;
-  touch-action: none;
-}
-
-.app {
-  padding: var(--pad);
-  max-width: none; /* wide content is fine; pan/zoom reveals it */
-}
-
-/* ---------------- Panels & layout ---------------- */
-.panel {
-  border: 2px solid var(--border);
-  border-radius: var(--radius);
-  padding: var(--pad);
-  margin: 10px 0;
-}
-
-.hint {
-  color: var(--muted);
-  font-size: 14px;
-}
-
-.grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-}
-
-@media (max-width: 900px) {
-  .grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-/* ---------------- Tables ---------------- */
-.table {
-  border-collapse: collapse;
-  width: max-content;  /* don’t squash; pan/zoom instead */
-  min-width: 980px;
-  font-size: 15px;
-}
-
-.table th,
-.table td {
-  border: 2px solid var(--border);
-  padding: 6px 8px;
-  vertical-align: top;
-}
-
-.table th {
-  font-weight: 700;
-  background: #fff;
-}
-
-/* Empty prep box intended for ink */
-.prep-box {
-  width: 7ch;
-  height: 1.6em;
-  border: 2px solid var(--border);
-  border-radius: 4px;
-  display: inline-block;
-  background: #fff;
-}
-
-/* ---------------- Ability breakdown grid (important) ---------------- */
-/* Wrapper used in renderGeneral(): <div class="ability-breakdown-grid"> */
-.ability-breakdown-grid {
-  display: grid;
-  grid-template-columns: 70px 110px 70px 80px 120px 70px 60px;
-  gap: 8px;
-  align-items: center;
-  max-width: 100%;
-}}
-
-.ability-breakdown-grid .hdr {
-  font-weight: 700;
-  text-align: right;
-  white-space: nowrap;
-}
-
-.ability-breakdown-grid .val {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
-/* Older/simple ability grid (if still used anywhere) */
-.ability-grid {
-  display: grid;
-  grid-template-columns: 80px 90px 70px;
-  gap: 8px;
-  align-items: center;
-}
-
-.ability-grid .hdr {
-  font-weight: 700;
-}
-
-.ability-grid .val {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
-/* ---------------- Ink canvas ---------------- */
-#inkWorld {
-  position: absolute;
-  left: 0;
-  top: 0;
-  z-index: 20;
-  pointer-events: none; /* JS toggles this */
-  touch-action: none;
-}
-
-
-.ability-breakdown-grid input[type="number"]{
-  width: 100%;
-  box-sizing: border-box /* CRITICAL: border+padding included in width */
-  padding: 2px 4px;
-  font-size: 16px;
-  line-height: 1.1;
-  border: 2px solid var(--border);
-  border-radius: 4px;
-  background: var(--bg);
-  color: var(--fg);
-  text-align: right;
-  min-width: 0;                /* allow grid to constrain it */
+.status{font-size:13px;color:var(--muted)}
+.progress{flex:1;height:8px;background:#eee;border-radius:999px;overflow:hidden}
+.progressBar{height:100%;width:0;background:linear-gradient(90deg,var(--accent-2),#0066ff)}
+.ink{position:absolute;left:0;top:0;pointer-events:none;z-index:30}
+.file-ui{position:fixed;right:12px;bottom:72px;background:var(--panel);padding:8px;border-radius:8px;border:1px solid #eee;box-shadow:0 6px 18px var(--shadow)}
+.file-label{font-size:12px;color:var(--muted)}
+@media (max-width:900px){
+  .grid{grid-template-columns:1fr}
+  .input{min-width:140px}
 }
