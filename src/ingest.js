@@ -1,17 +1,21 @@
 // src/ingest.js
 import { parseCsv, csvRowsToObjects } from './utils.js';
 
+/* -------------------------------------------------------------------------- */
+/* Helpers                                                                    */
+/* -------------------------------------------------------------------------- */
+
 export function extractSpreadsheetId(url) {
   const m = String(url).match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
   return m ? m[1] : null;
 }
 
-async function fetchCsv(url) {
-  const r = await fetch(url, { cache: "no-store" });
-  const text = await r.text();
-  const rows = parseCsv(text);
-  const objs = csvRowsToObjects(rows);
-  return { rows, objs };
+function toNumber(v, fallback = 0) {
+  if (v === undefined || v === null) return fallback;
+  const s = String(v).trim();
+  if (!s) return fallback;
+  const n = Number(s.replace(/[^\d\.\-]/g, ""));
+  return Number.isFinite(n) ? n : fallback;
 }
 
 function normalizeKey(k) {
@@ -22,104 +26,143 @@ function normalizeKey(k) {
     .toUpperCase();
 }
 
-function toNumber(v, fallback = 0) {
-  if (v === undefined || v === null || String(v).trim() === "") return fallback;
-  const n = Number(String(v).replace(/[^\d\.\-]/g, ""));
-  return Number.isFinite(n) ? n : fallback;
-}
-
-function firstNonEmpty(objs) {
-  return objs.find((o) =>
-    Object.values(o || {}).some((v) => String(v || "").trim() !== "")
-  );
+async function fetchCsvRows(url) {
+  const r = await fetch(url, { cache: "no-store" });
+  const text = await r.text();
+  const rows = parseCsv(text); // rows: string[][]
+  return rows;
 }
 
 /* -------------------------------------------------------------------------- */
-/* GENERAL INGEST (gid = 2004670713)                                          */
+/* GENERAL PARSER — tailored to your layout (gid = 2004670713)                */
 /* -------------------------------------------------------------------------- */
 
-export function applyGeneralRow(row, state) {
+function parseGeneralFromRows(rows, state) {
+  if (!state.data) state.data = {};
   if (!state.data.general) state.data.general = {};
   const g = state.data.general;
 
-  const norm = {};
-  for (const k of Object.keys(row)) norm[normalizeKey(k)] = k;
-
-  const read = (...names) => {
-    for (const n of names) {
-      const nk = normalizeKey(n);
-      if (norm[nk] !== undefined) return row[norm[nk]];
-    }
-    return undefined;
+  // Helper: find first row whose first cell matches label (case-insensitive)
+  const findRow = (label) => {
+    const target = String(label).trim().toUpperCase();
+    return rows.find((r) => String(r[0] || "").trim().toUpperCase() === target) || null;
   };
 
-  g.characterName = String(read("Character", "Name") || g.characterName || "").trim();
-  g.playerName = String(read("Player") || g.playerName || "").trim();
-  g.xp = String(read("XP") || g.xp || "").trim();
-  g.classLine = String(read("Class", "Classes") || g.classLine || "").trim();
-  g.race = String(read("Race") || g.race || "").trim();
+  // Character name, player, XP, class, race
+  const rChar = findRow("Character name");
+  if (rChar) g.characterName = String(rChar[1] || g.characterName || "").trim();
 
+  const rPlayer = findRow("Player name");
+  if (rPlayer) g.playerName = String(rPlayer[1] || g.playerName || "").trim();
+
+  const rXP = findRow("XP");
+  if (rXP) g.xp = String(rXP[1] || g.xp || "").trim();
+
+  const rClass = findRow("Class");
+  if (rClass) g.classLine = String(rClass[1] || g.classLine || "").trim();
+
+  const rRace = findRow("Race");
+  if (rRace) g.race = String(rRace[1] || g.race || "").trim();
+
+  // Classes: parse classLine like "Sorcerer 1 / Wizard 5 / Ultimate Magus 2"
+  g.classes = g.classes || { sorc: 0, wiz: 0, um: 0 };
+  if (g.classLine) {
+    const parts = String(g.classLine).split(/[\/,;]/).map((s) => s.trim());
+    for (const p of parts) {
+      const m = p.match(/([A-Za-z ]+)\s+(\d+)/);
+      if (!m) continue;
+      const name = m[1].toLowerCase();
+      const lvl = toNumber(m[2], 0);
+      if (/sorc|sorcerer/.test(name)) g.classes.sorc = lvl;
+      else if (/wiz|wizard/.test(name)) g.classes.wiz = lvl;
+      else if (/ultimate magus|um/.test(name)) g.classes.um = lvl;
+    }
+  }
+
+  // Abilities: use the "Ability / Score / Mod / Temp score / ... / Point buy array / ASI / Point buy cost" table
   g.abilities = g.abilities || {};
-  const map = { STR: "str", DEX: "dex", CON: "con", INT: "int", WIS: "wis", CHA: "cha" };
+  const abilityHeaderIndex = rows.findIndex(
+    (r) => String(r[0] || "").trim().toUpperCase() === "ABILITY"
+  );
+  if (abilityHeaderIndex >= 0) {
+    const headerRow = rows[abilityHeaderIndex];
+    const colIndex = {};
+    headerRow.forEach((cell, idx) => {
+      const nk = normalizeKey(cell);
+      if (nk) colIndex[nk] = idx;
+    });
 
-  for (const H of Object.keys(map)) {
-    const key = map[H];
-    g.abilities[key] = g.abilities[key] || { pointBuy: 0, asi: 0, items: 0, buffs: 0 };
+    const idxAbility = colIndex["ABILITY"];
+    const idxPointBuy = colIndex["POINT BUY ARRAY"];
+    const idxASI = colIndex["ASI"];
+    const idxItems = colIndex["ITEMS PENALTIES/BUFFS"];
 
-    const pb = read(H, `${H} PB`);
-    const asi = read(`${H} ASI`);
-    const items = read(`${H} ITEMS`);
-    const buffs = read(`${H} BUFFS`);
+    const map = { STR: "str", DEX: "dex", CON: "con", INT: "int", WIS: "wis", CHA: "cha" };
 
-    if (pb !== undefined) g.abilities[key].pointBuy = toNumber(pb, g.abilities[key].pointBuy);
-    if (asi !== undefined) g.abilities[key].asi = toNumber(asi, g.abilities[key].asi);
-    if (items !== undefined) g.abilities[key].items = toNumber(items, g.abilities[key].items);
-    if (buffs !== undefined) g.abilities[key].buffs = toNumber(buffs, g.abilities[key].buffs);
+    for (let i = 1; i <= 6; i++) {
+      const row = rows[abilityHeaderIndex + i];
+      if (!row) continue;
+      const label = String(row[idxAbility] || "").trim().toUpperCase();
+      const key = map[label];
+      if (!key) continue;
+
+      g.abilities[key] = g.abilities[key] || { pointBuy: 0, asi: 0, items: 0, buffs: 0 };
+
+      if (idxPointBuy !== undefined) {
+        const v = row[idxPointBuy];
+        if (v !== undefined && String(v).trim() !== "")
+          g.abilities[key].pointBuy = toNumber(v, g.abilities[key].pointBuy);
+      }
+      if (idxASI !== undefined) {
+        const v = row[idxASI];
+        if (v !== undefined && String(v).trim() !== "")
+          g.abilities[key].asi = toNumber(v, g.abilities[key].asi);
+      }
+      if (idxItems !== undefined) {
+        const v = row[idxItems];
+        if (v !== undefined && String(v).trim() !== "")
+          g.abilities[key].items = toNumber(v, g.abilities[key].items);
+      }
+      // buffs remain 0; handled in app via toggles
+    }
   }
 
-  g.ac = g.ac || {};
-  const armor = read("Armor");
-  const shield = read("Shield");
-  const natural = read("Natural");
-  const deflect = read("Deflect");
-  const misc = read("Misc");
-  const miscTouch = read("Misc Touch");
+  // AC: we leave armor/shield/natural/deflect/misc at defaults; app derives AC from buffs/armor
+  g.ac = g.ac || { armor: 0, shield: 0, size: 0, natural: 0, deflect: 0, misc: 0, miscTouch: 0 };
 
-  if (armor !== undefined) g.ac.armor = toNumber(armor, g.ac.armor || 0);
-  if (shield !== undefined) g.ac.shield = toNumber(shield, g.ac.shield || 0);
-  if (natural !== undefined) g.ac.natural = toNumber(natural, g.ac.natural || 0);
-  if (deflect !== undefined) g.ac.deflect = toNumber(deflect, g.ac.deflect || 0);
-  if (misc !== undefined) g.ac.misc = toNumber(misc, g.ac.misc || 0);
-  if (miscTouch !== undefined) g.ac.miscTouch = toNumber(miscTouch, g.ac.miscTouch || 0);
+  // Buffs: default off; toggled in UI
+  g.buffs = g.buffs || { mageArmor: 0, shieldSpell: 0 };
 
-  g.buffs = g.buffs || {};
-  const mage = read("Mage Armor");
-  const shieldSpell = read("Shield Spell");
-
-  if (mage !== undefined) g.buffs.mageArmor = toNumber(mage) ? 1 : 0;
-  if (shieldSpell !== undefined) g.buffs.shieldSpell = toNumber(shieldSpell) ? 1 : 0;
-
-  const featsRaw = read("Feats");
-  if (featsRaw) {
-    g.feats = String(featsRaw)
-      .split(",")
-      .map((s) => ({ label: s.trim() }))
-      .filter((f) => f.label);
+  // Feats: parse "Feats & special abilities" section (first column)
+  const featsHeaderIndex = rows.findIndex((r) =>
+    String(r[0] || "").toLowerCase().includes("feats")
+  );
+  if (featsHeaderIndex >= 0) {
+    const feats = [];
+    for (let i = featsHeaderIndex + 1; i < rows.length; i++) {
+      const row = rows[i];
+      const label = String(row[0] || "").trim();
+      if (!label) break;
+      feats.push({ label });
+    }
+    if (feats.length) g.feats = feats;
   }
 
-  console.info("[ingest] GENERAL applied:", g);
+  console.info("[ingest] GENERAL parsed from layout:", g);
 }
 
 /* -------------------------------------------------------------------------- */
-/* SPELLS INGEST (gid = 0)                                                    */
+/* SPELLS PARSER — gid = 0, header-based                                      */
 /* -------------------------------------------------------------------------- */
 
-export function applySpells(objs, state) {
+function applySpellsFromObjects(objs, state) {
+  if (!state.data) state.data = {};
   state.data.spells = { sorc: [], wiz: [], meta: {} };
 
   for (const row of objs) {
+    if (!row) continue;
     const norm = {};
-    for (const k of Object.keys(row)) norm[normalizeKey(k)] = k;
+    Object.keys(row).forEach((k) => (norm[normalizeKey(k)] = k));
 
     const read = (...names) => {
       for (const n of names) {
@@ -134,7 +177,7 @@ export function applySpells(objs, state) {
 
     const level = toNumber(read("Level", "Lvl"), 0);
     const school = read("School") || "";
-    const list = read("List") || ""; // "Sorc", "Wiz", etc.
+    const list = read("List") || ""; // e.g. "Sorc", "Wiz"
 
     const spell = { name: String(name).trim(), level, school };
 
@@ -142,7 +185,7 @@ export function applySpells(objs, state) {
     if (/wiz/i.test(list)) state.data.spells.wiz.push(spell);
   }
 
-  console.info("[ingest] SPELLS applied:", state.data.spells);
+  console.info("[ingest] SPELLS parsed:", state.data.spells);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -158,27 +201,20 @@ export async function loadFromGoogleSheets(url, state, render, setProgress) {
     return { ok: false };
   }
 
-  /* ---------------- GENERAL (gid = 2004670713) ---------------- */
+  /* ---------------- GENERAL (layout tab, gid = 2004670713) ---------------- */
   const generalGid = 2004670713;
   const generalUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${generalGid}`;
+  const generalRows = await fetchCsvRows(generalUrl);
+  parseGeneralFromRows(generalRows, state);
 
-  const gen = await fetchCsv(generalUrl);
-  const genRow = firstNonEmpty(gen.objs);
-
-  if (!genRow) {
-    console.warn("[ingest] General tab empty");
-  } else {
-    applyGeneralRow(genRow, state);
-  }
-
-  /* ---------------- SPELLS (gid = 0) ---------------- */
+  /* ---------------- SPELLS (table tab, gid = 0) --------------------------- */
   const spellsGid = 0;
   const spellsUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${spellsGid}`;
+  const spellsRows = await fetchCsvRows(spellsUrl);
+  const spellsObjs = csvRowsToObjects(spellsRows);
+  applySpellsFromObjects(spellsObjs, state);
 
-  const sp = await fetchCsv(spellsUrl);
-  applySpells(sp.objs, state);
-
-  /* ---------------- DONE ---------------- */
+  /* ---------------- DONE --------------------------------------------------- */
   state.loaded = true;
   render?.();
   setProgress?.(100, "Sheet loaded");
