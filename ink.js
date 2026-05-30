@@ -1,10 +1,11 @@
 // ink.js
-// Standalone ink layer that mirrors the original inline implementation from app.js.
-// Uses the shared window.state (created if missing) so it integrates with app.js pan/zoom.
+// Drop-in ink layer that mirrors the original inline implementation.
+// Canvas is placed inside #app and sized to app.scrollWidth/scrollHeight.
+// Mapping uses viewport rect and reverses state.pan/state.zoom (same as original).
 (function () {
   if (window.ink) return;
 
-  // Ensure a shared state object exists (app.js uses `state`).
+  // Use shared window.state (create if missing)
   function getState() {
     if (!window.state) {
       window.state = {
@@ -30,7 +31,7 @@
     clearBtn: document.getElementById("clearInk")
   };
 
-  // Fallback: create canvas if missing
+  // Create canvas fallback if missing
   if (!el.canvas) {
     const c = document.createElement("canvas");
     c.id = "inkWorld";
@@ -65,39 +66,44 @@
     redraw();
   }
 
-  // Size canvas to match the app content area (same as original inline code)
-// Replace existing ensureCanvasSize with this exact function
-function ensureCanvasSize() {
-  const canvas = el.canvas;
-  if (!canvas || !ctx) return;
+  // Ensure canvas is a child of #app and sized to app.scrollWidth/scrollHeight (exact)
+  function ensureCanvasSize() {
+    const canvas = el.canvas;
+    const appEl = el.app || document.getElementById("app");
+    if (!canvas || !appEl) return;
 
-  const appEl = el.app || document.getElementById("app");
-  // Use the app's scroll size exactly (no hardcoded 1200/800)
-  const w = Math.max(1, Math.floor(appEl?.scrollWidth || 1));
-  const h = Math.max(1, Math.floor(appEl?.scrollHeight || 1));
-  const dpr = window.devicePixelRatio || 1;
+    // Move canvas into app so it shares the same origin and layout coordinate space
+    if (canvas.parentElement !== appEl) {
+      canvas.style.position = "absolute";
+      canvas.style.left = "0px";
+      canvas.style.top = "0px";
+      canvas.style.zIndex = 30;
+      appEl.appendChild(canvas);
+    }
 
-  // CSS size must match app layout size
-  canvas.style.position = "absolute";
-  canvas.style.left = "0px";
-  canvas.style.top = "0px";
-  canvas.style.width = `${w}px`;
-  canvas.style.height = `${h}px`;
+    // Size to the app's scroll size exactly (no hardcoded minima)
+    const w = Math.max(1, Math.floor(appEl.scrollWidth || 1));
+    const h = Math.max(1, Math.floor(appEl.scrollHeight || 1));
+    const dpr = window.devicePixelRatio || 1;
 
-  // Backing store in device pixels
-  canvas.width = Math.floor(w * dpr);
-  canvas.height = Math.floor(h * dpr);
+    canvas.style.width = `${w}px`;
+    canvas.style.height = `${h}px`;
 
-  // Keep drawing coordinates in CSS pixels
-  ctx = canvas.getContext("2d");
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    // Backing store in device pixels
+    canvas.width = Math.floor(w * dpr);
+    canvas.height = Math.floor(h * dpr);
 
-  // critical on Android
-  canvas.style.touchAction = "none";
-}
+    // Keep drawing coordinates in CSS pixels
+    ctx = canvas.getContext("2d");
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
+    // critical on Android
+    canvas.style.touchAction = "none";
+    // pointer-events toggled by app when pen mode changes
+  }
 
-  // Map client coordinates to world/app coordinates using viewport rect and state pan/zoom
+  // Map client coordinates to app-local coordinates using viewport rect and state pan/zoom
+  // This is identical to the inline code that worked previously.
   function screenToWorld(clientX, clientY) {
     if (!el.viewport) return { x: 0, y: 0 };
     const vr = el.viewport.getBoundingClientRect();
@@ -110,23 +116,22 @@ function ensureCanvasSize() {
     };
   }
 
+  // Drawing helpers
   function drawStroke(stroke) {
     if (!ctx) return;
     const pts = stroke.pts || [];
     if (pts.length < 2) return;
 
     ctx.save();
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
     if (stroke.erase) {
       ctx.globalCompositeOperation = "destination-out";
       ctx.lineWidth = 18;
-      ctx.lineCap = "round";
-      ctx.lineJoin = "round";
       ctx.strokeStyle = "rgba(0,0,0,1)";
     } else {
       ctx.globalCompositeOperation = "source-over";
       ctx.lineWidth = 2;
-      ctx.lineCap = "round";
-      ctx.lineJoin = "round";
       ctx.strokeStyle = "#000";
     }
 
@@ -160,7 +165,7 @@ function ensureCanvasSize() {
     redraw();
   }
 
-  // Stylus-safe pointer handling (same logic as original inline)
+  // Pointer handling (same as original)
   let drawing = false;
   let currentStroke = null;
   let activePointerId = null;
@@ -212,7 +217,7 @@ function ensureCanvasSize() {
     redraw();
   }
 
-  // Attach listeners (if canvas exists)
+  // Attach listeners
   if (el.canvas) {
     el.canvas.addEventListener("pointerdown", pointerDown);
     el.canvas.addEventListener("pointermove", pointerMove);
@@ -224,7 +229,7 @@ function ensureCanvasSize() {
     el.canvas.style.touchAction = "none";
   }
 
-  // API functions to mirror original behavior and allow app.js to call them
+  // API functions
   function setPenMode(on) {
     const s = getState();
     s.penOn = !!on;
@@ -255,7 +260,7 @@ function ensureCanvasSize() {
     redraw();
   });
 
-  // Initialize canvas size
+  // Initialize
   ensureCanvasSize();
 
   // Expose API
