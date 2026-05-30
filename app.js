@@ -360,8 +360,6 @@ const ink = (() => {
     state.penOn = !!on;
      // keep body class in sync so CSS can enable/disable canvas pointer events
 document.body.classList.toggle('pen-active', !!state.penOn);
-
-// defensive: ensure canvas pointer-events and z-index match state
 const canvas = document.getElementById('inkWorld');
 if (canvas) {
   canvas.style.pointerEvents = state.penOn ? 'auto' : 'none';
@@ -778,6 +776,15 @@ window.addEventListener("DOMContentLoaded", () => {
         if (el.penToggle) {
           el.penToggle.addEventListener("click", () => {
             state.penOn = !state.penOn;
+             if (state.penOn) document.body.classList.add('pen-active');
+else document.body.classList.remove('pen-active');
+
+// Defensive: ensure canvas inline style matches state (no ambiguity)
+const canvas = document.getElementById('inkWorld');
+if (canvas) {
+  canvas.style.pointerEvents = state.penOn ? 'auto' : 'none';
+  canvas.style.zIndex = state.penOn ? '40' : '5';
+}
             const inkApi = safeInk();
             if (inkApi && typeof inkApi.setPenMode === "function") {
               try { inkApi.setPenMode(state.penOn); } catch (e) { console.error("ink.setPenMode error", e); }
@@ -821,6 +828,15 @@ window.addEventListener("DOMContentLoaded", () => {
             if (el.penToggle) {
               el.penToggle.addEventListener("click", () => {
                 state.penOn = !state.penOn;
+                 if (state.penOn) document.body.classList.add('pen-active');
+else document.body.classList.remove('pen-active');
+
+// Defensive: ensure canvas inline style matches state (no ambiguity)
+const canvas = document.getElementById('inkWorld');
+if (canvas) {
+  canvas.style.pointerEvents = state.penOn ? 'auto' : 'none';
+  canvas.style.zIndex = state.penOn ? '40' : '5';
+}
                 const inkApi = safeInk();
                 if (inkApi && typeof inkApi.setPenMode === "function") {
                   try { inkApi.setPenMode(state.penOn); } catch (e) { console.error("ink.setPenMode error", e); }
