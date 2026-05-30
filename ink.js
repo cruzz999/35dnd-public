@@ -1,7 +1,6 @@
 // ink.js
 // Standalone ink layer that mirrors the original inline implementation from app.js.
-// It relies on a shared window.state object (created if missing) so it integrates
-// seamlessly with the rest of the app's state (pan/zoom/penOn/erasing/strokesByView).
+// Uses the shared window.state (created if missing) so it integrates with app.js pan/zoom.
 (function () {
   if (window.ink) return;
 
@@ -25,14 +24,13 @@
     canvas: document.getElementById("inkWorld"),
     app: document.getElementById("app"),
     viewport: document.getElementById("viewport"),
-    world: document.getElementById("world"),
     penToggle: document.getElementById("penToggle"),
     eraserBtn: document.getElementById("eraser"),
     undoBtn: document.getElementById("undo"),
     clearBtn: document.getElementById("clearInk")
   };
 
-  // Create canvas if missing (fallback)
+  // Fallback: create canvas if missing
   if (!el.canvas) {
     const c = document.createElement("canvas");
     c.id = "inkWorld";
@@ -67,12 +65,11 @@
     redraw();
   }
 
-  // Size canvas to match the app content area (like original inline code)
+  // Size canvas to match the app content area (same as original inline code)
   function ensureCanvasSize() {
     const canvas = el.canvas;
     if (!canvas || !ctx) return;
 
-    // Use app scrollWidth/scrollHeight so canvas covers the full paper area
     const appEl = el.app || document.getElementById("app");
     const w = Math.max(appEl?.scrollWidth || 0, 1200);
     const h = Math.max(appEl?.scrollHeight || 0, 800);
@@ -264,6 +261,6 @@
     undo,
     clear,
     saveForView,
-    _internal: { getState, el }
+    _internal: { getState, el, screenToWorld }
   };
 })();
