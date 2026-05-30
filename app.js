@@ -65,9 +65,21 @@ let renderModule = null;
 let ingestModule = null;
 
 async function loadModules() {
-  try { renderModule = await import('./src/render.js'); } catch (e) { console.warn('Could not load src/render.js', e); }
-  try { ingestModule = await import('./src/ingest.js'); } catch (e) { console.warn('Could not load src/ingest.js', e); }
+  try {
+    renderModule = await import('./src/render.js');
+    // expose for debugging and for other code that checks window.renderModule
+    window.renderModule = renderModule;
+  } catch (e) {
+    console.warn('Could not load src/render.js', e);
+  }
+  try {
+    ingestModule = await import('./src/ingest.js');
+    window.ingestModule = ingestModule;
+  } catch (e) {
+    console.warn('Could not load src/ingest.js', e);
+  }
 }
+
 
 /* ------------------------------ Viewport & Ink ------------------------- */
 function applyWorldTransform() {
