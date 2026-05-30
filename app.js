@@ -358,6 +358,15 @@ const ink = (() => {
 
   function setPenMode(on) {
     state.penOn = !!on;
+     // keep body class in sync so CSS can enable/disable canvas pointer events
+document.body.classList.toggle('pen-active', !!state.penOn);
+
+// defensive: ensure canvas pointer-events and z-index match state
+const canvas = document.getElementById('inkWorld');
+if (canvas) {
+  canvas.style.pointerEvents = state.penOn ? 'auto' : 'none';
+  canvas.style.zIndex = state.penOn ? '40' : '5';
+}
     if (el.penToggle) el.penToggle.textContent = state.penOn ? "Pen: ON" : "Pen: OFF";
     if (canvas) canvas.style.pointerEvents = state.penOn ? "auto" : "none";
     if (!state.penOn) { drawing = false; currentStroke = null; activePointerId = null; }
