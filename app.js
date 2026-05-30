@@ -1,5 +1,5 @@
 /* ==========================================================================
-   DnD 3.5 Ink Sheet - app.js (fixed: ensure ink canvas sized after render/load)
+   DnD 3.5 Ink Sheet - app.js (inline ink restored)
    ========================================================================== */
 
 /* ----------------------------- DOM helpers ------------------------------ */
@@ -233,7 +233,7 @@ if (el.viewport) {
   el.viewport.addEventListener("pointercancel", endPan);
 }
 
-/* ------------------------------ Inline Ink (restore) ------------------------------ */
+/* ------------------------------ Inline Ink ------------------------------ */
 const ink = (() => {
   const canvas = el.ink;
   const ctx = canvas ? canvas.getContext("2d") : null;
@@ -301,10 +301,14 @@ const ink = (() => {
     if (stroke.erase) {
       ctx.globalCompositeOperation = "destination-out";
       ctx.lineWidth = 18;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
       ctx.strokeStyle = "rgba(0,0,0,1)";
     } else {
       ctx.globalCompositeOperation = "source-over";
       ctx.lineWidth = 2;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
       ctx.strokeStyle = "#000";
     }
 
@@ -425,9 +429,8 @@ const ink = (() => {
 
   ensureCanvasSize();
 
-  return { redraw, loadForView, setPenMode, setEraser };
+  return { redraw, loadForView, setPenMode, setEraser, undo, clear, saveForView, _internal: { screenToWorld } };
 })();
-
 
 /* ----------------- Derived computations (General view) ----------------- */
 function computeGeneralDerived(g) {
