@@ -118,7 +118,7 @@ html, body {
   padding-left: 0;
   padding-right: 6px;
   justify-self: start;
-  text-align: left;
+  text-align: right;
 }
 
 /* Numeric cells centered and compact */
