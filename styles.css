@@ -217,6 +217,75 @@ canvas.ink {
   }
   :root { --ability-col-width: 48px; --ability-input-width: 40px; }
 }
+/* --- Reduce horizontal whitespace and tighten layout --- */
+
+/* Cap the app width and center it so it doesn't expand indefinitely */
+#app {
+  max-width: 980px;        /* prevents mile-long paper */
+  margin-left: auto;
+  margin-right: auto;
+  padding: 8px;            /* slightly reduced padding */
+  box-sizing: border-box;
+}
+
+/* Slightly tighter topbar so controls don't push layout */
+.topbar {
+  padding: 6px 10px;
+  gap: 8px;
+}
+
+/* Ability grid: smaller label column and compact numeric columns */
+.ability-breakdown-grid {
+  grid-template-columns: 1fr repeat(6, 48px); /* label uses remaining space; numeric columns fixed */
+  gap: 6px;
+}
+
+/* Make numeric inputs a touch narrower */
+:root { --ability-input-width: 40px; }
+.ability-breakdown-grid input[type="number"],
+.ability-breakdown-grid input[type="text"] {
+  width: var(--ability-input-width);
+  padding: 2px 4px;
+  font-size: 13px;
+}
+
+/* Reduce min widths for totals/mods so they don't force expansion */
+.ability-breakdown-grid .val strong {
+  min-width: 32px;
+}
+
+/* Landscape mode: allow it but don't force huge width; center and allow scroll if needed */
+#app.landscape {
+  max-width: 1120px;      /* keep landscape but capped */
+  width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* Table wrapper: only scroll when necessary */
+.table-wrapper {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+/* Prevent the viewport from adding extra horizontal padding */
+#viewport {
+  padding: 0;
+  overflow: auto;
+}
+
+/* Reduce default left/right margins on panels to save horizontal space */
+.panel {
+  margin-left: 0;
+  margin-right: 0;
+}
+
+/* Small screens: keep things usable */
+@media (max-width: 900px) {
+  #app { padding: 8px; max-width: 100%; }
+  .ability-breakdown-grid { grid-template-columns: 1fr repeat(6, 44px); }
+  :root { --ability-input-width: 36px; }
+}
 
 /* Utility */
 .hidden { display: none !important; }
