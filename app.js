@@ -49,7 +49,12 @@ const state = {
     spells: { sorc: [], wiz: [], meta: null }
   }
 };
-
+function ensureGs() {
+  if (window.gsIngest) return window.gsIngest;
+  // Friendly fallback: update UI and throw so callers can catch
+  if (typeof setProgress === "function") setProgress(0, "gs_ingest.js not loaded. Check script order.");
+  throw new Error("gs_ingest.js not loaded (window.gsIngest missing). Ensure gs_ingest.js is included before app.js.");
+}
 // Receive ingested data from gs_ingest and merge into app state
 window.receiveIngestedData = function (general, spells) {
   state.data = state.data || {};
