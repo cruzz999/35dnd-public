@@ -127,6 +127,7 @@ function syncViewportHeight() {
 
 window.addEventListener("resize", () => {
   syncViewportHeight();
+  ensureCanvasSize()
   applyWorldTransform();
   ink.redraw();
 });
@@ -267,29 +268,54 @@ const ink = (() => {
     redraw();
   }
 
-  function ensureCanvasSize() {
-    if (!canvas || !ctx) return;
-    const w = Math.max(el.app?.scrollWidth || 0, 1200);
-    const h = Math.max(el.app?.scrollHeight || 0, 800);
-    const dpr = window.devicePixelRatio || 1;
-    canvas.style.position = "absolute";
-    canvas.style.left = "0px";
-    canvas.style.top = "0px";
-    canvas.style.width = `${w}px`;
-    canvas.style.height = `${h}px`;
-    canvas.width = Math.floor(w * dpr);
-    canvas.height = Math.floor(h * dpr);
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    canvas.style.touchAction = "none";
+function ensureCanvasSize() {
+  if (!canvas || !ctx || !el.viewport) return;
+  // Measure the viewport area (the visible paper area)
+  const vr = el.viewport.getBoundingClientRect();
+
+  // Position the canvas to exactly overlay the viewport in client coordinates
+  canvas.style.position = 'fixed';
+  canvas.style.left = `${Math.floor(vr.left)}px`;
+  canvas.style.top = `${Math.floor(vr.top)}px`;
+  canvas.style.width = `${Math.ceil(vr.width)}px`;
+  canvas.style.height = `${Math.ceil(vr.height)}px`;
+  canvas.style.zIndex = '5';
+  canvas.style.touchAction = 'none';
+
+  // Backing store for high-DPI
+  const dpr = window.devicePixelRatio || 1;
+  const backingW = Math.max(1, Math.floor(vr.width * dpr));
+  const backingH = Math.max(1, Math.floor(vr.height * dpr));
+  if (canvas.width !== backingW || canvas.height !== backingH) {
+    canvas.width = backingW;
+    canvas.height = backingH;
   }
 
-  function screenToWorld(clientX, clientY) {
-    if (!el.viewport) return { x: 0, y: 0 };
-    const vr = el.viewport.getBoundingClientRect();
-    const vx = clientX - vr.left;
-    const vy = clientY - vr.top;
-    return { x: (vx - state.pan.x) / state.zoom, y: (vy - state.pan.y) / state.zoom };
-  }
+  // Only intercept pointer events when pen mode is active
+  canvas.style.pointerEvents = state.penOn ? 'auto' : 'none';
+}
+
+function screenToWorld(clientX, clientY) {
+  if (!canvas || !el.viewport) return { x: 0, y: 0 };
+
+  // Canvas is fixed over the viewport; get its client rect
+  const crect = canvas.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+
+  // client coords relative to canvas top-left (CSS pixels)
+  const cx = clientX - crect.left;
+  const cy = clientY - crect.top;
+
+  // convert to CSS pixels (remove DPR)
+  const xCss = cx / dpr;
+  const yCss = cy / dpr;
+
+  // invert world transform: world = (css - pan) / zoom
+  return {
+    x: (xCss - state.pan.x) / state.zoom,
+    y: (yCss - state.pan.y) / state.zoom
+  };
+}
 
   function drawStroke(stroke) {
     if (!ctx) return;
@@ -312,13 +338,24 @@ const ink = (() => {
     ctx.restore();
   }
 
-  function redraw() {
-    if (!canvas || !ctx) return;
-    ensureCanvasSize();
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    const strokes = getStrokesForView(state.view);
-    for (const stroke of strokes) drawStroke(stroke);
-  }
+function redraw() {
+  if (!canvas || !ctx || !el.viewport) return;
+  ensureCanvasSize();
+
+  // Clear device-pixel canvas
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  const dpr = window.devicePixelRatio || 1;
+
+  // Apply transform: scale by dpr*zoom, translate by dpr*pan
+  // This makes drawing coordinates be in "world units"
+  // setTransform(a, b, c, d, e, f) where a = scaleX, d = scaleY, e/f = translateX/translateY
+  ctx.setTransform(dpr * state.zoom, 0, 0, dpr * state.zoom, dpr * state.pan.x, dpr * state.pan.y);
+
+  // Draw strokes (assumes stroke points are stored in world coordinates)
+  const strokes = (state.strokesByView[state.view] || []);
+  for (const stroke of strokes) drawStroke(stroke);
+}
 
   function clear() {
     state.strokesByView[state.view] = [];
