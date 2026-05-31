@@ -1,7 +1,3 @@
-/* Paste this file over your existing styles.css (keeps original styling).
-   The file below is the same as your current stylesheet snapshot with no XLSX-specific rules. */
-
-/* Basic layout and theming */
 :root{
   --bg:#f6f7fb;
   --panel:#fff;
@@ -14,23 +10,9 @@
 
 *{box-sizing:border-box}
 html,body{height:100%;margin:0;background:var(--bg);color:#111}
+
+/* Topbar: fixed and responsive */
 .topbar{
-  display:flex;
-  justify-content:space-between;
-  align-items:center;
-  padding:10px 14px;
-  background:linear-gradient(180deg,#ffffff,#fbfdff);
-  border-bottom:1px solid var(--border);
-  position:sticky;
-  top:0;
-  z-index:40;
-}
-.topbar .left{display:flex;align-items:center;gap:10px}
-.topbar .right{display:flex;align-items:center;gap:8px}
-.topbar button{background:#fff;border:1px solid var(--border);padding:6px 10px;border-radius:6px;cursor:pointer}
-.topbar .sep{width:10px}
-/* Topbar: fixed, responsive, and non-overflowing on small screens */
-.topbar {
   position: fixed;
   left: 0;
   right: 0;
@@ -44,68 +26,44 @@ html,body{height:100%;margin:0;background:var(--bg);color:#111}
   box-sizing: border-box;
   background: linear-gradient(180deg,#ffffff,#fbfdff);
   border-bottom: 1px solid var(--border);
-  /* allow wrapping of left/right groups on narrow screens */
   flex-wrap: wrap;
-}
-
-/* Keep left and right groups flexible and allow them to wrap */
-.topbar .left,
-.topbar .right {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-/* Prevent the topbar from causing horizontal overflow; allow internal scroll if needed */
-.topbar {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
 }
-
-/* Make sure inputs/buttons shrink on small screens */
-.topbar input[type="text"],
-.topbar button,
-.topbar .line-width {
-  max-width: 48vw;
-  min-width: 40px;
-  flex-shrink: 1;
-}
-
-/* Ensure the page content is not hidden under the fixed topbar */
-body > #viewport {
-  /* top padding equals topbar height; JS will keep this in sync */
-  padding-top: 64px; /* fallback; JS will overwrite with exact height */
-  box-sizing: border-box;
-}
-
-/* Viewport should scroll when world is scaled so content is not clipped */
-#viewport {
-  overflow: auto;
-  -webkit-overflow-scrolling: touch;
-  height: calc(100vh - 64px); /* fallback; JS will set exact height */
-}
-
-/* Keep world transform origin at top-left (existing behavior) */
-#world {
-  transform-origin: 0 0;
-}
-
-/* Small screens: reduce topbar padding and shrink controls */
-@media (max-width: 720px) {
-  .topbar { padding: 8px; }
-  .topbar input[type="text"] { max-width: 60vw; }
-  .topbar .line-width input[type="range"] { width: 120px; }
-}
+.topbar .left{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.topbar .right{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.topbar button{background:#fff;border:1px solid var(--border);padding:6px 10px;border-radius:6px;cursor:pointer}
+.topbar .sep{width:10px}
 
 /* progress */
 .progress{width:220px;height:6px;background:#f1f5f9;border-radius:6px;overflow:hidden}
 #progressBar{height:100%;width:0;background:linear-gradient(90deg,var(--accent),#176fb8)}
 
 /* viewport/world/app */
-#viewport{overflow:hidden;background:transparent}
+#viewport{
+  overflow: auto;
+  /* padding-top is set dynamically by JS to match topbar height */
+  box-sizing: border-box;
+  height: calc(100vh - 64px); /* fallback; JS will set exact height */
+  padding-top: 64px; /* fallback; JS will set exact padding */
+  -webkit-overflow-scrolling: touch;
+  position: relative;
+  background: transparent;
+}
 #world{position:relative;transform-origin:0 0}
 #app{padding:18px;max-width:1100px;margin:0 auto}
+
+/* canvas overlay inside viewport */
+#viewport > canvas#inkWorld {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 5;
+  pointer-events: none; /* toggled by JS when pen is on */
+  touch-action: none;
+}
 
 /* panels and grid */
 .panel{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:12px;box-shadow:var(--shadow);margin-bottom:12px}
@@ -113,13 +71,22 @@ body > #viewport {
 .hint{color:var(--muted);font-size:13px}
 
 /* ability grid */
-.ability-breakdown-grid{display:grid;grid-template-columns:40px repeat(6,1fr);gap:6px;align-items:center}
+.ability-breakdown-grid{
+  display:grid;
+  grid-template-columns:80px 72px 72px 72px 72px 92px 56px;
+  gap:8px;
+  align-items:center;
+  justify-content:center;
+  margin:0 auto 8px auto;
+  max-width:760px;
+  width:100%;
+}
 .ability-breakdown-grid .hdr{font-weight:600;font-size:12px;color:var(--muted)}
 .val{padding:6px}
 
 /* table */
-.table{width:100%;border-collapse:collapse}
-.table th,.table td{border-bottom:1px solid #eef2f6;padding:8px;text-align:left;font-size:13px}
+.table{width:100%;border-collapse:collapse;table-layout:auto;white-space:nowrap;font-size:13px}
+.table th,.table td{border-bottom:1px solid #eef2f6;padding:8px;text-align:left;font-size:13px;white-space:nowrap}
 
 /* prep box anchor */
 .prep-box{display:inline-block;width:36px;height:18px;border:1px dashed #e2e8f0;border-radius:4px}
@@ -127,7 +94,6 @@ body > #viewport {
 /* checkbox styling for buff checkboxes */
 label > input[type="checkbox"]#buff_mage,
 label > input[type="checkbox"]#buff_shield {
-   z-index:50;
   -webkit-appearance: none;
   appearance: none;
   width: 1.25rem;
@@ -160,7 +126,6 @@ label > input[type="checkbox"]#buff_shield:checked::after {
   border-width: 0 0.18rem 0.18rem 0;
   transform: rotate(45deg);
   box-sizing: border-box;
-  
 }
 label > input[type="checkbox"]#buff_mage:focus,
 label > input[type="checkbox"]#buff_shield:focus {
@@ -192,125 +157,3 @@ label > input[type="checkbox"]#buff_shield:checked { background: linear-gradient
   .grid{grid-template-columns:1fr}
   .topbar .left{flex-wrap:wrap}
 }
-
-/* Spells page: allow wider tables and prevent wrapping so each spell stays on one line */
-#app {
-  max-width: 1600px;      /* increase max width so tables can expand */
-  padding-left: 18px;
-  padding-right: 18px;
-}
-
-/* Make the two-panel grid use available space but allow panels to grow */
-.grid {
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-}
-
-/* Panels that contain large tables should allow horizontal scrolling */
-.panel {
-  overflow: visible;
-}
-.panel .panel-body {
-  overflow-x: auto;
-}
-
-/* Table layout: prefer single-line rows */
-.table {
-  width: 100%;
-  border-collapse: collapse;
-  table-layout: auto;     /* allow columns to size naturally */
-  white-space: nowrap;    /* prevent wrapping inside cells */
-  font-size: 13px;        /* slightly smaller to fit more columns */
-}
-
-/* Reduce padding so more columns fit on one line */
-.table th,
-.table td {
-  padding: 6px 8px;
-  border-bottom: 1px solid #eef2f6;
-  vertical-align: middle;
-  white-space: nowrap;
-}
-
-/* Make header sticky if you want (optional) */
-/* .table thead th { position: sticky; top: 0; background: var(--panel); z-index: 2; } */
-
-/* Ensure prep-box and other small cells don't force wrapping */
-.prep-box,
-.table td .prep-box,
-.table td .prep-checkbox {
-  min-width: 36px;
-  max-width: 120px;
-  white-space: nowrap;
-}
-
-/* If the viewport is narrow, allow panels to stack but keep table scrollable */
-@media (max-width: 1100px) {
-  .grid { grid-template-columns: 1fr; }
-  .panel { overflow-x: auto; }
-  .table { font-size: 12px; }
-}
-
-/* Optional: make the world/app area use more of the viewport horizontally */
-#viewport { padding: 0 8px; }
-#world { max-width: none; }
-/* Abilities breakdown: constrain width, center, and keep columns compact */
-.ability-breakdown-grid {
-  display: grid;
-  /* Column widths: label + pointBuy + ASI + Items + Buffs + Total + Mod */
-  grid-template-columns: 80px 72px 72px 72px 72px 92px 56px;
-  gap: 8px;
-  align-items: center;
-  justify-content: center;   /* center the grid inside its container */
-  margin: 0 auto 8px auto;   /* center and add small bottom spacing */
-  max-width: 760px;          /* prevents the huge blank area in the middle */
-  width: 100%;
-}
-
-/* Make header cells visually aligned with the compact layout */
-.ability-breakdown-grid .hdr {
-  text-align: left;
-  font-size: 12px;
-  color: var(--muted);
-  padding: 4px 6px;
-}
-
-/* Compact cell styling */
-.ability-breakdown-grid .val {
-  padding: 6px 6px;
-  font-size: 14px;
-  min-height: 28px;
-  display: flex;
-  align-items: center;
-}
-
-/* Inputs inside the grid: compact and full-width of their cell */
-.ability-breakdown-grid input[type="number"] {
-  width: 100%;
-  box-sizing: border-box;
-  padding: 4px 6px;
-  border-radius: 6px;
-  border: 1px solid #e2e8f0;
-  font-size: 13px;
-}
-
-/* Make the "Total" and "Mod" columns stand out slightly */
-.ability-breakdown-grid > .val:nth-last-child(2),
-.ability-breakdown-grid > .val:nth-last-child(1) {
-  font-weight: 700;
-  text-align: center;
-}
-
-/* Responsive: on narrow screens stack into two rows per ability */
-@media (max-width: 720px) {
-  .ability-breakdown-grid {
-    grid-template-columns: 1fr 1fr; /* two columns: label + compact controls */
-    gap: 6px;
-    max-width: 520px;
-  }
-  .ability-breakdown-grid .hdr { display:none; } /* hide header in compact mode */
-  .ability-breakdown-grid .val { font-size: 13px; }
-  /* Make inputs smaller in compact mode */
-  .ability-breakdown-grid input[type="number"] { font-size: 13px; padding: 3px 6px; }
-}
-
