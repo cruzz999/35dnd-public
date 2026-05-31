@@ -45,7 +45,7 @@ html,body{height:100%;margin:0;background:var(--bg);color:#111}
 .hint{color:var(--muted);font-size:13px}
 
 /* ability grid */
-.ability-breakdown-grid{display:grid;grid-template-columns:80px repeat(6,1fr);gap:6px;align-items:center}
+.ability-breakdown-grid{display:grid;grid-template-columns:40px repeat(6,1fr);gap:6px;align-items:center}
 .ability-breakdown-grid .hdr{font-weight:600;font-size:12px;color:var(--muted)}
 .val{padding:6px}
 
@@ -59,6 +59,7 @@ html,body{height:100%;margin:0;background:var(--bg);color:#111}
 /* checkbox styling for buff checkboxes */
 label > input[type="checkbox"]#buff_mage,
 label > input[type="checkbox"]#buff_shield {
+   z-index:50;
   -webkit-appearance: none;
   appearance: none;
   width: 1.25rem;
@@ -91,6 +92,7 @@ label > input[type="checkbox"]#buff_shield:checked::after {
   border-width: 0 0.18rem 0.18rem 0;
   transform: rotate(45deg);
   box-sizing: border-box;
+  
 }
 label > input[type="checkbox"]#buff_mage:focus,
 label > input[type="checkbox"]#buff_shield:focus {
