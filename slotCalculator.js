@@ -173,33 +173,49 @@
   // casterLevel: integer (effective caster level)
   // abilityScore: integer (Cha for sorc, Int for wiz)
   // returns { base:[], bonus:[], final:[] } arrays length 10
-  function computeFinalSlotsFor(classKey, casterLevel, abilityScore) {
-    const result = { base: zeroVec(), bonus: zeroVec(), final: zeroVec() };
-    if (!classKey || !baseSlots[classKey]) return result;
-    casterLevel = Number(casterLevel) || 0;
-    abilityScore = Number(abilityScore) || 0;
+// Drop-in replacement for computeFinalSlotsFor
+function computeFinalSlotsFor(classKey, casterLevel, abilityScore) {
+  const result = { base: zeroVec(), bonus: zeroVec(), final: zeroVec() };
+  if (!classKey || !baseSlots[classKey]) return result;
 
-    // base: lookup exact level; if level > 20, clamp to 20; if <1, return zeros
-    const lvlKey = String(Math.max(1, Math.min(20, casterLevel)));
-    const base = baseSlots[classKey][lvlKey] ? cloneVec(baseSlots[classKey][lvlKey]) : zeroVec();
-    result.base = base;
+  casterLevel = Number(casterLevel) || 0;
+  abilityScore = Number(abilityScore) || 0;
 
-    // bonus vector from ability
-    const bonusVec = bonusVectorForScore(abilityScore);
-    // apply only where casterLevel >= minCasterLevelForSpellLevel
-    const final = base.slice();
-    const bonusApplied = zeroVec();
-    for (let L = 1; L <= 9; L++) {
-      if (casterLevel >= minCasterLevelForSpellLevel[L]) {
-        const add = Number(bonusVec[L] || 0);
+  // base: lookup exact level; clamp to 1..20
+  const lvlKey = String(Math.max(1, Math.min(20, casterLevel)));
+  const base = baseSlots[classKey][lvlKey] ? cloneVec(baseSlots[classKey][lvlKey]) : zeroVec();
+  result.base = base;
+
+  // compute bonus vector for the ability score
+  const bonusVec = bonusVectorForScore(abilityScore);
+
+  // final starts as a copy of base
+  const final = base.slice();
+  const bonusApplied = zeroVec();
+
+  // Apply bonus spells only for spell levels that the class already has access to at this caster level.
+  // Also respect the minCasterLevelForSpellLevel guard (some bonus entries shouldn't apply before a minimum CL).
+  for (let L = 1; L <= 9; L++) {
+    const minCL = Number(minCasterLevelForSpellLevel[L] || 0);
+    const canHaveBase = (base[L] && Number(base[L]) > 0);
+    const meetsMinCL = casterLevel >= minCL;
+
+    // Only apply bonus if:
+    // 1) the caster meets the minimum caster level for that spell level, AND
+    // 2) the base table already grants at least one slot for that spell level at this caster level.
+    if (meetsMinCL && canHaveBase) {
+      const add = Number(bonusVec[L] || 0);
+      if (add) {
         bonusApplied[L] = add;
         final[L] = (final[L] || 0) + add;
       }
     }
-    result.bonus = bonusApplied;
-    result.final = final;
-    return result;
   }
+
+  result.bonus = bonusApplied;
+  result.final = final;
+  return result;
+}
 
   // Public: compute all slots from state
   // options:
