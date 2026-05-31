@@ -96,6 +96,14 @@ function applyWorldTransform() {
   if (!el.world) return;
   el.world.style.transformOrigin = "0 0";
   el.world.style.transform = `translate(${state.pan.x}px, ${state.pan.y}px) scale(${state.zoom})`;
+
+  // ALSO apply the same transform to the ink canvas so it visually matches the world
+  // The canvas lives in a top-level overlay (see ensureCanvasSize) so it must be transformed manually.
+  const canvas = document.getElementById('inkWorld');
+  if (canvas) {
+    canvas.style.transformOrigin = "0 0";
+    canvas.style.transform = `translate(${state.pan.x}px, ${state.pan.y}px) scale(${state.zoom})`;
+  }
 }
 function clampZoom(z) { return Math.max(0.5, Math.min(3.0, z)); }
 function setZoom(newZoom, anchorClientX = null, anchorClientY = null) {
@@ -263,39 +271,63 @@ const ink = (() => {
   }
 
   // Ensure canvas is a child of #world (so it inherits pan/zoom) and sized to world scroll size
-  function ensureCanvasSize() {
-    const canvasEl = canvas;
-    const worldEl = el.world || document.getElementById("world");
-    const appEl = el.app || document.getElementById("app");
-    if (!canvasEl || (!worldEl && !appEl)) return;
+function ensureCanvasSize() {
+  const canvasEl = el.ink || document.getElementById('inkWorld');
+  if (!canvasEl) return;
 
-    const parentEl = worldEl || appEl;
-    if (canvasEl.parentElement !== parentEl) {
-      canvasEl.style.position = "absolute";
-      canvasEl.style.left = "0px";
-      canvasEl.style.top = "0px";
-      // keep canvas behind UI by default
-      canvasEl.style.zIndex = '5';
-      parentEl.appendChild(canvasEl);
-    }
-
-    // Size to the parent's scroll size (world/app content size)
-    const w = Math.max(1, Math.floor(parentEl.scrollWidth || parentEl.clientWidth || 1));
-    const h = Math.max(1, Math.floor(parentEl.scrollHeight || parentEl.clientHeight || 1));
-    const dpr = window.devicePixelRatio || 1;
-
-    canvasEl.style.width = `${w}px`;
-    canvasEl.style.height = `${h}px`;
-    canvasEl.width = Math.floor(w * dpr);
-    canvasEl.height = Math.floor(h * dpr);
-
-    ctx = canvasEl.getContext("2d");
-    if (ctx) ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
-    canvasEl.style.touchAction = "none";
-    // authoritative default: inert unless penOn is true
-    canvasEl.style.pointerEvents = state.penOn ? 'auto' : 'none';
+  // Create or reuse a top-level overlay container so the canvas is in the root stacking context
+  let overlay = document.getElementById('inkOverlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'inkOverlay';
+    // overlay sits under topbar (1000) but above panels (900) when pen active
+    overlay.style.position = 'fixed';
+    overlay.style.left = '0';
+    overlay.style.top = '0';
+    overlay.style.right = '0';
+    overlay.style.bottom = '0';
+    overlay.style.pointerEvents = 'none'; // overlay itself inert; canvas controls pointer-events
+    overlay.style.zIndex = '900'; // baseline; canvas will be raised when active
+    document.body.appendChild(overlay);
   }
+
+  // If canvas is not a child of overlay, move it there
+  if (canvasEl.parentElement !== overlay) {
+    // preserve absolute positioning
+    canvasEl.style.position = 'absolute';
+    canvasEl.style.left = '0px';
+    canvasEl.style.top = '0px';
+    overlay.appendChild(canvasEl);
+  }
+
+  // Size the canvas to cover the world/app content area (use viewport size so it overlays correctly)
+  // Use devicePixelRatio for crisp drawing
+  const dpr = window.devicePixelRatio || 1;
+  // Use the viewport element's client size (so canvas covers visible area and panning still maps correctly)
+  const ref = el.viewport || document.documentElement;
+  const w = Math.max(1, Math.floor((ref.clientWidth || window.innerWidth)));
+  const h = Math.max(1, Math.floor((ref.clientHeight || window.innerHeight)));
+
+  // CSS size
+  canvasEl.style.width = `${w}px`;
+  canvasEl.style.height = `${h}px`;
+
+  // Backing store size
+  canvasEl.width = Math.floor(w * dpr);
+  canvasEl.height = Math.floor(h * dpr);
+
+  // Ensure context uses DPR so drawing coordinates match screen coordinates after transforms
+  const ctx = canvasEl.getContext('2d');
+  if (ctx) ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  // Make canvas inert by default; JS toggles pointer-events when pen is active
+  canvasEl.style.pointerEvents = state.penOn ? 'auto' : 'none';
+  // Authoritative z-index: keep below topbar (1000) but above panels (900) when active
+  canvasEl.style.zIndex = state.penOn ? '950' : '5';
+  // Prevent browser gestures interfering
+  canvasEl.style.touchAction = 'none';
+  canvasEl.style.userSelect = 'none';
+}
 
   function screenToWorld(clientX, clientY) {
     if (!el.viewport) return { x: 0, y: 0 };
