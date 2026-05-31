@@ -237,3 +237,29 @@ html, body {
   text-align: right;
   min-width: 0;                /* allow grid to constrain it */
 }
+/* ensure the ink canvas is positioned under UI controls */
+#inkWorld, canvas#inkWorld {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 1;            /* low */
+  pointer-events: none;  /* default: don't intercept clicks */
+}
+
+/* ensure the app UI and panels are above the canvas */
+#app, .panel, .topbar, .toolbar {
+  position: relative;
+  z-index: 10;           /* higher than canvas */
+}
+
+/* viewport should not block UI controls */
+#viewport {
+  position: relative;
+  z-index: 5;
+  pointer-events: auto;
+}
+
+/* if you have a world wrapper that covers the UI, lower it */
+#world {
+  z-index: 2;
+}
