@@ -1,29 +1,70 @@
 /* ==========================================================================
-DnD 3.5 Ink Sheet (Paper Mode) - app.js
-- Pan/zoom paper inside #viewport/#world (no page scroll)
-- Stylus-safe ink layer on #inkWorld (world coordinates)
-- Load data from: A) XLSX upload (SheetJS) B) Google Sheets via NAS proxy endpoint: /gs/csv?id=...&gid=...
-- Implemented views: General, Spells
-========================================================================== */
+   DnD 3.5 Ink Sheet (Paper Mode) - app.js
+   - Pan/zoom paper inside #viewport/#world (no page scroll)
+   - Stylus-safe ink layer on #inkWorld (world coordinates)
+   - Load data from:
+        A) XLSX upload (SheetJS)
+        B) Google Sheets via NAS proxy endpoint: /gs/csv?id=...&gid=...
+   - Implemented views: General, Spells
+   ========================================================================== */
 
-import * as utils from './utils.js';
-import { $, el, initDom, assertEl, elById } from './dom.js';
+/* ----------------------------- DOM helpers ------------------------------ */
+const $ = (id) => document.getElementById(id);
 
-// Re-init DOM map in case DOM wasn't ready at module import time
-initDom();
+const el = {
+  file: $("file"),
+  status: $("status"),
+  progressBar: $("progressBar"),
+
+  viewGeneral: $("viewGeneral"),
+  viewSpells: $("viewSpells"),
+  viewSlots: $("viewSlots"),
+  viewSkills: $("viewSkills"),
+
+  zoomOut: $("zoomOut"),
+  zoomIn: $("zoomIn"),
+  zoomReset: $("zoomReset"),
+
+  penToggle: $("penToggle"),
+  eraser: $("eraser"),
+  undo: $("undo"),
+  clearInk: $("clearInk"),
+
+  viewport: $("viewport"),
+  world: $("world"),
+  app: $("app"),
+  ink: $("inkWorld"),
+
+  gsUrl: $("gsUrl"),
+  loadGs: $("loadGs"),
+};
+
+function assertEl(name) {
+  if (!el[name]) console.warn(`Missing element #${name}`);
+}
+["viewport", "world", "app", "ink", "status", "progressBar"].forEach(assertEl);
 
 /* ------------------------------ App state ------------------------------ */
 const state = {
-  loaded: false, // becomes true after XLSX or Google load
-  view: "General", // Paper transform
+  loaded: false,                 // becomes true after XLSX or Google load
+  view: "General",
+
+  // Paper transform
   pan: { x: 20, y: 20 },
-  zoom: 1.0, // Pen state
+  zoom: 1.0,
+
+  // Pen state
   penOn: false,
   erasing: false,
+
   // Ink storage per view
   strokesByView: {},
+
   // Data
-  data: { general: null, spells: { sorc: [], wiz: [], meta: null } },
+  data: {
+    general: null,
+    spells: { sorc: [], wiz: [], meta: null },
+  },
 };
 
 /* ------------------------------ Progress ------------------------------- */
@@ -31,9 +72,43 @@ function setProgress(pct, text) {
   if (el.progressBar) el.progressBar.style.width = `${pct}%`;
   if (el.status) el.status.textContent = text;
 }
+function nextFrame() {
+  return new Promise((resolve) => requestAnimationFrame(resolve));
+}
 
 /* ---------------------------- Utilities -------------------------------- */
-// NOTE: helpers moved to utils.js; use utils.nextFrame(), utils.escapeHtml(), etc.
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (m) => ({
+    "&": "&", "<": "<", ">": ">", "\"": "&quot;", "'": "&#039;"
+  }[m]));
+}
+function fmtSign(n) {
+  n = Number(n) || 0;
+  return (n >= 0 ? "+" : "") + n;
+}
+function abilityMod(score) {
+  return Math.floor((Number(score) - 10) / 2);
+}
+function babPoor(level) {
+  level = Number(level) || 0;
+  return Math.floor(level / 2);
+}
+function saveGood(level) {
+  level = Number(level) || 0;
+  return 2 + Math.floor(level / 2);
+}
+function savePoor(level) {
+  level = Number(level) || 0;
+  return Math.floor(level / 3);
+}
+function totalLevel(classes) {
+  return (Number(classes.sorc) || 0) + (Number(classes.wiz) || 0) + (Number(classes.um) || 0);
+}
+function hpAverageD4(totalLvl) {
+  totalLvl = Number(totalLvl) || 0;
+  if (totalLvl <= 0) return 0;
+  return 4 + (totalLvl - 1) * 3;
+}
 
 /* -------------------- Viewport height sync (topbar wrap) --------------- */
 function syncViewportHeight() {
@@ -41,7 +116,6 @@ function syncViewportHeight() {
   const h = topbar ? topbar.getBoundingClientRect().height : 64;
   if (el.viewport) el.viewport.style.height = `calc(100vh - ${h}px)`;
 }
-
 window.addEventListener("resize", () => {
   syncViewportHeight();
   applyWorldTransform();
@@ -64,16 +138,20 @@ function setZoom(newZoom, anchorClientX = null, anchorClientY = null) {
   const oldZoom = state.zoom;
   newZoom = clampZoom(newZoom);
   if (newZoom === oldZoom) return;
+
   // Zoom around a point in viewport coordinates
   if (anchorClientX != null && anchorClientY != null && el.viewport) {
     const vr = el.viewport.getBoundingClientRect();
     const vx = anchorClientX - vr.left;
     const vy = anchorClientY - vr.top;
+
     const wx = (vx - state.pan.x) / oldZoom;
     const wy = (vy - state.pan.y) / oldZoom;
+
     state.pan.x = vx - wx * newZoom;
     state.pan.y = vy - wy * newZoom;
   }
+
   state.zoom = newZoom;
   applyWorldTransform();
   ink.redraw();
@@ -101,13 +179,13 @@ function setView(viewName) {
 }
 
 if (el.viewGeneral) el.viewGeneral.onclick = () => setView("General");
-if (el.viewSpells) el.viewSpells.onclick = () => setView("Spells");
-if (el.viewSlots) el.viewSlots.onclick = () => setView("Slots");
-if (el.viewSkills) el.viewSkills.onclick = () => setView("Skills");
+if (el.viewSpells)  el.viewSpells.onclick  = () => setView("Spells");
+if (el.viewSlots)   el.viewSlots.onclick   = () => setView("Slots");
+if (el.viewSkills)  el.viewSkills.onclick  = () => setView("Skills");
 
 /* --------------------------- Zoom controls ----------------------------- */
-if (el.zoomOut) el.zoomOut.onclick = () => setZoom(state.zoom / 1.15);
-if (el.zoomIn) el.zoomIn.onclick = () => setZoom(state.zoom * 1.15);
+if (el.zoomOut)   el.zoomOut.onclick = () => setZoom(state.zoom / 1.15);
+if (el.zoomIn)    el.zoomIn.onclick  = () => setZoom(state.zoom * 1.15);
 if (el.zoomReset) el.zoomReset.onclick = () => resetView();
 
 // ctrl+wheel zoom inside viewport (desktop convenience)
@@ -121,8 +199,8 @@ if (el.viewport) {
 }
 
 /* ----------------------------- Pan mode --------------------------------
-- When pen is OFF: drag to pan paper
-- When pen is ON: ink handles strokes
+   - When pen is OFF: drag to pan paper
+   - When pen is ON: ink handles strokes
 ------------------------------------------------------------------------- */
 let panDrag = { active: false, startX: 0, startY: 0, basePanX: 0, basePanY: 0 };
 
@@ -133,7 +211,6 @@ function beginPan(e) {
   panDrag.basePanX = state.pan.x;
   panDrag.basePanY = state.pan.y;
 }
-
 function movePan(e) {
   if (!panDrag.active) return;
   const dx = e.clientX - panDrag.startX;
@@ -143,10 +220,7 @@ function movePan(e) {
   applyWorldTransform();
   ink.redraw();
 }
-
-function endPan() {
-  panDrag.active = false;
-}
+function endPan() { panDrag.active = false; }
 
 if (el.viewport) {
   el.viewport.addEventListener("pointerdown", (e) => {
@@ -185,56 +259,44 @@ const ink = (() => {
     redraw();
   }
 
-function ensureCanvasSize() {
-  if (!canvas || !ctx) return;
-  // The canvas is positioned inside #viewport; measure the viewport element
-  const vp = el.viewport || el.world || el.app || document.documentElement;
-  const vr = vp.getBoundingClientRect();
+  function ensureCanvasSize() {
+    if (!canvas || !ctx) return;
 
-  // CSS pixel size
-  const cssW = Math.max(Math.ceil(vr.width), 1);
-  const cssH = Math.max(Math.ceil(vr.height), 1);
+    const w = Math.max(el.app?.scrollWidth || 0, 1200);
+    const h = Math.max(el.app?.scrollHeight || 0, 800);
+    const dpr = window.devicePixelRatio || 1;
 
-  // Ensure canvas CSS matches viewport (100% width/height in CSS already)
-  canvas.style.width = cssW + 'px';
-  canvas.style.height = cssH + 'px';
+    canvas.style.position = "absolute";
+    canvas.style.left = "0px";
+    canvas.style.top = "0px";
+    canvas.style.width = `${w}px`;
+    canvas.style.height = `${h}px`;
 
-  // Backing store for high-DPI
-  const dpr = window.devicePixelRatio || 1;
-  const backingW = Math.floor(cssW * dpr);
-  const backingH = Math.floor(cssH * dpr);
+    canvas.width = Math.floor(w * dpr);
+    canvas.height = Math.floor(h * dpr);
 
-  if (canvas.width !== backingW || canvas.height !== backingH) {
-    canvas.width = backingW;
-    canvas.height = backingH;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    // critical on Android
+    canvas.style.touchAction = "none";
   }
 
-  // Keep canvas non-blocking unless pen is on
-  canvas.style.pointerEvents = state.penOn ? 'auto' : 'none';
-}
+  function screenToWorld(clientX, clientY) {
+    if (!el.viewport) return { x: 0, y: 0 };
+    const vr = el.viewport.getBoundingClientRect();
+    const vx = clientX - vr.left;
+    const vy = clientY - vr.top;
+    return {
+      x: (vx - state.pan.x) / state.zoom,
+      y: (vy - state.pan.y) / state.zoom,
+    };
+  }
 
-function screenToWorld(clientX, clientY) {
-  const crect = canvas.getBoundingClientRect(); // canvas top-left in client coords
-  const dpr = window.devicePixelRatio || 1;
-
-  // client coords relative to canvas top-left (CSS pixels)
-  const cx = clientX - crect.left;
-  const cy = clientY - crect.top;
-
-  // convert to CSS pixels (remove DPR)
-  const xCss = cx / dpr;
-  const yCss = cy / dpr;
-
-  // invert world transform: world = (css - pan) / zoom
-  return {
-    x: (xCss - state.pan.x) / state.zoom,
-    y: (yCss - state.pan.y) / state.zoom
-  };
-}
   function drawStroke(stroke) {
     if (!ctx) return;
     const pts = stroke.pts || [];
     if (pts.length < 2) return;
+
     ctx.save();
     if (stroke.erase) {
       ctx.globalCompositeOperation = "destination-out";
@@ -245,6 +307,7 @@ function screenToWorld(clientX, clientY) {
       ctx.lineWidth = 2;
       ctx.strokeStyle = "#000";
     }
+
     ctx.beginPath();
     ctx.moveTo(pts[0].x, pts[0].y);
     for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
@@ -252,22 +315,13 @@ function screenToWorld(clientX, clientY) {
     ctx.restore();
   }
 
-function redraw() {
-  if (!canvas || !ctx) return;
-  ensureCanvasSize();
-
-  // Clear device-pixel canvas
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  const dpr = window.devicePixelRatio || 1;
-  // Apply transform: scale by dpr*zoom, translate by dpr*pan
-  // This makes drawing coordinates be in "world units"
-  ctx.setTransform(dpr * state.zoom, 0, 0, dpr * state.zoom, dpr * state.pan.x, dpr * state.pan.y);
-
-  // Draw all strokes (assumes stroke points are stored in world coordinates)
-  const strokes = getStrokesForView(state.view);
-  for (const stroke of strokes) drawStroke(stroke);
-}
+  function redraw() {
+    if (!canvas || !ctx) return;
+    ensureCanvasSize();
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const strokes = getStrokesForView(state.view);
+    for (const stroke of strokes) drawStroke(stroke);
+  }
 
   function clear() {
     state.strokesByView[state.view] = [];
@@ -287,38 +341,50 @@ function redraw() {
   let currentStroke = null;
   let activePointerId = null;
 
-function pointerDown(e) {
-  if (!state.penOn || !canvas) return;
-  // optional: ignore touch if you want stylus-only
-  // if (e.pointerType === 'touch') return;
+  function pointerDown(e) {
+    if (!state.penOn || !canvas) return;
 
-  drawing = true;
-  activePointerId = e.pointerId;
-  const p = screenToWorld(e.clientX, e.clientY);
-  currentStroke = { erase: state.erasing, pts: [p] };
-  getStrokesForView(state.view).push(currentStroke);
-  try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
-  e.preventDefault();
-  redraw();
-}
+    // ignore finger/palm touches in pen mode
+    if (e.pointerType === "touch") return;
 
-function pointerMove(e) {
-  if (!drawing || activePointerId !== e.pointerId) return;
-  const p = screenToWorld(e.clientX, e.clientY);
-  currentStroke.pts.push(p);
-  e.preventDefault();
-  redraw();
-}
+    drawing = true;
+    activePointerId = e.pointerId;
 
-function endStroke(e) {
-  if (!drawing) return;
-  drawing = false;
-  currentStroke = null;
-  try { canvas.releasePointerCapture(e.pointerId); } catch (err) {}
-  activePointerId = null;
-  saveForView(state.view);
-  redraw();
-}
+    const p = screenToWorld(e.clientX, e.clientY);
+    currentStroke = { erase: state.erasing, pts: [p] };
+    getStrokesForView(state.view).push(currentStroke);
+
+    try { canvas.setPointerCapture(e.pointerId); } catch {}
+    e.preventDefault();
+    redraw();
+  }
+
+  function pointerMove(e) {
+    if (!state.penOn || !drawing || !currentStroke) return;
+    if (activePointerId !== null && e.pointerId !== activePointerId) return;
+    if (e.pointerType === "touch") return;
+
+    currentStroke.pts.push(screenToWorld(e.clientX, e.clientY));
+    e.preventDefault();
+    redraw();
+  }
+
+  function endStroke(e) {
+    if (!state.penOn) return;
+    if (e && activePointerId !== null && e.pointerId !== activePointerId) return;
+
+    drawing = false;
+    currentStroke = null;
+
+    if (canvas && e) {
+      try { canvas.releasePointerCapture(e.pointerId); } catch {}
+    }
+    activePointerId = null;
+
+    saveForView(state.view);
+    redraw();
+  }
+
   if (canvas) {
     canvas.addEventListener("pointerdown", pointerDown);
     canvas.addEventListener("pointermove", pointerMove);
@@ -330,11 +396,17 @@ function endStroke(e) {
     canvas.style.touchAction = "none";
   }
 
-function setPenMode(on) {
-  state.penOn = !!on;
-  if (el.penToggle) el.penToggle.textContent = `Pen: ${state.penOn ? "ON" : "OFF"}`;
-  if (canvas) canvas.style.pointerEvents = state.penOn ? 'auto' : 'none';
-}
+  function setPenMode(on) {
+    state.penOn = !!on;
+    if (el.penToggle) el.penToggle.textContent = `Pen: ${state.penOn ? "ON" : "OFF"}`;
+    if (canvas) canvas.style.pointerEvents = state.penOn ? "auto" : "none";
+
+    if (!state.penOn) {
+      drawing = false;
+      currentStroke = null;
+      activePointerId = null;
+    }
+  }
 
   function setEraser(on) {
     state.erasing = !!on;
@@ -346,7 +418,11 @@ function setPenMode(on) {
   if (el.undo) el.undo.onclick = () => undo();
   if (el.clearInk) el.clearInk.onclick = () => clear();
 
-  window.addEventListener("resize", () => { ensureCanvasSize(); redraw(); });
+  window.addEventListener("resize", () => {
+    ensureCanvasSize();
+    redraw();
+  });
+
   ensureCanvasSize();
 
   return { redraw, loadForView, setPenMode, setEraser };
@@ -355,16 +431,19 @@ function setPenMode(on) {
 /* ----------------- Derived computations (General view) ----------------- */
 function computeGeneralDerived(g) {
   const cls = g.classes;
+
   const abilities = {};
   for (const k of ["str","dex","con","int","wis","cha"]) {
     const a = g.abilities[k];
     const base = (Number(a.pointBuy)||0) + (Number(a.asi)||0);
     const total = base + (Number(a.items)||0) + (Number(a.buffs)||0);
-    abilities[k] = { total, mod: utils.abilityMod(total) };
+    abilities[k] = { total, mod: abilityMod(total) };
   }
-  const lvl = utils.totalLevel(cls);
-  const hpBase = utils.hpAverageD4(lvl);
+
+  const lvl = totalLevel(cls);
+  const hpBase = hpAverageD4(lvl);
   const hpMax = hpBase + abilities.con.mod * lvl;
+
   const ac = g.ac;
   const armorItem = Number(ac.armor)||0;
   const shieldItem = Number(ac.shield)||0;
@@ -372,26 +451,37 @@ function computeGeneralDerived(g) {
   const shieldSpellBonus = Number(g.buffs?.shieldSpell)||0;
   const armorUsed = Math.max(armorItem, mageArmorBonus);
   const shieldUsed = Math.max(shieldItem, shieldSpellBonus);
-  const acTotal = 10 + armorUsed + shieldUsed + abilities.dex.mod + (Number(ac.size)||0) + (Number(ac.natural)||0) + (Number(ac.deflect)||0) + (Number(ac.misc)||0);
+
+  const acTotal =
+    10 + armorUsed + shieldUsed + abilities.dex.mod +
+    (Number(ac.size)||0) + (Number(ac.natural)||0) +
+    (Number(ac.deflect)||0) + (Number(ac.misc)||0);
+
   const touch = 10 + abilities.dex.mod + (Number(ac.size)||0) + (Number(ac.deflect)||0) + (Number(ac.miscTouch)||0);
-  const flat = 10 + armorUsed + shieldUsed + (Number(ac.size)||0) + (Number(ac.natural)||0) + (Number(ac.deflect)||0) + (Number(ac.misc)||0);
-  const bab = utils.babPoor(cls.sorc) + utils.babPoor(cls.wiz) + utils.babPoor(cls.um);
-  const fortBase = utils.savePoor(cls.sorc) + utils.savePoor(cls.wiz) + utils.savePoor(cls.um);
-  const refBase = utils.savePoor(cls.sorc) + utils.savePoor(cls.wiz) + utils.savePoor(cls.um);
-  const willBase = utils.saveGood(cls.sorc) + utils.saveGood(cls.wiz) + utils.saveGood(cls.um);
+  const flat  = 10 + armorUsed + shieldUsed + (Number(ac.size)||0) + (Number(ac.natural)||0) + (Number(ac.deflect)||0) + (Number(ac.misc)||0);
+
+  const bab = babPoor(cls.sorc) + babPoor(cls.wiz) + babPoor(cls.um);
+
+  const fortBase = savePoor(cls.sorc) + savePoor(cls.wiz) + savePoor(cls.um);
+  const refBase  = savePoor(cls.sorc) + savePoor(cls.wiz) + savePoor(cls.um);
+  const willBase = saveGood(cls.sorc) + saveGood(cls.wiz) + saveGood(cls.um);
+
   const saves = {
     fort: fortBase + abilities.con.mod + (Number(g.saves.fortMisc)||0),
-    ref: refBase + abilities.dex.mod + (Number(g.saves.refMisc)||0),
+    ref:  refBase  + abilities.dex.mod + (Number(g.saves.refMisc)||0),
     will: willBase + abilities.wis.mod + (Number(g.saves.willMisc)||0)
   };
+
   const init = abilities.dex.mod + (Number(g.initMisc)||0);
   const melee = bab + abilities.str.mod + (Number(g.attacks.meleeMisc)||0);
   const ranged = bab + abilities.dex.mod + (Number(g.attacks.rangedMisc)||0);
+
   return { lvl, abilities, hpMax, acTotal, touch, flat, bab, saves, init, melee, ranged };
 }
 
 /* ---------------------- Google Sheets ingest (CSV) ---------------------- */
 /* Uses your NAS proxy endpoint: /gs/csv?id=...&gid=... */
+
 function extractSpreadsheetId(url) {
   const m = String(url).match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
   return m ? m[1] : null;
@@ -414,16 +504,27 @@ async function loadFromGoogleSheets(sheetUrl) {
   try {
     const id = extractSpreadsheetId(sheetUrl);
     if (!id) throw new Error("Could not extract spreadsheet ID from URL.");
-    const gids = { spells: 0, general: 2004670713, slot: 1231385124, skills: 2140364605 };
+
+    const gids = {
+      spells: 0,
+      general: 2004670713,
+      slot: 1231385124,
+      skills: 2140364605
+    };
+
     setProgress(5, "Fetching Spells…");
     const spellsGrid = csvToGrid(await fetchCsvViaProxy(id, gids.spells));
+
     setProgress(30, "Fetching General…");
     const generalGrid = csvToGrid(await fetchCsvViaProxy(id, gids.general));
+
     // Parse first; don't mark loaded until parsing succeeds
     ingestSpellsFromGrid(spellsGrid);
     ingestGeneralFromGrid(generalGrid);
+
     // Only now mark loaded
     state.loaded = true;
+
     setProgress(95, "Rendering…");
     render();
     setProgress(100, "Done ✅");
@@ -437,29 +538,36 @@ async function loadFromGoogleSheets(sheetUrl) {
 
 function ingestGeneralFromGrid(grid) {
   const cell = (r, c) => (grid[r] && grid[r][c] != null) ? String(grid[r][c]) : "";
-  const num = (v, fb = 0) => {
-    const s = String(v ?? "").trim().replace(",", ".");
-    const m = s.match(/-?\d+(\.\d+)?/);
-    // grab first number anywhere in the string
-    if (!m) return fb;
-    const n = Number(m[0]);
-    return Number.isFinite(n) ? n : fb;
-  };
-
+const num = (v, fb = 0) => {
+  const s = String(v ?? "").trim().replace(",", ".");
+  const m = s.match(/-?\d+(\.\d+)?/);   // grab first number anywhere in the string
+  if (!m) return fb;
+  const n = Number(m[0]);
+  return Number.isFinite(n) ? n : fb;
+};
   // Normalize header strings: lowercase, remove spaces and punctuation
-  const norm = (s) => String(s ?? "")
-    .toLowerCase()
-    .replace(/\s+/g, "")
-    .replace(/[^\p{L}\p{N}]/gu, "");
+  const norm = (s) =>
+    String(s ?? "")
+      .toLowerCase()
+      .replace(/\s+/g, "")
+      .replace(/[^\p{L}\p{N}]/gu, ""); // keep letters/numbers only (unicode-safe)
 
-  // keep letters/numbers only (unicode-safe)
   const findHeaderRow = () => {
     // Find a row containing "Ability" and at least one of the known headers
     // This is more robust than relying on exact positions.
     for (let r = 0; r < grid.length; r++) {
       const row = grid[r] || [];
       const nset = new Set(row.map(norm));
-      if (nset.has("ability") && ( nset.has("score") || nset.has("pointbuyarray") || nset.has("asi") || nset.has("items") || nset.has("penaltiesbuffs") || nset.has("penaltiesbuff") || nset.has("penaltiesbuffs") || nset.has("penaltiesbuffs") )) {
+      if (nset.has("ability") && (
+          nset.has("score") ||
+          nset.has("pointbuyarray") ||
+          nset.has("asi") ||
+          nset.has("items") ||
+          nset.has("penaltiesbuffs") ||
+          nset.has("penaltiesbuff") ||
+          nset.has("penaltiesbuffs") ||
+          nset.has("penaltiesbuffs") // harmless redundancy
+      )) {
         return r;
       }
     }
@@ -489,12 +597,16 @@ function ingestGeneralFromGrid(grid) {
     playerName: cell(0, 1),
     alignment: cell(0, 2),
     xp: num(cell(0, 4), 0),
+
     classLine: cell(3, 0),
     race: cell(3, 3),
+
     size: cell(6, 1),
     age: num(cell(6, 2), 0),
     gender: cell(6, 3),
+
     classes: { sorc: 1, wiz: 5, um: 2 },
+
     abilities: {
       str: { pointBuy: 0, asi: 0, items: 0, buffs: 0 },
       dex: { pointBuy: 0, asi: 0, items: 0, buffs: 0 },
@@ -503,11 +615,15 @@ function ingestGeneralFromGrid(grid) {
       wis: { pointBuy: 0, asi: 0, items: 0, buffs: 0 },
       cha: { pointBuy: 0, asi: 0, items: 0, buffs: 0 }
     },
+
     ac: { armor: 0, shield: 0, size: 0, natural: 0, deflect: 0, misc: 0, miscTouch: 0 },
+
     saves: { fortMisc: 0, refMisc: 0, willMisc: 0 },
     attacks: { meleeMisc: 0, rangedMisc: 0, grappleMisc: 0 },
     initMisc: 0,
+
     buffs: { mageArmor: 0, shieldSpell: 0 },
+
     feats: [],
     languages: []
   };
@@ -516,13 +632,15 @@ function ingestGeneralFromGrid(grid) {
   const hdr = findHeaderRow();
   if (hdr !== -1) {
     const colAbility = findCol(hdr, "ability");
-    // These are the column titles you gave (and match your sheet intent)
+
+    // These are the column titles you gave (and match your sheet intent) [1](https://help.boox.com/hc/en-us)
     const colScore = findCol(hdr, "score");
-    const colPB = findColIncludes(hdr, "pointbuy");
-    // matches "Point buy array"
-    const colASI = findCol(hdr, "asi");
+    const colPB    = findColIncludes(hdr, "pointbuy");      // matches "Point buy array"
+    const colASI   = findCol(hdr, "asi");
     const colItems = findCol(hdr, "items");
-    const colBuffs = findColIncludes(hdr, "penalties") >= 0 ? findColIncludes(hdr, "penalties") : findColIncludes(hdr, "buffs");
+    const colBuffs = findColIncludes(hdr, "penalties") >= 0
+      ? findColIncludes(hdr, "penalties")                   // matches "Penalties/buffs"
+      : findColIncludes(hdr, "buffs");
 
     const mapKey = (label) => {
       const x = String(label).trim().toLowerCase();
@@ -539,32 +657,39 @@ function ingestGeneralFromGrid(grid) {
       const label = cell(r, colAbility >= 0 ? colAbility : 0).trim();
       const key = mapKey(label);
       if (!key) continue;
-      // Read raw values
-      const score = colScore >= 0 ? num(cell(r, colScore), 0) : 0;
-      let pb = colPB >= 0 ? num(cell(r, colPB), 0) : 0;
-      let asi = colASI >= 0 ? num(cell(r, colASI), 0) : 0;
-      const items = colItems >= 0 ? num(cell(r, colItems), 0) : 0;
-      const buffs = colBuffs >= 0 ? num(cell(r, colBuffs), 0) : 0;
 
-      // If PB is missing but Score and ASI exist, PB = Score - ASI
-      if (pb === 0 && score !== 0 && asi !== 0) { pb = score - asi; }
-      // If ASI is missing but Score and PB exist, ASI = Score - PB
-      if (asi === 0 && score !== 0 && pb !== 0) { asi = score - pb; }
-      // If both are missing but Score exists, treat Score as PB (fallback)
-      if (pb === 0 && asi === 0 && score !== 0) { pb = score; }
+// Read raw values
+const score = colScore >= 0 ? num(cell(r, colScore), 0) : 0;
+let pb  = colPB    >= 0 ? num(cell(r, colPB), 0)    : 0;
+let asi = colASI   >= 0 ? num(cell(r, colASI), 0)   : 0;
+const items = colItems >= 0 ? num(cell(r, colItems), 0) : 0;
+const buffs = colBuffs >= 0 ? num(cell(r, colBuffs), 0) : 0;
 
-      general.abilities[key] = { pointBuy: pb, asi, items, buffs };
+// If PB is missing but Score and ASI exist, PB = Score - ASI
+if (pb === 0 && score !== 0 && asi !== 0) {
+  pb = score - asi;
+}
+
+// If ASI is missing but Score and PB exist, ASI = Score - PB
+if (asi === 0 && score !== 0 && pb !== 0) {
+  asi = score - pb;
+}
+
+// If both are missing but Score exists, treat Score as PB (fallback)
+if (pb === 0 && asi === 0 && score !== 0) {
+  pb = score;
+}
+
+general.abilities[key] = { pointBuy: pb, asi, items, buffs };
+
     }
   }
 
-  // ---- Feats (CSV gives text; links are not preserved) ----
+  // ---- Feats (CSV gives text; links are not preserved) ---- [1](https://help.boox.com/hc/en-us)
   // Find the row containing exact label and read downward in the same column (usually col 0)
   let featsRow = -1;
   for (let r = 0; r < grid.length; r++) {
-    if ((grid[r] || []).some(v => String(v).trim() === "Feats & Special Abilities")) {
-      featsRow = r;
-      break;
-    }
+    if ((grid[r] || []).some(v => String(v).trim() === "Feats & Special Abilities")) { featsRow = r; break; }
   }
   if (featsRow !== -1) {
     for (let r = featsRow + 1; r < Math.min(featsRow + 60, grid.length); r++) {
@@ -574,16 +699,13 @@ function ingestGeneralFromGrid(grid) {
     }
   }
 
-  // ---- Languages ----
+  // ---- Languages ---- [1](https://help.boox.com/hc/en-us)
   // Find "Languages:" anywhere and read downward in the same column
   let langPos = null;
   for (let r = 0; r < grid.length && !langPos; r++) {
     const row = grid[r] || [];
     for (let c = 0; c < row.length; c++) {
-      if (String(row[c]).trim() === "Languages:") {
-        langPos = { r, c };
-        break;
-      }
+      if (String(row[c]).trim() === "Languages:") { langPos = { r, c }; break; }
     }
   }
   if (langPos) {
@@ -604,9 +726,11 @@ function ingestSpellsFromGrid(grid) {
     return Number.isFinite(n) ? n : fb;
   };
 
-  const findRowContaining = (text) => grid.findIndex(row => (row || []).some(v => String(v).trim() === text));
+  const findRowContaining = (text) =>
+    grid.findIndex(row => (row || []).some(v => String(v).trim() === text));
+
   const sorcHeader = findRowContaining("Spell slots (S)");
-  const wizHeader = findRowContaining("Spell slots (W)");
+  const wizHeader  = findRowContaining("Spell slots (W)");
 
   function headerMap(rowIdx) {
     const row = grid[rowIdx] || [];
@@ -623,14 +747,17 @@ function ingestSpellsFromGrid(grid) {
     // Otherwise scan the row for first column with non-empty values for several rows.
     const candidates = [];
     if (preferredCol != null) candidates.push(preferredCol, preferredCol - 1, preferredCol + 1);
+
     // Add all columns as fallback candidates (left->right)
     const header = grid[headerRow] || [];
     for (let c = 0; c < header.length; c++) candidates.push(c);
+
     const seen = new Set();
     for (const c of candidates) {
       if (c == null || c < 0) continue;
       if (seen.has(c)) continue;
       seen.add(c);
+
       // Look at next few rows; if 2+ are non-empty and not numeric-only, accept
       let hits = 0;
       for (let r = headerRow + 1; r < Math.min(headerRow + 15, grid.length); r++) {
@@ -648,6 +775,7 @@ function ingestSpellsFromGrid(grid) {
   function readBlock(headerRow, mode) {
     if (headerRow < 0) return [];
     const h = headerMap(headerRow);
+
     const colSL = h["SL"];
     const colType = h["Type"];
     const colEvo = h["Evo?"];
@@ -658,15 +786,22 @@ function ingestSpellsFromGrid(grid) {
     const colDuration = h["Duration"];
     const colNotes = h["Notes"];
     const colPrep = h["Preparations"];
+
     // Spell column label differs between blocks. Grab whichever exists, but validate by scanning.
-    const preferredSpellCol = h["Sorcerer"] ?? h["Wizard"] ?? h[" Wizard"] ?? h["Spell"] ?? null;
+    const preferredSpellCol =
+      h["Sorcerer"] ?? h["Wizard"] ?? h["  Wizard"] ?? h["Spell"] ?? null;
+
     const colSpell = findSpellColByScanning(headerRow, preferredSpellCol);
+
     const rows = [];
     for (let r = headerRow + 1; r < grid.length; r++) {
       const name = cell(r, colSpell).trim();
       if (!name) break;
+
       rows.push({
-        mode, name, url: "", // CSV won't preserve hyperlink targets reliably
+        mode,
+        name,
+        url: "", // CSV won't preserve hyperlink targets reliably
         sl: num(cell(r, colSL), 0),
         type: cell(r, colType),
         evo: num(cell(r, colEvo), 0) === 1,
@@ -683,16 +818,18 @@ function ingestSpellsFromGrid(grid) {
   }
 
   state.data.spells.sorc = readBlock(sorcHeader, "sorc");
-  state.data.spells.wiz = readBlock(wizHeader, "wiz");
+  state.data.spells.wiz  = readBlock(wizHeader, "wiz");
+
   // Meta: keep your current baseline; we can pull levels from sheet later if desired
   state.data.spells.meta = { sorcLevels: 1, wizLevels: 5, umLevels: 2, arcaneSpellpower: 1 };
 }
-
 /* ------------------------------ XLSX ingest ---------------------------- */
 function ingestGeneralFromXlsx(wb) {
   const ws = wb.Sheets["General info"];
   if (!ws) throw new Error("Sheet 'General info' not found");
+
   const v = (addr, fallback="") => (ws[addr] && ws[addr].v !== undefined) ? ws[addr].v : fallback;
+
   state.data.general = {
     characterName: String(v("A1","")),
     playerName: String(v("B1","")),
@@ -712,7 +849,15 @@ function ingestGeneralFromXlsx(wb) {
       wis: { pointBuy: Number(v("J16",0))||0, asi: Number(v("K16",0))||0, items: Number(v("G16",0))||0, buffs: Number(v("H16",0))||0 },
       cha: { pointBuy: Number(v("J17",0))||0, asi: Number(v("K17",0))||0, items: Number(v("G17",0))||0, buffs: Number(v("H17",0))||0 }
     },
-    ac: { armor: Number(v("D21",0))||0, shield: Number(v("E21",0))||0, size: Number(v("G21",0))||0, natural: Number(v("H21",0))||0, deflect: Number(v("J21",0))||0, misc: Number(v("L21",0))||0, miscTouch: 0 },
+    ac: {
+      armor: Number(v("D21",0))||0,
+      shield: Number(v("E21",0))||0,
+      size: Number(v("G21",0))||0,
+      natural: Number(v("H21",0))||0,
+      deflect: Number(v("J21",0))||0,
+      misc: Number(v("L21",0))||0,
+      miscTouch: 0
+    },
     saves: { fortMisc: 0, refMisc: 0, willMisc: 0 },
     attacks: { meleeMisc: 0, rangedMisc: 0, grappleMisc: 0 },
     initMisc: 0,
@@ -725,6 +870,7 @@ function ingestGeneralFromXlsx(wb) {
 function ingestSpellsFromXlsx(wb) {
   const ws = wb.Sheets["Spells"];
   if (!ws) throw new Error("Sheet 'Spells' not found");
+
   const range = XLSX.utils.decode_range(ws["!ref"]);
   const cellAt = (r,c) => ws[XLSX.utils.encode_cell({r,c})];
 
@@ -748,7 +894,7 @@ function ingestSpellsFromXlsx(wb) {
   }
 
   const sorcHeader = findRowWithText("Spell slots (S)");
-  const wizHeader = findRowWithText("Spell slots (W)");
+  const wizHeader  = findRowWithText("Spell slots (W)");
 
   function readBlock(headerRow, mode) {
     if (headerRow < 0) return [];
@@ -758,6 +904,7 @@ function ingestSpellsFromXlsx(wb) {
       const val = cell && cell.v !== undefined ? String(cell.v).trim() : "";
       if (val) header[val] = c;
     }
+
     const col = {
       prep: header["Preparations"],
       spell: header["Sorcerer"] ?? header["Wizard"],
@@ -785,13 +932,15 @@ function ingestSpellsFromXlsx(wb) {
       }
       return spellCol;
     }
-
     col.spell = resolveSpellCol(col.spell);
+
     const rows = [];
     for (let r = headerRow+1; r <= range.e.r; r++) {
       const spellCell = col.spell !== undefined ? cellAt(r, col.spell) : null;
       if (!cellHasContent(spellCell)) break;
+
       const name = spellCell.v !== undefined ? String(spellCell.v) : "(spell)";
+
       const get = (c) => {
         if (c === undefined) return "";
         const cell = cellAt(r,c);
@@ -799,6 +948,7 @@ function ingestSpellsFromXlsx(wb) {
         return (cell.w !== undefined ? cell.w : (cell.v ?? ""));
       };
       const num = (c) => Number(get(c)) || 0;
+
       rows.push({
         mode, name, url: "",
         sl: num(col.sl),
@@ -817,7 +967,8 @@ function ingestSpellsFromXlsx(wb) {
   }
 
   state.data.spells.sorc = readBlock(sorcHeader, "sorc");
-  state.data.spells.wiz = readBlock(wizHeader, "wiz");
+  state.data.spells.wiz  = readBlock(wizHeader, "wiz");
+
   // XLSX meta might exist; we keep a simple default
   state.data.spells.meta = { sorcLevels: 1, wizLevels: 5, umLevels: 2, arcaneSpellpower: 1 };
 }
@@ -836,6 +987,7 @@ function computeSpellCL(spell, meta) {
 
 function renderGeneral() {
   const g = state.data.general;
+
   if (!g) {
     el.app.innerHTML = `<div class="panel"><h2>General</h2><div class="hint">No general data loaded.</div></div>`;
     return;
@@ -844,10 +996,12 @@ function renderGeneral() {
   // Defensive defaults so missing fields never crash rendering
   g.feats = Array.isArray(g.feats) ? g.feats : [];
   g.languages = Array.isArray(g.languages) ? g.languages : [];
+
   g.abilities = g.abilities || {};
   for (const k of ["str","dex","con","int","wis","cha"]) {
     g.abilities[k] = g.abilities[k] || { pointBuy: 0, asi: 0, items: 0, buffs: 0 };
   }
+
   g.ac = g.ac || { armor: 0, shield: 0, size: 0, natural: 0, deflect: 0, misc: 0, miscTouch: 0 };
   g.buffs = g.buffs || { mageArmor: 0, shieldSpell: 0 };
   g.classes = g.classes || { sorc: 1, wiz: 5, um: 2 };
@@ -859,83 +1013,97 @@ function renderGeneral() {
   const A = d.abilities;
 
   // Helper to render one ability row with breakdown
-  const abilityRow = (label, key) => `
+const abilityRow = (label, key) => `
   <div><strong>${label}</strong></div>
   <div class="val">${g.abilities[key].pointBuy ?? 0}</div>
+
+<div class="val">
+  <input type="number" inputmode="numeric"
+    data-ab="${key}" data-field="asi"
+    value="${Number(g.abilities[key].asi ?? 0)}">
+</div>
+
   <div class="val">
-    <input type="number" inputmode="numeric" data-ab="${key}" data-field="asi" value="${Number(g.abilities[key].asi ?? 0)}">
+    <input type="number" inputmode="numeric"
+      data-ab="${key}" data-field="items"
+      value="${Number(g.abilities[key].items ?? 0)}">
   </div>
+
   <div class="val">
-    <input type="number" inputmode="numeric" data-ab="${key}" data-field="items" value="${Number(g.abilities[key].items ?? 0)}">
+    <input type="number" inputmode="numeric"
+      data-ab="${key}" data-field="buffs"
+      value="${Number(g.abilities[key].buffs ?? 0)}">
   </div>
-  <div class="val">
-    <input type="number" inputmode="numeric" data-ab="${key}" data-field="buffs" value="${Number(g.abilities[key].buffs ?? 0)}">
-  </div>
+
   <div class="val"><strong>${A[key].total}</strong></div>
-  <div class="val"><strong>${utils.fmtSign(A[key].mod)}</strong></div>
-  `;
+  <div class="val"><strong>${fmtSign(A[key].mod)}</strong></div>
+`;
 
   el.app.innerHTML = `
-  <div class="panel">
-    <h2>General</h2>
-    <div class="grid">
-      <div class="panel">
-        <h3>Identity</h3>
-        <div><strong>${utils.escapeHtml(g.characterName || "")}</strong> (${utils.escapeHtml(g.alignment || "")})</div>
-        <div>Player: ${utils.escapeHtml(g.playerName || "")}</div>
-        <div>Race: ${utils.escapeHtml(g.race || "")}</div>
-        <div>Class: ${utils.escapeHtml(g.classLine || "")}</div>
-        <div>Level: <strong>${d.lvl}</strong></div>
+    <div class="panel">
+      <h2>General</h2>
+
+      <div class="grid">
+        <div class="panel">
+          <h3>Identity</h3>
+          <div><strong>${escapeHtml(g.characterName || "")}</strong> (${escapeHtml(g.alignment || "")})</div>
+          <div>Player: ${escapeHtml(g.playerName || "")}</div>
+          <div>Race: ${escapeHtml(g.race || "")}</div>
+          <div>Class: ${escapeHtml(g.classLine || "")}</div>
+          <div>Level: <strong>${d.lvl}</strong></div>
+        </div>
+
+        <div class="panel">
+          <h3>Combat</h3>
+          <div>HP (max): <strong>${d.hpMax}</strong></div>
+          <div>AC: <strong>${d.acTotal}</strong> (Touch ${d.touch}, Flat ${d.flat})</div>
+          <div>Init: <strong>${fmtSign(d.init)}</strong></div>
+          <div>BAB: <strong>${fmtSign(d.bab)}</strong></div>
+          <div>Melee: <strong>${fmtSign(d.melee)}</strong> | Ranged: <strong>${fmtSign(d.ranged)}</strong></div>
+
+          <div style="margin-top:8px;">
+            <h4>Active Buffs (AC)</h4>
+            <label><input id="buff_mage" type="checkbox" ${g.buffs.mageArmor ? "checked":""}> Mage Armor (+4)</label><br>
+            <label><input id="buff_shield" type="checkbox" ${g.buffs.shieldSpell ? "checked":""}> Shield (+4)</label>
+          </div>
+        </div>
       </div>
 
       <div class="panel">
-        <h3>Combat</h3>
-        <div>HP (max): <strong>${d.hpMax}</strong></div>
-        <div>AC: <strong>${d.acTotal}</strong> (Touch ${d.touch}, Flat ${d.flat})</div>
-        <div>Init: <strong>${utils.fmtSign(d.init)}</strong></div>
-        <div>BAB: <strong>${utils.fmtSign(d.bab)}</strong></div>
-        <div>Melee: <strong>${utils.fmtSign(d.melee)}</strong> | Ranged: <strong>${utils.fmtSign(d.ranged)}</strong></div>
-        <div style="margin-top:8px;">
-          <h4>Active Buffs (AC)</h4>
-          <label><input id="buff_mage" type="checkbox" ${g.buffs.mageArmor ? "checked":""}> Mage Armor (+4)</label><br>
-          <label><input id="buff_shield" type="checkbox" ${g.buffs.shieldSpell ? "checked":""}> Shield (+4)</label>
+        <h3>Abilities (breakdown)</h3>
+        <div class="hint">Point buy array / ASI / Items / Penalties-buffs → Total → Mod [1](https://help.boox.com/hc/en-us)</div>
+
+        <div class="ability-breakdown-grid">
+          <div></div>
+          <div class="hdr">Point buy</div>
+          <div class="hdr">ASI</div>
+          <div class="hdr">Items</div>
+          <div class="hdr">Buffs</div>
+          <div class="hdr">Total</div>
+          <div class="hdr">Mod</div>
+
+          ${abilityRow("STR","str")}
+          ${abilityRow("DEX","dex")}
+          ${abilityRow("CON","con")}
+          ${abilityRow("INT","int")}
+          ${abilityRow("WIS","wis")}
+          ${abilityRow("CHA","cha")}
+        </div>
+      </div>
+
+      <div class="grid">
+        <div class="panel">
+          <h3>Feats</h3>
+          <ul>${g.feats.length ? g.feats.map(f => `<li>${escapeHtml(f.label ?? f)}</li>`).join("") : "<li>(none found)</li>"}</ul>
+          <div class="hint">CSV export doesn’t preserve hyperlinks; feats are text-only in Google mode. [1](https://help.boox.com/hc/en-us)</div>
+        </div>
+
+        <div class="panel">
+          <h3>Languages</h3>
+          <ul>${g.languages.length ? g.languages.map(x => `<li>${escapeHtml(x)}</li>`).join("") : "<li>(none found)</li>"}</ul>
         </div>
       </div>
     </div>
-
-    <div class="panel">
-      <h3>Abilities (breakdown)</h3>
-      <div class="hint">Point buy array / ASI / Items / Penalties-buffs → Total → Mod</div>
-      <div class="ability-breakdown-grid">
-        <div></div>
-        <div class="hdr">Point buy</div>
-        <div class="hdr">ASI</div>
-        <div class="hdr">Items</div>
-        <div class="hdr">Buffs</div>
-        <div class="hdr">Total</div>
-        <div class="hdr">Mod</div>
-        ${abilityRow("STR","str")}
-        ${abilityRow("DEX","dex")}
-        ${abilityRow("CON","con")}
-        ${abilityRow("INT","int")}
-        ${abilityRow("WIS","wis")}
-        ${abilityRow("CHA","cha")}
-      </div>
-    </div>
-
-    <div class="grid">
-      <div class="panel">
-        <h3>Feats</h3>
-        <ul>${g.feats.length ? g.feats.map(f => `<li>${utils.escapeHtml(f.label ?? f)}</li>`).join("") : "<li>(none found)</li>"}</ul>
-        <div class="hint">CSV export doesn’t preserve hyperlinks; feats are text-only in Google mode.</div>
-      </div>
-
-      <div class="panel">
-        <h3>Languages</h3>
-        <ul>${g.languages.length ? g.languages.map(x => `<li>${utils.escapeHtml(x)}</li>`).join("") : "<li>(none found)</li>"}</ul>
-      </div>
-    </div>
-  </div>
   `;
 
   // Buff wiring
@@ -943,58 +1111,73 @@ function renderGeneral() {
   const shield = $("buff_shield");
   if (mage) mage.onchange = () => { g.buffs.mageArmor = mage.checked ? 4 : 0; renderGeneral(); ink.redraw(); };
   if (shield) shield.onchange = () => { g.buffs.shieldSpell = shield.checked ? 4 : 0; renderGeneral(); ink.redraw(); };
-
-  // Hook ability inputs (Items + Buffs)
-  document.querySelectorAll('.ability-breakdown-grid input[data-ab][data-field]').forEach(inp => {
-    inp.addEventListener('input', () => {
-      const ab = inp.getAttribute('data-ab');
-      const field = inp.getAttribute('data-field');
-      const val = Number(inp.value);
-      g.abilities[ab][field] = Number.isFinite(val) ? val : 0;
-      // Re-render so totals/mods update
-      renderGeneral();
-      ink.redraw();
-    });
+// Hook ability inputs (Items + Buffs)
+document.querySelectorAll('.ability-breakdown-grid input[data-ab][data-field]').forEach(inp => {
+  inp.addEventListener('input', () => {
+    const ab = inp.getAttribute('data-ab');
+    const field = inp.getAttribute('data-field');
+    const val = Number(inp.value);
+    g.abilities[ab][field] = Number.isFinite(val) ? val : 0;
+    // Re-render so totals/mods update
+    renderGeneral();
+    ink.redraw();
   });
-}
+});
+``
 
+}
 function renderSpellTable(rows, meta, castingMod, showPrep) {
   if (!rows || !rows.length) return `<div class="hint">No spells loaded.</div>`;
+
   return `
-  <table class="table">
-    <thead>
-      <tr>
-        <th>Spell</th><th>SL</th><th>CL</th><th>DC</th>
-        ${showPrep ? "<th>Prep</th>" : ""}
-        <th>Type</th><th>F</th><th>E</th><th>Range</th><th>Area</th><th>Damage</th><th>Duration</th>
-      </tr>
-    </thead>
-    <tbody>
-      ${rows.map(s => {
-        const cl = computeSpellCL(s, meta);
-        const dc = computeSpellDC(s.sl, castingMod);
-        const spellCell = s.url ? `<a href="${String(s.url).replace(/"/g, "&quot;")}" target="_blank" rel="noopener noreferrer">${utils.escapeHtml(s.name)}</a>` : utils.escapeHtml(s.name);
-        const anchorId = `${s.mode}:${s.name}:prep`.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9:_-]/g, "");
-        const prepCell = showPrep ? `<td><span class="prep-box" data-ink-anchor="${anchorId}"></span></td>` : "";
-        return `
+    <table class="table">
+      <thead>
         <tr>
-          <td>${spellCell}</td>
-          <td>${Number(s.sl) || 0}</td>
-          <td>${cl}</td>
-          <td>${dc}</td>
-          ${prepCell}
-          <td>${utils.escapeHtml(s.type || "")}</td>
-          <td>${s.fire ? "✓" : ""}</td>
-          <td>${s.evo ? "✓" : ""}</td>
-          <td>${utils.escapeHtml(s.range || "")}</td>
-          <td>${utils.escapeHtml(s.area || "")}</td>
-          <td>${utils.escapeHtml(s.damage || "")}</td>
-          <td>${utils.escapeHtml(s.duration || "")}</td>
+          <th>Spell</th><th>SL</th><th>CL</th><th>DC</th>
+          ${showPrep ? "<th>Prep</th>" : ""}
+          <th>Type</th><th>F</th><th>E</th>
+          <th>Range</th><th>Area</th><th>Damage</th><th>Duration</th>
         </tr>
-        `;
-      }).join("")}
-    </tbody>
-  </table>
+      </thead>
+      <tbody>
+        ${rows.map(s => {
+          const cl = computeSpellCL(s, meta);
+          const dc = computeSpellDC(s.sl, castingMod);
+
+          // Spell name (CSV mode has no URL; XLSX mode may have s.url)
+          const spellCell = s.url
+            ? `<a href="${String(s.url).replace(/"/g, "&quot;")}" target="_blank" rel="noopener noreferrer">${escapeHtml(s.name)}</a>`
+            : escapeHtml(s.name);
+
+          // Prep box is intentionally empty for pen scribbles
+          const anchorId = `${s.mode}:${s.name}:prep`
+            .toLowerCase()
+            .replace(/\s+/g, "_")
+            .replace(/[^a-z0-9:_-]/g, "");
+
+          const prepCell = showPrep
+            ? `<td><span class="prep-box" data-ink-anchor="${anchorId}"></span></td>`
+            : "";
+
+          return `
+            <tr>
+              <td>${spellCell}</td>
+              <td>${Number(s.sl) || 0}</td>
+              <td>${cl}</td>
+              <td>${dc}</td>
+              ${prepCell}
+              <td>${escapeHtml(s.type || "")}</td>
+              <td>${s.fire ? "✓" : ""}</td>
+              <td>${s.evo ? "✓" : ""}</td>
+              <td>${escapeHtml(s.range || "")}</td>
+              <td>${escapeHtml(s.area || "")}</td>
+              <td>${escapeHtml(s.damage || "")}</td>
+              <td>${escapeHtml(s.duration || "")}</td>
+            </tr>
+          `;
+        }).join("")}
+      </tbody>
+    </table>
   `;
 }
 
@@ -1004,43 +1187,51 @@ function renderSpells() {
   const d = g ? computeGeneralDerived(g) : null;
   const intMod = d ? d.abilities.int.mod : 0;
   const chaMod = d ? d.abilities.cha.mod : 0;
+
   const sorcRows = state.data.spells.sorc || [];
-  const wizRows = state.data.spells.wiz || [];
+  const wizRows  = state.data.spells.wiz || [];
 
   el.app.innerHTML = `
-  <div class="panel">
-    <h2>Spells</h2>
-    <div class="hint">Pan/zoom the paper; use Pen to write in prep boxes.</div>
-    <div class="grid">
-      <div class="panel">
-        <h3>Sorcerer / UM</h3>
-        ${renderSpellTable(sorcRows, meta, chaMod, false)}
-      </div>
-      <div class="panel">
-        <h3>Wizard</h3>
-        ${renderSpellTable(wizRows, meta, intMod, true)}
+    <div class="panel">
+      <h2>Spells</h2>
+      <div class="hint">Pan/zoom the paper; use Pen to write in prep boxes.</div>
+
+      <div class="grid">
+        <div class="panel">
+          <h3>Sorcerer / UM</h3>
+          ${renderSpellTable(sorcRows, meta, chaMod, false)}
+        </div>
+
+        <div class="panel">
+          <h3>Wizard</h3>
+          ${renderSpellTable(wizRows, meta, intMod, true)}
+        </div>
       </div>
     </div>
-  </div>
   `;
 }
 
 function render() {
   if (!el.app) return;
+
   if (!state.loaded) {
     el.app.innerHTML = `
-    <div class="panel">
-      <h2>Load</h2>
-      <div class="hint"> Load via Google Sheets (recommended on Boox) or upload XLSX. </div>
-    </div>
+      <div class="panel">
+        <h2>Load</h2>
+        <div class="hint">
+          Load via Google Sheets (recommended on Boox) or upload XLSX.
+        </div>
+      </div>
     `;
     applyWorldTransform();
     ink.redraw();
     return;
   }
+
   if (state.view === "General") renderGeneral();
   else if (state.view === "Spells") renderSpells();
-  else el.app.innerHTML = `<div class="panel"><h2>${utils.escapeHtml(state.view)}</h2><div class="hint">Not implemented yet.</div></div>`;
+  else el.app.innerHTML = `<div class="panel"><h2>${escapeHtml(state.view)}</h2><div class="hint">Not implemented yet.</div></div>`;
+
   applyWorldTransform();
   ink.redraw();
 }
@@ -1050,22 +1241,31 @@ if (el.file) {
   el.file.addEventListener("change", async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
     try {
       setProgress(5, "Reading file…");
-      await utils.nextFrame();
+      await nextFrame();
       const buf = await file.arrayBuffer();
+
       setProgress(20, "Parsing workbook…");
-      await utils.nextFrame();
+      await nextFrame();
+
       if (typeof XLSX === "undefined") throw new Error("XLSX library not loaded (xlsx.full.min.js)");
+
       const wb = XLSX.read(buf, { type: "array" });
+
       setProgress(45, "Ingesting General…");
       ingestGeneralFromXlsx(wb);
+
       setProgress(65, "Ingesting Spells…");
       ingestSpellsFromXlsx(wb);
+
       state.loaded = true;
+
       setProgress(90, "Rendering…");
       ink.loadForView(state.view);
       render();
+
       setProgress(100, "Done ✅");
     } catch (err) {
       console.error(err);
@@ -1080,7 +1280,10 @@ window.addEventListener("DOMContentLoaded", () => {
     el.loadGs.addEventListener("click", async () => {
       try {
         const url = el.gsUrl.value.trim();
-        if (!url) { setProgress(0, "Paste a Google Sheets URL first."); return; }
+        if (!url) {
+          setProgress(0, "Paste a Google Sheets URL first.");
+          return;
+        }
         await loadFromGoogleSheets(url);
       } catch (e) {
         console.error(e);
