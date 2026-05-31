@@ -345,46 +345,58 @@ const ink = (() => {
   let currentStroke = null;
   let activePointerId = null;
 
-  function pointerDown(e) {
-    const s = state;
-    if (!s.penOn || !canvas) return;
-    if (e.pointerType === "touch") return;
-    drawing = true;
-    activePointerId = e.pointerId;
-    const p = screenToWorld(e.clientX, e.clientY);
-    const width = Number(s.penWidth) || 0.5;
-    const grey = Math.round((Number(s.penGrey) || 0) * 2.55);
-    const color = `rgb(${grey},${grey},${grey})`;
-    currentStroke = { erase: s.erasing, pts: [p], width, color };
-    getStrokesForView(s.view).push(currentStroke);
-    try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
-    e.preventDefault();
-    redraw();
-  }
+function pointerDown(e) {
+  const s = state;
+  if (!s.penOn || !canvas) return;
+  if (e.pointerType === "touch") return;
 
-  function pointerMove(e) {
-    const s = state;
-    if (!s.penOn || !drawing || !currentStroke) return;
-    if (activePointerId !== null && e.pointerId !== activePointerId) return;
-    if (e.pointerType === "touch") return;
-    currentStroke.pts.push(screenToWorld(e.clientX, e.clientY));
-    e.preventDefault();
-    redraw();
-  }
+  // Prevent the viewport pan handler from seeing this event
+  e.stopPropagation();
+  e.preventDefault();
 
-  function endStroke(e) {
-    const s = state;
-    if (!s.penOn) return;
-    if (e && activePointerId !== null && e.pointerId !== activePointerId) return;
-    drawing = false;
-    currentStroke = null;
-    if (canvas && e) {
-      try { canvas.releasePointerCapture(e.pointerId); } catch (err) {}
-    }
-    activePointerId = null;
-    saveForView(state.view);
-    redraw();
+  drawing = true;
+  activePointerId = e.pointerId;
+  const p = screenToWorld(e.clientX, e.clientY);
+  const width = Number(s.penWidth) || 0.5;
+  const grey = Math.round((Number(s.penGrey) || 0) * 2.55);
+  const color = `rgb(${grey},${grey},${grey})`;
+  currentStroke = { erase: s.erasing, pts: [p], width, color };
+  getStrokesForView(s.view).push(currentStroke);
+  try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
+  redraw();
+}
+
+function pointerMove(e) {
+  const s = state;
+  if (!s.penOn || !drawing || !currentStroke) return;
+  if (activePointerId !== null && e.pointerId !== activePointerId) return;
+  if (e.pointerType === "touch") return;
+
+  // Keep pan handler from interfering
+  e.stopPropagation();
+  e.preventDefault();
+
+  currentStroke.pts.push(screenToWorld(e.clientX, e.clientY));
+  redraw();
+}
+
+function endStroke(e) {
+  const s = state;
+  if (!s.penOn) return;
+  if (e && activePointerId !== null && e.pointerId !== activePointerId) return;
+
+  // Prevent other handlers from reacting to this pointerup
+  if (e) { try { e.stopPropagation(); e.preventDefault(); } catch (err) {} }
+
+  drawing = false;
+  currentStroke = null;
+  if (canvas && e) {
+    try { canvas.releasePointerCapture(e.pointerId); } catch (err) {}
   }
+  activePointerId = null;
+  saveForView(state.view);
+  redraw();
+}
 
   // Attach listeners
   if (canvas) {
@@ -1056,18 +1068,20 @@ window.addEventListener("DOMContentLoaded", () => {
     }
 
     // pointerdown: only start pending pan if not pen mode and not on interactive element
-    el.viewport.addEventListener("pointerdown", (e) => {
-      // If pen is active we must not start panning here
-      if (state.penOn) return;
+el.viewport.addEventListener("pointerdown", (e) => {
+  // If pen is active we must not start panning
+  if (state.penOn) return;
 
-      // If the pointerdown started on an interactive element, don't begin pan.
-      const interactive = e.target && e.target.closest && e.target.closest('input, button, label, a, textarea, select, [contenteditable]');
-      if (interactive) return;
+  // If the pointerdown started on an interactive element, don't begin pan.
+  const interactive = e.target && e.target.closest && e.target.closest('input, button, label, a, textarea, select, [contenteditable]');
+  if (interactive) return;
 
-      beginPanInit(e);
-      try { el.viewport.setPointerCapture?.(e.pointerId); } catch (err) {}
-    });
+  // If the pointerdown started on the canvas itself, don't begin pan (canvas handles it)
+  if (e.target && e.target.closest && e.target.closest('canvas#inkWorld')) return;
 
+  beginPanInit(e);
+  try { el.viewport.setPointerCapture?.(e.pointerId); } catch (err) {}
+});
     el.viewport.addEventListener("pointermove", (e) => {
       if (!P.panPending && !P.panDrag.active) return;
       if (!P.panDrag.active) {
