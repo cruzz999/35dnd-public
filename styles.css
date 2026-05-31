@@ -96,8 +96,7 @@ html, body {
   height: calc(100vh - 64px); /* JS can override to true topbar height */
   overflow: hidden;
   background: var(--bg);
-  z-index: 2;
-  pointer-events: auto;
+
   /* Stylus stability: prevent browser gesture stealing */
   touch-action: none;
   user-select: none;
@@ -236,41 +235,4 @@ html, body {
   color: var(--fg);
   text-align: right;
   min-width: 0;                /* allow grid to constrain it */
-}
-/* ensure the ink canvas is positioned under UI controls */
-#inkWorld, canvas#inkWorld {
-  position: absolute;
-  left: 0;
-  top: 0;
-  z-index: 1;            /* low */
-  pointer-events: none;  /* default: don't intercept clicks */
-}
-
-/* ensure the app UI and panels are above the canvas */
-#app, .panel, .topbar, .toolbar {
-  position: relative;
-  z-index: 10;           /* higher than canvas */
-}
-
-/* viewport should not block UI controls */
-#viewport {
-  position: relative;
-  z-index: 5;
-  pointer-events: auto;
-}
-
-/* if you have a world wrapper that covers the UI, lower it */
-#world {
-  z-index: 2;
-}
-#viewport { position: relative; }         /* ensure a stacking context */
-#viewport > canvas#inkWorld {
-  position: absolute;
-  left: 0;
-  top: 0;
-  width: 100%;
-  height: 100%;
-  z-index: 5;            /* below UI panels but above world if needed */
-  pointer-events: none;  /* default: don't intercept until pen is enabled */
-  touch-action: none;
 }
