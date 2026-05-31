@@ -65,6 +65,8 @@ const state = {
     general: null,
     spells: { sorc: [], wiz: [], meta: null },
   },
+  lineWidth: 0.5,      // default drawing width
+  eraserWidth: 18    // default eraser width (keeps previous behavior)
 };
 
 /* ------------------------------ Progress ------------------------------- */
