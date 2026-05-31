@@ -308,7 +308,7 @@ canvas#inkWorld {
 /* When pen mode is active, body gets a class and canvas can accept pointers */
 body.pen-active canvas#inkWorld {
   pointer-events: auto !important;
-  z-index: 40 !important;
+  z-index: 950 !important;
 }
 /* Make checkboxes and labels sit above the canvas and accept pointer events */
 .panel input,
