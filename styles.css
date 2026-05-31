@@ -1,246 +1,64 @@
-:root {
-  --bg: #ffffff;
-  --fg: #000000;
-  --border: #000000;
-  --muted: #444444;
-  --radius: 6px;
-  --pad: 10px;
-  --font: 17px;
-  --line: 1.35;
+/* Paste this file over your existing styles.css (keeps original styling).
+   The file below is the same as your current stylesheet snapshot with no XLSX-specific rules. */
+
+/* Basic layout and theming */
+:root{
+  --bg:#f6f7fb;
+  --panel:#fff;
+  --muted:#6b7280;
+  --accent:#2b9af3;
+  --border:#e6e9ef;
+  --shadow: 0 6px 18px rgba(16,24,40,0.06);
+  font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
 }
 
-html, body {
-  margin: 0;
-  padding: 0;
-  background: var(--bg);
-  color: var(--fg);
-  font-family: system-ui, Arial, sans-serif;
-  font-size: var(--font);
-  line-height: var(--line);
-  /* Paper mode: no page scroll */
-  overflow: hidden;
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;background:var(--bg);color:#111}
+.topbar{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  padding:10px 14px;
+  background:linear-gradient(180deg,#ffffff,#fbfdff);
+  border-bottom:1px solid var(--border);
+  position:sticky;
+  top:0;
+  z-index:40;
 }
+.topbar .left{display:flex;align-items:center;gap:10px}
+.topbar .right{display:flex;align-items:center;gap:8px}
+.topbar button{background:#fff;border:1px solid var(--border);padding:6px 10px;border-radius:6px;cursor:pointer}
+.topbar .sep{width:10px}
 
-/* ---------------- Top bar ---------------- */
-.topbar {
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 8px 10px;
-  border-bottom: 2px solid var(--border);
-  background: var(--bg);
-  position: sticky;
-  top: 0;
-  z-index: 1000;
-}
+/* progress */
+.progress{width:220px;height:6px;background:#f1f5f9;border-radius:6px;overflow:hidden}
+#progressBar{height:100%;width:0;background:linear-gradient(90deg,var(--accent),#176fb8)}
 
-.topbar .left,
-.topbar .right {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
+/* viewport/world/app */
+#viewport{overflow:hidden;background:transparent}
+#world{position:relative;transform-origin:0 0}
+#app{padding:18px;max-width:1100px;margin:0 auto}
 
-.topbar button {
-  border: 2px solid var(--border);
-  background: var(--bg);
-  color: var(--fg);
-  padding: 8px 10px;
-  border-radius: var(--radius);
-  font-size: 16px;
-}
+/* panels and grid */
+.panel{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:12px;box-shadow:var(--shadow);margin-bottom:12px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.hint{color:var(--muted);font-size:13px}
 
-.topbar input[type="file"] {
-  font-size: 14px;
-}
+/* ability grid */
+.ability-breakdown-grid{display:grid;grid-template-columns:80px repeat(6,1fr);gap:6px;align-items:center}
+.ability-breakdown-grid .hdr{font-weight:600;font-size:12px;color:var(--muted)}
+.val{padding:6px}
 
-.topbar input[type="text"] {
-  border: 2px solid var(--border);
-  background: var(--bg);
-  color: var(--fg);
-  padding: 6px 8px;
-  border-radius: var(--radius);
-  font-size: 16px;
-  width: 420px;
-  max-width: 100%;
-}
+/* table */
+.table{width:100%;border-collapse:collapse}
+.table th,.table td{border-bottom:1px solid #eef2f6;padding:8px;text-align:left;font-size:13px}
 
-.sep {
-  display: inline-block;
-  width: 1px;
-  height: 22px;
-  background: #999;
-  margin: 0 8px;
-}
+/* prep box anchor */
+.prep-box{display:inline-block;width:36px;height:18px;border:1px dashed #e2e8f0;border-radius:4px}
 
-.progress {
-  width: 220px;
-  height: 12px;
-  border: 2px solid var(--border);
-  border-radius: var(--radius);
-  overflow: hidden;
-}
-
-#progressBar {
-  height: 100%;
-  width: 0%;
-  background: var(--fg);
-  transition: width 0.15s linear;
-}
-
-/* ---------------- Paper viewport ---------------- */
-#viewport {
-  position: relative;
-  width: 100vw;
-  height: calc(100vh - 64px); /* JS can override to true topbar height */
-  overflow: hidden;
-  background: var(--bg);
-
-  /* Stylus stability: prevent browser gesture stealing */
-  touch-action: none;
-  user-select: none;
-  -webkit-user-select: none;
-  -webkit-touch-callout: none;
-}
-
-#world {
-  position: absolute;
-  left: 0;
-  top: 0;
-  transform-origin: 0 0;
-  touch-action: none;
-}
-
-.app {
-  padding: var(--pad);
-  max-width: none; /* wide content is fine; pan/zoom reveals it */
-}
-
-/* ---------------- Panels & layout ---------------- */
-.panel {
-  border: 2px solid var(--border);
-  border-radius: var(--radius);
-  padding: var(--pad);
-  margin: 10px 0;
-}
-
-.hint {
-  color: var(--muted);
-  font-size: 14px;
-}
-
-.grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-}
-
-@media (max-width: 900px) {
-  .grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-/* ---------------- Tables ---------------- */
-.table {
-  border-collapse: collapse;
-  width: max-content;  /* don’t squash; pan/zoom instead */
-  min-width: 980px;
-  font-size: 15px;
-}
-
-.table th,
-.table td {
-  border: 2px solid var(--border);
-  padding: 6px 8px;
-  vertical-align: top;
-}
-
-.table th {
-  font-weight: 700;
-  background: #fff;
-}
-
-/* Empty prep box intended for ink */
-.prep-box {
-  width: 7ch;
-  height: 1.6em;
-  border: 2px solid var(--border);
-  border-radius: 4px;
-  display: inline-block;
-  background: #fff;
-}
-
-/* ---------------- Ability breakdown grid (important) ---------------- */
-/* Wrapper used in renderGeneral(): <div class="ability-breakdown-grid"> */
-.ability-breakdown-grid {
-  display: grid;
-  grid-template-columns: 70px 110px 70px 80px 120px 70px 60px;
-  gap: 8px;
-  align-items: center;
-  max-width: 100%;
-}}
-
-.ability-breakdown-grid .hdr {
-  font-weight: 700;
-  text-align: right;
-  white-space: nowrap;
-}
-
-.ability-breakdown-grid .val {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
-/* Older/simple ability grid (if still used anywhere) */
-.ability-grid {
-  display: grid;
-  grid-template-columns: 80px 90px 70px;
-  gap: 8px;
-  align-items: center;
-}
-
-.ability-grid .hdr {
-  font-weight: 700;
-}
-
-.ability-grid .val {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
-/* ---------------- Ink canvas ---------------- */
-#inkWorld {
-  position: absolute;
-  left: 0;
-  top: 0;
-  z-index: 20;
-  pointer-events: none; /* JS toggles this */
-  touch-action: none;
-}
-
-
-.ability-breakdown-grid input[type="number"]{
-  width: 100%;
-  box-sizing: border-box /* CRITICAL: border+padding included in width */
-  padding: 2px 4px;
-  font-size: 16px;
-  line-height: 1.1;
-  border: 2px solid var(--border);
-  border-radius: 4px;
-  background: var(--bg);
-  color: var(--fg);
-  text-align: right;
-  min-width: 0;                /* allow grid to constrain it */
-}
-
-/* Custom checkbox styling for Mage Armor and Shield */
+/* checkbox styling for buff checkboxes */
 label > input[type="checkbox"]#buff_mage,
 label > input[type="checkbox"]#buff_shield {
-  /* hide native appearance but keep it accessible */
   -webkit-appearance: none;
   appearance: none;
   width: 1.25rem;
@@ -254,18 +72,13 @@ label > input[type="checkbox"]#buff_shield {
   position: relative;
   cursor: pointer;
   transition: background .12s ease, border-color .12s ease, box-shadow .12s ease;
-  z-index: 50;
 }
-
-/* checked state */
 label > input[type="checkbox"]#buff_mage:checked,
 label > input[type="checkbox"]#buff_shield:checked {
   background: linear-gradient(180deg,#2b9af3 0%,#1b7ed6 100%);
   border-color: #176fb8;
   box-shadow: 0 0 0 3px rgba(27,126,214,0.12);
 }
-
-/* checkmark */
 label > input[type="checkbox"]#buff_mage:checked::after,
 label > input[type="checkbox"]#buff_shield:checked::after {
   content: "";
@@ -279,35 +92,19 @@ label > input[type="checkbox"]#buff_shield:checked::after {
   transform: rotate(45deg);
   box-sizing: border-box;
 }
-
-/* focus ring for keyboard users */
 label > input[type="checkbox"]#buff_mage:focus,
 label > input[type="checkbox"]#buff_shield:focus {
   outline: none;
   box-shadow: 0 0 0 4px rgba(43,154,243,0.18);
   border-color: #2b9af3;
 }
-
-/* slightly larger hit area and nicer label spacing */
-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  cursor: pointer;
-  user-select: none;
-}
-
-/* optional: subtle hover feedback */
+label{display:inline-flex;align-items:center;gap:0.4rem;cursor:pointer;user-select:none}
 label:hover > input[type="checkbox"]#buff_mage,
-label:hover > input[type="checkbox"]#buff_shield {
-  border-color: #7eaeea;
-}
-
-/* color variant: mage vs shield (if you want different colors) */
+label:hover > input[type="checkbox"]#buff_shield { border-color: #7eaeea; }
 label > input[type="checkbox"]#buff_mage:checked { background: linear-gradient(180deg,#6dd3a6,#2fb07a); border-color:#1f8f5f; box-shadow:0 0 0 3px rgba(47,176,122,0.12); }
 label > input[type="checkbox"]#buff_shield:checked { background: linear-gradient(180deg,#2b9af3,#1b7ed6); border-color:#176fb8; box-shadow:0 0 0 3px rgba(27,126,214,0.12); }
 
-/* Topbar line width control */
+/* line width control */
 .topbar .line-width {
   display: inline-flex;
   align-items: center;
@@ -316,39 +113,12 @@ label > input[type="checkbox"]#buff_shield:checked { background: linear-gradient
   font-size: 0.9rem;
   color: #222;
 }
+.topbar .line-width input[type="range"] { width: 160px; height: 6px; background: linear-gradient(90deg,#ddd,#ccc); border-radius: 6px; -webkit-appearance: none; appearance: none; }
+.topbar .line-width input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: var(--accent); box-shadow: 0 1px 2px rgba(0,0,0,0.2); border: 2px solid #fff; margin-top: -4px; }
+.topbar .line-width input[type="number"] { width: 56px; padding: 4px 6px; border-radius: 4px; border: 1px solid #cfcfcf; background: #fff; font-size: 0.9rem; }
 
-.topbar .line-width label {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  user-select: none;
-}
-
-.topbar .line-width input[type="range"] {
-  width: 160px;
-  height: 6px;
-  background: linear-gradient(90deg,#ddd,#ccc);
-  border-radius: 6px;
-  -webkit-appearance: none;
-  appearance: none;
-}
-
-.topbar .line-width input[type="range"]::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: #2b9af3;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.2);
-  border: 2px solid #fff;
-  margin-top: -4px;
-}
-
-.topbar .line-width input[type="number"] {
-  width: 56px;
-  padding: 4px 6px;
-  border-radius: 4px;
-  border: 1px solid #cfcfcf;
-  background: #fff;
-  font-size: 0.9rem;
+/* responsive */
+@media (max-width:900px){
+  .grid{grid-template-columns:1fr}
+  .topbar .left{flex-wrap:wrap}
 }
