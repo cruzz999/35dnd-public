@@ -1,4 +1,5 @@
 app.js
 index.html
+spell_slots.json
 styles.css
 xlsx.full.min.js
