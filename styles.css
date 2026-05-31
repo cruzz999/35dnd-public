@@ -124,3 +124,66 @@ label > input[type="checkbox"]#buff_shield:checked { background: linear-gradient
   .grid{grid-template-columns:1fr}
   .topbar .left{flex-wrap:wrap}
 }
+
+/* Spells page: allow wider tables and prevent wrapping so each spell stays on one line */
+#app {
+  max-width: 1600px;      /* increase max width so tables can expand */
+  padding-left: 18px;
+  padding-right: 18px;
+}
+
+/* Make the two-panel grid use available space but allow panels to grow */
+.grid {
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+/* Panels that contain large tables should allow horizontal scrolling */
+.panel {
+  overflow: visible;
+}
+.panel .panel-body {
+  overflow-x: auto;
+}
+
+/* Table layout: prefer single-line rows */
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: auto;     /* allow columns to size naturally */
+  white-space: nowrap;    /* prevent wrapping inside cells */
+  font-size: 13px;        /* slightly smaller to fit more columns */
+}
+
+/* Reduce padding so more columns fit on one line */
+.table th,
+.table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid #eef2f6;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+/* Make header sticky if you want (optional) */
+/* .table thead th { position: sticky; top: 0; background: var(--panel); z-index: 2; } */
+
+/* Ensure prep-box and other small cells don't force wrapping */
+.prep-box,
+.table td .prep-box,
+.table td .prep-checkbox {
+  min-width: 36px;
+  max-width: 120px;
+  white-space: nowrap;
+}
+
+/* If the viewport is narrow, allow panels to stack but keep table scrollable */
+@media (max-width: 1100px) {
+  .grid { grid-template-columns: 1fr; }
+  .panel { overflow-x: auto; }
+  .table { font-size: 12px; }
+}
+
+/* Optional: make the world/app area use more of the viewport horizontally */
+#viewport { padding: 0 8px; }
+#world { max-width: none; }
+
