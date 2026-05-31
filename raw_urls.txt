@@ -1,5 +1,0 @@
-https://raw.githubusercontent.com/cruzz999/35dnd-public/5b4abcce52756dc1e846744c08877c66c84fc61d/app.js
-https://raw.githubusercontent.com/cruzz999/35dnd-public/5b4abcce52756dc1e846744c08877c66c84fc61d/index.html
-https://raw.githubusercontent.com/cruzz999/35dnd-public/5b4abcce52756dc1e846744c08877c66c84fc61d/slotCalculator.js
-https://raw.githubusercontent.com/cruzz999/35dnd-public/5b4abcce52756dc1e846744c08877c66c84fc61d/styles.css
-https://raw.githubusercontent.com/cruzz999/35dnd-public/5b4abcce52756dc1e846744c08877c66c84fc61d/xlsx.full.min.js
