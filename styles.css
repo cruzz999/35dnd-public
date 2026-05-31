@@ -236,3 +236,74 @@ html, body {
   text-align: right;
   min-width: 0;                /* allow grid to constrain it */
 }
+
+/* Custom checkbox styling for Mage Armor and Shield */
+label > input[type="checkbox"]#buff_mage,
+label > input[type="checkbox"]#buff_shield {
+  /* hide native appearance but keep it accessible */
+  -webkit-appearance: none;
+  appearance: none;
+  width: 1.25rem;
+  height: 1.25rem;
+  margin: 0 0.5rem 0 0;
+  vertical-align: middle;
+  border: 2px solid #9aa4b2;
+  border-radius: 4px;
+  background: #fff;
+  display: inline-block;
+  position: relative;
+  cursor: pointer;
+  transition: background .12s ease, border-color .12s ease, box-shadow .12s ease;
+  z-index: 50;
+}
+
+/* checked state */
+label > input[type="checkbox"]#buff_mage:checked,
+label > input[type="checkbox"]#buff_shield:checked {
+  background: linear-gradient(180deg,#2b9af3 0%,#1b7ed6 100%);
+  border-color: #176fb8;
+  box-shadow: 0 0 0 3px rgba(27,126,214,0.12);
+}
+
+/* checkmark */
+label > input[type="checkbox"]#buff_mage:checked::after,
+label > input[type="checkbox"]#buff_shield:checked::after {
+  content: "";
+  position: absolute;
+  left: 0.28rem;
+  top: 0.06rem;
+  width: 0.35rem;
+  height: 0.7rem;
+  border: solid #fff;
+  border-width: 0 0.18rem 0.18rem 0;
+  transform: rotate(45deg);
+  box-sizing: border-box;
+}
+
+/* focus ring for keyboard users */
+label > input[type="checkbox"]#buff_mage:focus,
+label > input[type="checkbox"]#buff_shield:focus {
+  outline: none;
+  box-shadow: 0 0 0 4px rgba(43,154,243,0.18);
+  border-color: #2b9af3;
+}
+
+/* slightly larger hit area and nicer label spacing */
+label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+/* optional: subtle hover feedback */
+label:hover > input[type="checkbox"]#buff_mage,
+label:hover > input[type="checkbox"]#buff_shield {
+  border-color: #7eaeea;
+}
+
+/* color variant: mage vs shield (if you want different colors) */
+label > input[type="checkbox"]#buff_mage:checked { background: linear-gradient(180deg,#6dd3a6,#2fb07a); border-color:#1f8f5f; box-shadow:0 0 0 3px rgba(47,176,122,0.12); }
+label > input[type="checkbox"]#buff_shield:checked { background: linear-gradient(180deg,#2b9af3,#1b7ed6); border-color:#176fb8; box-shadow:0 0 0 3px rgba(27,126,214,0.12); }
+
