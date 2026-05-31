@@ -403,7 +403,42 @@ window.addEventListener("DOMContentLoaded", () => {
       setInterval(()=>{ const h = topbar.getBoundingClientRect().height; if (h !== lastH){ lastH = h; syncViewportHeight(); applyWorldTransform(); ensureCanvasSize(); if (window.ink && typeof window.ink.redraw === 'function') window.ink.redraw(); } }, 300);
     }
   })();
+function mergeWindowStateIfPresent() {
+  try {
+    // If a global window.state was produced by gs_ingest, merge it into our local state
+    if (!window.state || !window.state.data) return;
 
+    const g = window.state.data.general ?? null;
+    const s = window.state.data.spells ?? null;
+    let changed = false;
+
+    if (g) {
+      // Defensive normalization
+      g.buffs = g.buffs || {};
+      g.buffs.mageArmor = Number(g.buffs.mageArmor) || 0;
+      g.buffs.shieldSpell = Number(g.buffs.shieldSpell) || 0;
+      state.data = state.data || {};
+      state.data.general = g;
+      changed = true;
+    }
+
+    if (s) {
+      state.data = state.data || {};
+      state.data.spells = s;
+      changed = true;
+    }
+
+    if (changed) {
+      state.loaded = true;
+      // Re-render and ensure canvas sizing/redraw
+      try { render(); } catch (err) { console.warn("render failed during merge", err); }
+      try { ensureCanvasSize(); } catch (err) { console.warn("ensureCanvasSize failed during merge", err); }
+      try { if (window.ink && typeof window.ink.redraw === "function") window.ink.redraw(); } catch (err) { console.warn("ink.redraw failed during merge", err); }
+    }
+  } catch (e) {
+    console.warn("mergeWindowStateIfPresent failed", e);
+  }
+}
   // Inject panning styles once
   (function injectPanningStyles(){
     const id = 'app.js:is-panning';
