@@ -600,132 +600,108 @@ function findHeaderRow(grid, headerText) {
   - also extracts current class levels if present
 */
 function ingestSpellsFromGrid(grid) {
-  try {
-    state.data.slots = state.data.slots || { sorcerer: {}, wizard: {} };
+  const cell = (r, c) => (grid[r] && grid[r][c] != null) ? String(grid[r][c]) : "";
+  const num = (s, fb = 0) => {
+    const n = Number(String(s).replace(",", "."));
+    return Number.isFinite(n) ? n : fb;
+  };
 
-    // Heuristics: find "Sorcerer" header and "Evoker" or "Wizard" header
-    let sorcererHeaderRow = -1;
-    for (let r = 0; r < grid.length; r++) {
-      const row = (grid[r] || []).map(c => String(c || "").toLowerCase());
-      if (row.some(c => c.includes("sorcerer") && c.includes("slot"))) { sorcererHeaderRow = r; break; }
-      if (row.some(c => c === "sorcerer")) { sorcererHeaderRow = r; break; }
+  const findRowContaining = (text) =>
+    grid.findIndex(row => (row || []).some(v => String(v).trim() === text));
+
+  const sorcHeader = findRowContaining("Spell slots (S)");
+  const wizHeader  = findRowContaining("Spell slots (W)");
+
+  function headerMap(rowIdx) {
+    const row = grid[rowIdx] || [];
+    const map = {};
+    for (let c = 0; c < row.length; c++) {
+      const key = String(row[c] ?? "").trim();
+      if (key) map[key] = c;
     }
-
-    let wizardHeaderRow = -1;
-    for (let r = 0; r < grid.length; r++) {
-      const row = (grid[r] || []).map(c => String(c || "").toLowerCase());
-      if (row.some(c => c.includes("evoker") && c.includes("slot"))) { wizardHeaderRow = r; break; }
-      if (row.some(c => c === "evoker") || row.some(c => c === "wizard")) { wizardHeaderRow = r; break; }
-    }
-
-    function parseTableFromHeaderRow(r) {
-      if (r < 0 || r >= grid.length) return null;
-      const header = grid[r];
-      let levelCol = -1;
-      for (let c = 0; c < header.length; c++) {
-        const h = String(header[c] || "").trim().toLowerCase();
-        if (h === "level" || h === "lvl" || h === "lv") { levelCol = c; break; }
-      }
-      if (levelCol === -1) {
-        for (let c = 0; c < header.length; c++) {
-          let found = false;
-          for (let rr = r+1; rr < Math.min(grid.length, r+8); rr++) {
-            const val = String((grid[rr] || [])[c] || "").trim();
-            if (/^\d+$/.test(val)) { found = true; break; }
-          }
-          if (found) { levelCol = c; break; }
-        }
-      }
-      if (levelCol === -1) return null;
-
-      const spellCols = [];
-      for (let c = levelCol + 1; c < Math.min(levelCol + 12, header.length); c++) {
-        const h = String(header[c] || "").trim();
-        if (h === "" && grid[r+1] && /^\d+$/.test(String((grid[r+1] || [])[c] || "").trim())) {
-          spellCols.push(c);
-        } else if (/^[0-9]$/.test(h)) {
-          spellCols.push(c);
-        } else {
-          if (spellCols.length > 0) break;
-        }
-      }
-
-      const table = {};
-      for (let rr = r + 1; rr < grid.length; rr++) {
-        const row = grid[rr];
-        if (!row || row.length <= levelCol) break;
-        const levelCell = String(row[levelCol] || "").trim();
-        if (!/^\d+$/.test(levelCell)) break;
-        const lvl = Number(levelCell);
-        const arr = [];
-        for (let sc = 0; sc < spellCols.length; sc++) {
-          const cidx = spellCols[sc];
-          const raw = String(row[cidx] || "").trim();
-          if (raw === "-" || raw === "") arr.push(0);
-          else if (/^\d+$/.test(raw)) arr.push(Number(raw));
-          else {
-            const m = raw.match(/(\d+)/);
-            arr.push(m ? Number(m[1]) : 0);
-          }
-        }
-        table[lvl] = arr;
-      }
-      return table;
-    }
-
-    const sorTable = parseTableFromHeaderRow(sorcererHeaderRow) || {};
-    const wizTable = parseTableFromHeaderRow(wizardHeaderRow) || {};
-
-    state.data.slots.sorcerer = sorTable;
-    state.data.slots.wizard = wizTable;
-
-    // Also try to find current levels in the sheet (look for "Current Sorcerer Level" etc.)
-    const curSorcRow = findRowByPrefix(grid, "current sorcerer");
-    if (curSorcRow >= 0) {
-      for (let c = 0; c < (grid[curSorcRow] || []).length; c++) {
-        const cell = String((grid[curSorcRow] || [])[c] || "").trim();
-        if (/^\d+$/.test(cell)) {
-          state.data.currentSorcererLevel = Number(cell);
-          break;
-        }
-      }
-    }
-    const curWizRow = findRowByPrefix(grid, "current evoker");
-    if (curWizRow >= 0) {
-      for (let c = 0; c < (grid[curWizRow] || []).length; c++) {
-        const cell = String((grid[curWizRow] || [])[c] || "").trim();
-        if (/^\d+$/.test(cell)) {
-          state.data.currentWizardLevel = Number(cell);
-          break;
-        }
-      }
-    }
-
-    // fallback: try other variants
-    if (!state.data.currentSorcererLevel) {
-      const r = findRowByPrefix(grid, "current sorcerer level");
-      if (r >= 0) {
-        for (let c = 0; c < (grid[r] || []).length; c++) {
-          const cell = String((grid[r] || [])[c] || "").trim();
-          if (/^\d+$/.test(cell)) { state.data.currentSorcererLevel = Number(cell); break; }
-        }
-      }
-    }
-    if (!state.data.currentWizardLevel) {
-      const r = findRowByPrefix(grid, "current evoker level") || findRowByPrefix(grid, "current wizard level");
-      if (r >= 0) {
-        for (let c = 0; c < (grid[r] || []).length; c++) {
-          const cell = String((grid[r] || [])[c] || "").trim();
-          if (/^\d+$/.test(cell)) { state.data.currentWizardLevel = Number(cell); break; }
-        }
-      }
-    }
-
-    return true;
-  } catch (e) {
-    console.error("ingestSpellsFromGrid error:", e);
-    return false;
+    return map;
   }
+
+  function findSpellColByScanning(headerRow, preferredCol) {
+    // If preferredCol exists, verify it actually contains spell names in next rows.
+    // Otherwise scan the row for first column with non-empty values for several rows.
+    const candidates = [];
+    if (preferredCol != null) candidates.push(preferredCol, preferredCol - 1, preferredCol + 1);
+
+    // Add all columns as fallback candidates (left->right)
+    const header = grid[headerRow] || [];
+    for (let c = 0; c < header.length; c++) candidates.push(c);
+
+    const seen = new Set();
+    for (const c of candidates) {
+      if (c == null || c < 0) continue;
+      if (seen.has(c)) continue;
+      seen.add(c);
+
+      // Look at next few rows; if 2+ are non-empty and not numeric-only, accept
+      let hits = 0;
+      for (let r = headerRow + 1; r < Math.min(headerRow + 15, grid.length); r++) {
+        const t = cell(r, c).trim();
+        if (!t) continue;
+        // Ignore obvious numeric columns
+        if (/^[0-9.]+$/.test(t)) continue;
+        hits++;
+      }
+      if (hits >= 2) return c;
+    }
+    return preferredCol ?? 0;
+  }
+
+  function readBlock(headerRow, mode) {
+    if (headerRow < 0) return [];
+    const h = headerMap(headerRow);
+
+    const colSL = h["SL"];
+    const colType = h["Type"];
+    const colEvo = h["Evo?"];
+    const colFire = h["Fire?"];
+    const colRange = h["Range"];
+    const colArea = h["Area"];
+    const colDamage = h["Damage"];
+    const colDuration = h["Duration"];
+    const colNotes = h["Notes"];
+    const colPrep = h["Preparations"];
+
+    // Spell column label differs between blocks. Grab whichever exists, but validate by scanning.
+    const preferredSpellCol =
+      h["Sorcerer"] ?? h["Wizard"] ?? h["  Wizard"] ?? h["Spell"] ?? null;
+
+    const colSpell = findSpellColByScanning(headerRow, preferredSpellCol);
+
+    const rows = [];
+    for (let r = headerRow + 1; r < grid.length; r++) {
+      const name = cell(r, colSpell).trim();
+      if (!name) break;
+
+      rows.push({
+        mode,
+        name,
+        url: "", // CSV won't preserve hyperlink targets reliably
+        sl: num(cell(r, colSL), 0),
+        type: cell(r, colType),
+        evo: num(cell(r, colEvo), 0) === 1,
+        fire: num(cell(r, colFire), 0) === 1,
+        range: cell(r, colRange),
+        area: cell(r, colArea),
+        damage: cell(r, colDamage),
+        duration: cell(r, colDuration),
+        notes: cell(r, colNotes),
+        prep: mode === "wiz" ? cell(r, colPrep) : ""
+      });
+    }
+    return rows;
+  }
+
+  state.data.spells.sorc = readBlock(sorcHeader, "sorc");
+  state.data.spells.wiz  = readBlock(wizHeader, "wiz");
+
+  // Meta: keep your current baseline; we can pull levels from sheet later if desired
+  state.data.spells.meta = { sorcLevels: 1, wizLevels: 5, umLevels: 2, arcaneSpellpower: 1 };
 }
 
 /*
@@ -877,122 +853,6 @@ function ingestGeneralFromGrid(grid) {
   }
 }
 
-/* ------------------------------ XLSX ingest ---------------------------- */
-function ingestGeneralFromXlsx(wb) {
-  const ws = wb.Sheets["General info"];
-  if (!ws) throw new Error("Sheet 'General info' not found");
-  const v = (addr, fallback="") => (ws[addr] && ws[addr].v !== undefined) ? ws[addr].v : fallback;
-  state.data.general = {
-    characterName: String(v("A1","")),
-    playerName: String(v("B1","")),
-    alignment: String(v("C1","")),
-    xp: Number(v("E1",0)) || 0,
-    classLine: String(v("A4","")),
-    race: String(v("D4","")),
-    size: String(v("B7","")),
-    age: Number(v("C7",0)) || 0,
-    gender: String(v("D7","")),
-    classes: { sorc: 1, wiz: 5, um: 2 },
-    abilities: {
-      str: { pointBuy: Number(v("J12",0))||0, asi: Number(v("K12",0))||0, items: Number(v("G12",0))||0, buffs: Number(v("H12",0))||0 },
-      dex: { pointBuy: Number(v("J13",0))||0, asi: Number(v("K13",0))||0, items: Number(v("G13",0))||0, buffs: Number(v("H13",0))||0 },
-      con: { pointBuy: Number(v("J14",0))||0, asi: Number(v("K14",0))||0, items: Number(v("G14",0))||0, buffs: Number(v("H14",0))||0 },
-      int: { pointBuy: Number(v("J15",0))||0, asi: Number(v("K15",0))||0, items: Number(v("G15",0))||0, buffs: Number(v("H15",0))||0 },
-      wis: { pointBuy: Number(v("J16",0))||0, asi: Number(v("K16",0))||0, items: Number(v("G16",0))||0, buffs: Number(v("H16",0))||0 },
-      cha: { pointBuy: Number(v("J17",0))||0, asi: Number(v("K17",0))||0, items: Number(v("G17",0))||0, buffs: Number(v("H17",0))||0 }
-    },
-    ac: { armor: Number(v("D21",0))||0, shield: Number(v("E21",0))||0, size: Number(v("G21",0))||0, natural: Number(v("H21",0))||0, deflect: Number(v("J21",0))||0, misc: Number(v("L21",0))||0, miscTouch: 0 },
-    saves: { fortMisc: 0, refMisc: 0, willMisc: 0 },
-    attacks: { meleeMisc: 0, rangedMisc: 0, grappleMisc: 0 },
-    initMisc: 0,
-    buffs: { mageArmor: 0, shieldSpell: 0 },
-    feats: [],
-    languages: []
-  };
-}
-
-function ingestSpellsFromXlsx(wb) {
-  const ws = wb.Sheets["Spells"];
-  if (!ws) throw new Error("Sheet 'Spells' not found");
-  const range = XLSX.utils.decode_range(ws["!ref"]);
-  const cellAt = (r,c) => ws[XLSX.utils.encode_cell({r,c})];
-
-  function cellHasContent(cell) {
-    if (!cell) return false;
-    if (cell.v !== undefined && String(cell.v).trim() !== "") return true;
-    if (cell.f) return true;
-    if (cell.l && cell.l.Target) return true;
-    return false;
-  }
-
-  function findRowWithText(text) {
-    for (let r = range.s.r; r <= range.e.r; r++) {
-      for (let c = range.s.c; c <= range.e.c; c++) {
-        const cell = cellAt(r,c);
-        if (!cell || cell.v === undefined) continue;
-        if (String(cell.v).trim() === text) return r;
-      }
-    }
-    return -1;
-  }
-
-  const sorcHeader = findRowWithText("Spell slots (S)");
-  const wizHeader = findRowWithText("Spell slots (W)");
-
-  function readBlock(headerRow, mode) {
-    if (headerRow < 0) return [];
-    const header = {};
-    for (let c = range.s.c; c <= range.e.c; c++) {
-      const cell = cellAt(headerRow,c);
-      const val = cell && cell.v !== undefined ? String(cell.v).trim() : "";
-      if (val) header[val] = c;
-    }
-    const col = { prep: header["Preparations"], spell: header["Sorcerer"] ?? header["Wizard"], sl: header["SL"], type: header["Type"], evo: header["Evo?"], fire: header["Fire?"], range: header["Range"], area: header["Area"], damage: header["Damage"], duration: header["Duration"], notes: header["Notes"] };
-
-    function resolveSpellCol(spellCol) {
-      if (spellCol === undefined) return undefined;
-      for (let r = headerRow+1; r <= Math.min(headerRow+20, range.e.r); r++) {
-        const here = cellAt(r, spellCol);
-        const left = cellAt(r, spellCol-1);
-        const right = cellAt(r, spellCol+1);
-        if (cellHasContent(here)) return spellCol;
-        if (cellHasContent(left)) return spellCol-1;
-        if (cellHasContent(right)) return spellCol+1;
-      }
-      return spellCol;
-    }
-    col.spell = resolveSpellCol(col.spell);
-
-    const rows = [];
-    for (let r = headerRow+1; r <= range.e.r; r++) {
-      const spellCell = col.spell !== undefined ? cellAt(r, col.spell) : null;
-      if (!cellHasContent(spellCell)) break;
-      const name = spellCell.v !== undefined ? String(spellCell.v) : "(spell)";
-      const get = (c) => { if (c === undefined) return ""; const cell = cellAt(r,c); if (!cell) return ""; return (cell.w !== undefined ? cell.w : (cell.v ?? "")); };
-      const num = (c) => Number(get(c)) || 0;
-      rows.push({
-        mode,
-        name,
-        url: "",
-        sl: num(col.sl),
-        type: String(get(col.type)||""),
-        evo: num(col.evo) === 1,
-        fire: num(col.fire) === 1,
-        range: String(get(col.range)||""),
-        area: String(get(col.area)||""),
-        damage: String(get(col.damage)||""),
-        duration: String(get(col.duration)||""),
-        notes: String(get(col.notes)||""),
-        prep: mode === "wiz" ? String(get(col.prep)||"") : ""
-      });
-    }
-    return rows;
-  }
-
-  state.data.spells.sorc = readBlock(sorcHeader, "sorc");
-  state.data.spells.wiz = readBlock(wizHeader, "wiz");
-  state.data.spells.meta = { sorcLevels: 1, wizLevels: 5, umLevels: 2, arcaneSpellpower: 1 };
-}
 
 /* ------------------------------ Rendering ------------------------------ */
 function computeSpellDC(sl, castingMod) { return 10 + (Number(sl)||0) + (Number(castingMod)||0); }
@@ -1112,20 +972,37 @@ function renderGeneral() {
 
 function renderSpellTable(rows, meta, castingMod, showPrep) {
   if (!rows || !rows.length) return `<div class="hint">No spells loaded.</div>`;
+
   return `
     <table class="table">
       <thead>
         <tr>
-          <th>Spell</th><th>SL</th><th>CL</th><th>DC</th>${showPrep ? "<th>Prep</th>" : ""}<th>Type</th><th>F</th><th>E</th><th>Range</th><th>Area</th><th>Damage</th><th>Duration</th>
+          <th>Spell</th><th>SL</th><th>CL</th><th>DC</th>
+          ${showPrep ? "<th>Prep</th>" : ""}
+          <th>Type</th><th>F</th><th>E</th>
+          <th>Range</th><th>Area</th><th>Damage</th><th>Duration</th>
         </tr>
       </thead>
       <tbody>
         ${rows.map(s => {
           const cl = computeSpellCL(s, meta);
           const dc = computeSpellDC(s.sl, castingMod);
-          const spellCell = s.url ? `<a href="${String(s.url).replace(/"/g,'&quot;')}" target="_blank" rel="noopener noreferrer">${escapeHtml(s.name)}</a>` : escapeHtml(s.name);
-          const anchorId = `${s.mode}:${s.name}:prep`.toLowerCase().replace(/\s+/g,'_').replace(/[^a-z0-9:_-]/g,'');
-          const prepCell = showPrep ? `<td><span class="prep-box" data-ink-anchor="${anchorId}"></span></td>` : "";
+
+          // Spell name (CSV mode has no URL; XLSX mode may have s.url)
+          const spellCell = s.url
+            ? `<a href="${String(s.url).replace(/"/g, "&quot;")}" target="_blank" rel="noopener noreferrer">${escapeHtml(s.name)}</a>`
+            : escapeHtml(s.name);
+
+          // Prep box is intentionally empty for pen scribbles
+          const anchorId = `${s.mode}:${s.name}:prep`
+            .toLowerCase()
+            .replace(/\s+/g, "_")
+            .replace(/[^a-z0-9:_-]/g, "");
+
+          const prepCell = showPrep
+            ? `<td><span class="prep-box" data-ink-anchor="${anchorId}"></span></td>`
+            : "";
+
           return `
             <tr>
               <td>${spellCell}</td>
@@ -1350,24 +1227,27 @@ function renderSpells() {
   const d = g ? computeGeneralDerived(g) : null;
   const intMod = d ? d.abilities.int.mod : 0;
   const chaMod = d ? d.abilities.cha.mod : 0;
+
   const sorcRows = state.data.spells.sorc || [];
-  const wizRows = state.data.spells.wiz || [];
+  const wizRows  = state.data.spells.wiz || [];
 
   el.app.innerHTML = `
-  <div class="panel">
-    <h2>Spells</h2>
-    <div class="hint">Pan/zoom the paper; use Pen to write in prep boxes.</div>
-    <div class="grid">
-      <div class="panel">
-        <h3>Sorcerer / UM</h3>
-        ${renderSpellTable(sorcRows, meta, chaMod, false)}
-      </div>
-      <div class="panel">
-        <h3>Wizard</h3>
-        ${renderSpellTable(wizRows, meta, intMod, true)}
+    <div class="panel">
+      <h2>Spells</h2>
+      <div class="hint">Pan/zoom the paper; use Pen to write in prep boxes.</div>
+
+      <div class="grid">
+        <div class="panel">
+          <h3>Sorcerer / UM</h3>
+          ${renderSpellTable(sorcRows, meta, chaMod, false)}
+        </div>
+
+        <div class="panel">
+          <h3>Wizard</h3>
+          ${renderSpellTable(wizRows, meta, intMod, true)}
+        </div>
       </div>
     </div>
-  </div>
   `;
 }
 
