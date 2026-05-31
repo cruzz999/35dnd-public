@@ -1376,30 +1376,98 @@ if (el.file) {
 }
 
 /* ---------------------- Hook Google Sheets button ---------------------- */
+// Replace existing loadFromGoogleSheets with this function
 async function loadFromGoogleSheets(sheetUrl) {
   try {
     const id = extractSpreadsheetId(sheetUrl);
     if (!id) throw new Error("Could not extract spreadsheet ID from URL.");
-    // gids: spells (Slot Info) is 1231385124 per your earlier messages; general tab gid may vary
-    const gids = { slot: 1231385124, general: 2004670713, spells: 0 };
-    setProgress(5, "Fetching Slot Info tab…");
+
+    // Use gid=0 for the Spells tab (per your note), slot info gid as provided, general gid as before
+    const gids = {
+      spells: 0,                 // <-- spells tab is gid 0
+      slot: 1231385124,         // Slot Info (your provided GID)
+      general: 2004670713       // keep your general gid (adjust if different)
+    };
+
+    setProgress(5, "Fetching Spells tab (gid=0) …");
+    const spellsCsv = await fetchCsvViaProxy(id, gids.spells);
+
+    setProgress(25, "Fetching Slot Info tab …");
     const slotCsv = await fetchCsvViaProxy(id, gids.slot);
-    setProgress(30, "Fetching General tab…");
+
+    setProgress(50, "Fetching General tab …");
     const generalCsv = await fetchCsvViaProxy(id, gids.general);
 
+    // Parse CSVs to grids
+    const spellsGrid = csvToGrid(spellsCsv);
     const slotGrid = csvToGrid(slotCsv);
     const generalGrid = csvToGrid(generalCsv);
 
-    ingestSpellsFromGrid(slotGrid);
-    ingestGeneralFromGrid(generalGrid);
+    // Diagnostics: show top rows so you can confirm the right tabs were fetched
+    console.debug("loadFromGoogleSheets: spellsGrid sample rows:", spellsGrid.slice(0,6));
+    console.debug("loadFromGoogleSheets: slotGrid sample rows:", slotGrid.slice(0,6));
+    console.debug("loadFromGoogleSheets: generalGrid sample rows:", generalGrid.slice(0,6));
 
-    state.loaded = true;
-    setProgress(95, "Rendering…");
+    // Ingest into app state using your existing ingest functions
+    // spellsGrid -> state.data.spells (rows)
+    // slotGrid -> state.data.slots (slot tables)
+    // generalGrid -> state.data.general
+    // Use the grid ingesters you already have
+    const okSlots = ingestSpellsFromGrid(slotGrid);
+    const okSpells = (typeof ingestSpellsFromGrid === 'function') ? (function(){
+      // If your ingestSpellsFromGrid expects the Slot Info layout, call it for spellsGrid too
+      // Otherwise call a dedicated ingest function for spells; adapt if you have one.
+      try {
+        // If you have a separate ingest for spells rows (not slot tables), call it here.
+        // Fallback: attempt to parse spellsGrid into state.data.spells using the same helper.
+        const parsed = (function(){
+          // try to find a simple spell table: header row with "Spell" or "SL"
+          const headerRow = spellsGrid.findIndex(r => (r||[]).some(c => String(c||"").toLowerCase().includes("spell")));
+          if (headerRow >= 0) {
+            // simple parse: find spell name column and SL column
+            const header = spellsGrid[headerRow].map(c => String(c||"").toLowerCase());
+            const spellCol = header.findIndex(h => h.includes("spell"));
+            const slCol = header.findIndex(h => h === "sl" || h.includes("level") || h.includes("sl"));
+            const rows = [];
+            for (let r = headerRow+1; r < spellsGrid.length; r++) {
+              const name = String((spellsGrid[r]||[])[spellCol] || "").trim();
+              if (!name) break;
+              const slRaw = slCol >= 0 ? String((spellsGrid[r]||[])[slCol] || "").trim() : "";
+              const sl = /^\d+$/.test(slRaw) ? Number(slRaw) : (slRaw.match(/\d+/) ? Number(slRaw.match(/\d+/)[0]) : 0);
+              rows.push({ mode: "sorc", name, sl, url: "" });
+            }
+            return rows;
+          }
+          return [];
+        })();
+        if (parsed && parsed.length) {
+          state.data.spells = state.data.spells || { sorc: [], wiz: [], meta: null };
+          state.data.spells.sorc = parsed;
+          return true;
+        }
+        return ingestSpellsFromGrid(spellsGrid); // fallback to existing parser
+      } catch (e) {
+        console.error("spells ingest fallback error:", e);
+        return false;
+      }
+    })() : false;
+
+    const okGeneral = ingestGeneralFromGrid(generalGrid);
+
+    // Mark loaded if any of the ingests succeeded
+    state.loaded = !!(okGeneral || okSlots || okSpells);
+
+    setProgress(90, "Rendering…");
     ink.loadForView(state.view);
     render();
     setProgress(100, "Done ✅");
+
+    // Final diagnostics
+    console.debug("loadFromGoogleSheets: state.data.spells.sorc length:", (state.data.spells?.sorc || []).length);
+    console.debug("loadFromGoogleSheets: state.data.slots.sorcerer keys:", Object.keys(state.data.slots?.sorcerer || {}).slice(0,10));
+    return true;
   } catch (e) {
-    console.error(e);
+    console.error("loadFromGoogleSheets error:", e);
     setProgress(0, "Google Sheets load failed: " + (e?.message || e));
     throw e;
   }
