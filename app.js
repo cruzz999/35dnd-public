@@ -1058,21 +1058,72 @@ function renderSlots() {
   if (!document.getElementById(styleId)) {
     const s = document.createElement('style');
     s.id = styleId;
-    s.textContent = `
-      .slots-panel { display:block; gap:12px; }
-      .slots-grid { display:flex; gap:18px; flex-wrap:wrap; align-items:flex-start; }
-      .slots-column { display:flex; flex-direction:column; gap:8px; min-width:220px; }
-      .slots-column h3 { margin:0 0 6px 0; }
-      .sorcerer-table { border-collapse:collapse; width:100%; }
-      .sorcerer-table td { padding:4px; vertical-align:middle; }
-      .slot-box-inline { display:inline-block; width:18px; height:18px; margin:2px; border-radius:4px; border:1px solid #dfe6ef; background:#fff; box-shadow:0 1px 0 rgba(0,0,0,0.03); cursor:pointer; }
-      .slot-box-inline.used { background:linear-gradient(180deg,#f3f4f6,#fff); opacity:0.6; text-decoration:line-through; }
-      .slot-box-inline.zero { opacity:0.35; cursor:default; border-style:dashed; }
-      .slot-row-label { width:28px; text-align:center; color:#6b7280; font-size:12px; }
-      .wizard-prep-row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-      .wizard-prep-box { width:34px; height:28px; border-radius:6px; border:1px solid #e6e9ef; background:#fff; display:inline-flex; align-items:center; justify-content:center; font-weight:600; }
-      .hint.small { font-size:12px; color:#6b7280; margin-top:8px; }
-    `;
+s.textContent = `
+  .slots-panel { display:block; gap:12px; }
+  .slots-grid { display:flex; gap:18px; flex-wrap:wrap; align-items:flex-start; }
+  .slots-column { display:flex; flex-direction:column; gap:8px; min-width:220px; }
+  .slots-column h3 { margin:0 0 6px 0; font-weight:700; color:#000; }
+
+  .sorcerer-table { border-collapse:collapse; width:100%; }
+  .sorcerer-table td { padding:6px 4px; vertical-align:middle; }
+
+  /* Sorcerer slot boxes (e-ink friendly: high contrast, no shadows) */
+  .slot-box-inline {
+    display:inline-block;
+    width:20px;
+    height:20px;
+    margin:2px;
+    border-radius:3px;
+    border:2px solid #000;
+    background:#fff;
+    box-shadow:none;
+    cursor:pointer;
+    box-sizing:border-box;
+  }
+
+  /* Used state: filled black with white mark */
+  .slot-box-inline.used {
+    background:#000;
+    border-color:#000;
+  }
+
+  /* Zero / empty state: dashed outline for clarity */
+  .slot-box-inline.zero {
+    background:#fff;
+    opacity:1;
+    cursor:default;
+    border-style:dashed;
+  }
+
+  /* Row label */
+  .slot-row-label {
+    width:30px;
+    text-align:center;
+    color:#000;
+    font-size:13px;
+    font-weight:600;
+  }
+
+  /* Wizard prepared boxes (compact, high contrast) */
+  .wizard-prep-row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .wizard-prep-box {
+    width:36px;
+    height:28px;
+    border-radius:4px;
+    border:2px solid #000;
+    background:#fff;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    font-weight:700;
+    color:#000;
+    box-sizing:border-box;
+  }
+  .wizard-prep-box.empty { opacity:0.6; }
+
+  /* Small hint text */
+  .hint.small { font-size:12px; color:#000; margin-top:8px; }
+`
     document.head.appendChild(s);
   }
 
