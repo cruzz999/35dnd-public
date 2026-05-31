@@ -300,15 +300,16 @@ const ink = (() => {
     if (pts.length < 2) return;
 
     ctx.save();
-    if (stroke.erase) {
-      ctx.globalCompositeOperation = "destination-out";
-      ctx.lineWidth = 18;
-      ctx.strokeStyle = "rgba(0,0,0,1)";
-    } else {
-      ctx.globalCompositeOperation = "source-over";
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = "#000";
-    }
+if (stroke.erase) {
+  ctx.globalCompositeOperation = "destination-out";
+  ctx.lineWidth = state.eraserWidth || 18;
+  ctx.strokeStyle = "rgba(0,0,0,1)";
+} else {
+  ctx.globalCompositeOperation = "source-over";
+  // Use stroke-specific width if stroke saved with width, otherwise current state
+  ctx.lineWidth = (stroke.width && Number(stroke.width)) ? Number(stroke.width) : (state.lineWidth || 2);
+  ctx.strokeStyle = "#000";
+}
 
     ctx.beginPath();
     ctx.moveTo(pts[0].x, pts[0].y);
@@ -353,7 +354,7 @@ const ink = (() => {
     activePointerId = e.pointerId;
 
     const p = screenToWorld(e.clientX, e.clientY);
-    currentStroke = { erase: state.erasing, pts: [p] };
+    currentStroke = { erase: state.erasing, pts: [p], width: state.erasing ? state.eraserWidth : state.lineWidth };
     getStrokesForView(state.view).push(currentStroke);
 
     try { canvas.setPointerCapture(e.pointerId); } catch {}
@@ -1295,6 +1296,56 @@ window.addEventListener("DOMContentLoaded", () => {
   } else {
     console.warn("Google Sheets UI not present (#gsUrl / #loadGs).");
   }
+
+   // Ensure these elements exist in the DOM; if not, create them dynamically
+(function wireLineWidthControls() {
+  // Try to find existing controls in DOM
+  let range = document.getElementById('lineWidthRange');
+  let num = document.getElementById('lineWidthNumber');
+
+  // If not present (e.g., topbar built in JS), create and append to .topbar
+  const topbar = document.querySelector('.topbar') || document.body;
+  if (!range || !num) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'line-width';
+    wrapper.innerHTML = `
+      <label for="lineWidthRange">Line</label>
+      <input id="lineWidthRange" type="range" min="0.5" max="24" step="0.5" value="${state.lineWidth}" />
+      <input id="lineWidthNumber" type="number" min="0.5" max="24" step="0.5" value="${state.lineWidth}" />
+    `;
+    topbar.appendChild(wrapper);
+    range = document.getElementById('lineWidthRange');
+    num = document.getElementById('lineWidthNumber');
+  }
+
+  // Load saved preference if present
+  try {
+    const saved = Number(localStorage.getItem('ink.lineWidth'));
+    if (saved && !Number.isNaN(saved)) {
+      state.lineWidth = saved;
+      if (range) range.value = saved;
+      if (num) num.value = saved;
+    }
+  } catch (e) {}
+
+  function applyWidth(v) {
+    const val = Math.max(0.5, Math.min(24, Number(v) || 2));
+    state.lineWidth = val;
+    if (range) range.value = val;
+    if (num) num.value = val;
+    try { localStorage.setItem('ink.lineWidth', String(val)); } catch (e) {}
+  }
+
+  if (range) {
+    range.addEventListener('input', (e) => applyWidth(e.target.value));
+    range.addEventListener('change', (e) => applyWidth(e.target.value));
+  }
+  if (num) {
+    num.addEventListener('input', (e) => applyWidth(e.target.value));
+    num.addEventListener('change', (e) => applyWidth(e.target.value));
+  }
+})();
+
 });
 
 // Initial setup
