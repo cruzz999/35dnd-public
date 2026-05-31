@@ -222,7 +222,12 @@ function ensureCanvasSize() {
   canvas.style.pointerEvents = state.penOn ? 'auto' : 'none';
   canvas.style.touchAction = 'none';
 }
-
+function screenToWorld(clientX, clientY) {
+  const vr = el.viewport ? el.viewport.getBoundingClientRect() : (el.world ? el.world.getBoundingClientRect() : { left: 0, top: 0 });
+  const vx = clientX - vr.left;
+  const vy = clientY - vr.top;
+  return { x: (vx - state.pan.x) / state.zoom, y: (vy - state.pan.y) / state.zoom };
+}
   function drawStroke(stroke) {
     if (!ctx) return;
     const pts = stroke.pts || [];
@@ -270,19 +275,18 @@ function ensureCanvasSize() {
   let currentStroke = null;
   let activePointerId = null;
 
-  function pointerDown(e) {
-    if (!state.penOn || !canvas) return;
-    // ignore finger/palm touches in pen mode
-    if (e.pointerType === "touch") return;
-    drawing = true;
-    activePointerId = e.pointerId;
-    const p = screenToWorld(e.clientX, e.clientY);
-    currentStroke = { erase: state.erasing, pts: [p] };
-    getStrokesForView(state.view).push(currentStroke);
-    try { canvas.setPointerCapture(e.pointerId); } catch {}
-    e.preventDefault();
-    redraw();
-  }
+function pointerDown(e) {
+  if (!state.penOn || !canvas) return;
+  if (e.pointerType === 'touch') return; // ignore finger if you want stylus-only
+  drawing = true;
+  activePointerId = e.pointerId;
+  const p = screenToWorld(e.clientX, e.clientY);
+  currentStroke = { erase: state.erasing, pts: [p] };
+  getStrokesForView(state.view).push(currentStroke);
+  try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+  e.preventDefault();
+  redraw();
+}
 
   function pointerMove(e) {
     if (!state.penOn || !drawing || !currentStroke) return;
@@ -293,19 +297,17 @@ function ensureCanvasSize() {
     redraw();
   }
 
-  function endStroke(e) {
-    if (!state.penOn) return;
-    if (e && activePointerId !== null && e.pointerId !== activePointerId) return;
-    drawing = false;
-    currentStroke = null;
-    if (canvas && e) {
-      try { canvas.releasePointerCapture(e.pointerId); } catch {}
-    }
-    activePointerId = null;
-    saveForView(state.view);
-    redraw();
+function endStroke(e) {
+  if (!drawing) return;
+  drawing = false;
+  currentStroke = null;
+  if (canvas && e && typeof canvas.releasePointerCapture === 'function') {
+    try { canvas.releasePointerCapture(e.pointerId); } catch (err) { /* ignore */ }
   }
-
+  activePointerId = null;
+  saveForView(state.view);
+  redraw();
+}
   if (canvas) {
     canvas.addEventListener("pointerdown", pointerDown);
     canvas.addEventListener("pointermove", pointerMove);
