@@ -96,7 +96,7 @@ html, body {
   height: calc(100vh - 64px); /* JS can override to true topbar height */
   overflow: hidden;
   background: var(--bg);
-
+  z-index: 2;
   /* Stylus stability: prevent browser gesture stealing */
   touch-action: none;
   user-select: none;
