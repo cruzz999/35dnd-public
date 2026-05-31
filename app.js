@@ -991,12 +991,10 @@ document.querySelectorAll('.ability-breakdown-grid input[data-ab][data-field]').
 */
 
 function renderSlots() {
-  // Preserve existing content if any: build on top of it
   const container = el.app;
   if (!container) return;
   container.innerHTML = '';
 
-  // Title
   const header = document.createElement('div');
   header.className = 'panel';
   const h = document.createElement('h2');
@@ -1004,7 +1002,6 @@ function renderSlots() {
   header.appendChild(h);
   container.appendChild(header);
 
-  // Ensure SlotCalculator exists
   if (typeof SlotCalculator === 'undefined') {
     const p = document.createElement('div');
     p.className = 'panel hint';
@@ -1013,26 +1010,17 @@ function renderSlots() {
     return;
   }
 
-  // Compute slots from state (allow overrides from sheet data if present)
   const g = state.data.general || {};
   const meta = state.data.spells.meta || {};
 
-  // Determine base caster levels (prefer explicit current fields, else fall back to general.classes and meta)
   const baseSorc = Number(state.data.currentSorcererLevel ?? meta.sorcLevels ?? (g.classes ? g.classes.sorc : 0)) || 0;
   const baseWiz  = Number(state.data.currentWizardLevel  ?? meta.wizLevels  ?? (g.classes ? g.classes.wiz  : 0)) || 0;
   const umLevels  = Number(state.data.currentUmLevel ?? meta.umLevels ?? (g.classes ? g.classes.um : 0)) || 0;
 
-  // Determine ability totals
   const d = g ? computeGeneralDerived(g) : null;
   const chaTotal = d ? d.abilities.cha.total : (state.cha || 0);
   const intTotal = d ? d.abilities.int.total : (state.int || 0);
 
-  /*
-    UM leveling rules (per user):
-    - For every UM level EXCEPT 1, 4, and 7, each UM level adds +1 to BOTH sorcerer and wizard.
-    - For UM levels 1, 4, and 7, that UM level adds +1 only to the currently lower of sorcerer and wizard.
-      If they are equal, add to wizard (tie-breaker).
-  */
   function computeEffectiveCasterLevels(sBase, wBase, um) {
     let s = Number(sBase) || 0;
     let w = Number(wBase) || 0;
@@ -1041,7 +1029,7 @@ function renderSlots() {
       if (special.has(i)) {
         if (s < w) s++;
         else if (w < s) w++;
-        else s++; // tie -> add to sorcerer by default
+        else w++; // tie -> add to wizard
       } else {
         s++;
         w++;
@@ -1066,7 +1054,6 @@ function renderSlots() {
   }
   function saveUsed(view, obj) { try { localStorage.setItem(storageKey(view), JSON.stringify(obj)); } catch {} }
 
-  // Styles for the slots UI (scoped, minimal)
   const styleId = 'slots-ui-inline-styles';
   if (!document.getElementById(styleId)) {
     const s = document.createElement('style');
@@ -1092,7 +1079,7 @@ function renderSlots() {
   const panel = document.createElement('div');
   panel.className = 'panel slots-panel';
 
-  // Sorcerer column: 10 rows (0..9), each row shows one box per available slot
+  // Sorcerer column
   const sorCol = document.createElement('div');
   sorCol.className = 'slots-column';
   const sorTitle = document.createElement('h3');
@@ -1112,7 +1099,6 @@ function renderSlots() {
 
     const tdBoxes = document.createElement('td');
     const count = (calc.sorcerer.final && calc.sorcerer.final[lvl]) ? calc.sorcerer.final[lvl] : 0;
-    // create 'count' boxes
     if (count <= 0) {
       const empty = document.createElement('div');
       empty.className = 'slot-box-inline zero';
@@ -1122,7 +1108,7 @@ function renderSlots() {
       for (let i = 0; i < count; i++) {
         const box = document.createElement('div');
         box.className = 'slot-box-inline';
-        const key = `sorcerer:${lvl}:${i}`; // unique per slot
+        const key = `sorcerer:${lvl}:${i}`;
         if (usedState[key]) box.classList.add('used');
         box.dataset.key = key;
         box.dataset.classKey = 'sorcerer';
@@ -1142,50 +1128,12 @@ function renderSlots() {
   sorCol.appendChild(sorTable);
   panel.appendChild(sorCol);
 
-  // Wizard column: show per-day slots and prepared counts (specialist applied)
+  // Wizard prepared (specialty) only
   const wizCol = document.createElement('div');
   wizCol.className = 'slots-column';
   const wizTitle = document.createElement('h3');
-  wizTitle.textContent = `Wizard slots (effective level ${effWiz})`;
+  wizTitle.textContent = `Wizard prepared (effective level ${effWiz})`;
   wizCol.appendChild(wizTitle);
-
-  // Wizard per-day slots (0..9) as small boxes with count displayed
-  const wizSlotsWrap = document.createElement('div');
-  wizSlotsWrap.className = 'wizard-slots-wrap';
-  for (let lvl = 0; lvl <= 9; lvl++) {
-    const row = document.createElement('div');
-    row.style.display = 'flex';
-    row.style.alignItems = 'center';
-    row.style.gap = '8px';
-    const lvlTag = document.createElement('div');
-    lvlTag.className = 'slot-row-label';
-    lvlTag.textContent = String(lvl);
-    row.appendChild(lvlTag);
-
-    const count = (calc.wizard.final && calc.wizard.final[lvl]) ? calc.wizard.final[lvl] : 0;
-    const box = document.createElement('div');
-    box.className = 'wizard-prep-box';
-    box.textContent = String(count);
-    if (count === 0) box.style.opacity = '0.45';
-    row.appendChild(box);
-
-    // small hint for base+bonus if different
-    const base = (calc.wizard.base && calc.wizard.base[lvl]) ? calc.wizard.base[lvl] : 0;
-    if (base !== count) {
-      const hint = document.createElement('div');
-      hint.className = 'hint small';
-      hint.textContent = `(${base}+${count-base})`;
-      row.appendChild(hint);
-    }
-
-    wizSlotsWrap.appendChild(row);
-  }
-  wizCol.appendChild(wizSlotsWrap);
-
-  // Wizard prepared counts (specialist applied)
-  const prepTitle = document.createElement('h3');
-  prepTitle.textContent = 'Wizard prepared (Evoker specialty applied)';
-  wizCol.appendChild(prepTitle);
 
   const prepWrap = document.createElement('div');
   prepWrap.className = 'wizard-prep-row';
@@ -1200,15 +1148,14 @@ function renderSlots() {
 
   panel.appendChild(wizCol);
 
-  // Append panel to container
   container.appendChild(panel);
 
-  // Small note
   const note = document.createElement('div');
   note.className = 'hint small';
   note.textContent = 'Click sorcerer boxes to mark used; marks persist per view. You can also cross out with the pen.';
   container.appendChild(note);
 }
+
 
 
 function renderSpellTable(rows, meta, castingMod, showPrep) {
