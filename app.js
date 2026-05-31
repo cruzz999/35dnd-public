@@ -741,7 +741,6 @@ window.addEventListener("DOMContentLoaded", () => {
   (function watchTopbarSize() {
     const topbar = document.querySelector('.topbar');
     if (!topbar) return;
-    // Ensure initial sizing is correct
     try { syncViewportHeight(); } catch (e) {}
     if (window.ink && typeof window.ink.ensureCanvasSize === 'function') window.ink.ensureCanvasSize();
     if (window.ink && typeof window.ink.redraw === 'function') window.ink.redraw();
@@ -756,7 +755,6 @@ window.addEventListener("DOMContentLoaded", () => {
       ro.observe(topbar);
       window.__topbarResizeObserver = ro;
     } catch (e) {
-      // Fallback polling
       let lastH = topbar.getBoundingClientRect().height;
       setInterval(() => {
         const h = topbar.getBoundingClientRect().height;
@@ -773,6 +771,8 @@ window.addEventListener("DOMContentLoaded", () => {
 
   /* ------------------ Inject panning styles (prevent highlight) ------------------ */
   (function injectPanningStyles() {
+    const id = 'app.js:is-panning';
+    if (document.head.querySelector(`style[data-generated-by="${id}"]`)) return;
     const css = `
       body.is-panning, body.is-panning * {
         -webkit-user-select: none !important;
@@ -783,12 +783,10 @@ window.addEventListener("DOMContentLoaded", () => {
       }
       body.is-panning ::selection { background: transparent !important; }
     `;
-    if (!document.head.querySelector('style[data-generated-by="app.js:is-panning"]')) {
-      const s = document.createElement('style');
-      s.setAttribute('data-generated-by', 'app.js:is-panning');
-      s.appendChild(document.createTextNode(css));
-      document.head.appendChild(s);
-    }
+    const s = document.createElement('style');
+    s.setAttribute('data-generated-by', id);
+    s.appendChild(document.createTextNode(css));
+    document.head.appendChild(s);
   })();
 
   /* ------------------ Authoritative canvas / pen initial state ------------------ */
@@ -797,8 +795,10 @@ window.addEventListener("DOMContentLoaded", () => {
   } catch (e) {}
   const canvasInit = document.getElementById('inkWorld');
   if (canvasInit) {
+    // authoritative inline defaults; JS will keep these in sync when toggling pen
     canvasInit.style.pointerEvents = state.penOn ? 'auto' : 'none';
-    canvasInit.style.zIndex = state.penOn ? '40' : '5';
+    // choose a z-index that places canvas above paper content but below UI panels
+    canvasInit.style.zIndex = state.penOn ? '60' : '5';
   }
 
   /* ------------------ Auto-populate Google Sheets URL ------------------ */
@@ -857,7 +857,6 @@ window.addEventListener("DOMContentLoaded", () => {
     function updatePenLabel() { if (!el.penToggle) return; el.penToggle.textContent = `Pen: ${state.penOn ? "ON" : "OFF"}`; }
     function updateEraserLabel() { if (!el.eraser) return; el.eraser.textContent = state.erasing ? "Eraser: ON" : "Eraser"; }
 
-    // Disable controls until ink is available to avoid race errors
     if (el.penToggle) el.penToggle.disabled = true;
     if (el.eraser) el.eraser.disabled = true;
     if (el.undo) el.undo.disabled = true;
@@ -874,7 +873,8 @@ window.addEventListener("DOMContentLoaded", () => {
       const canvas = document.getElementById('inkWorld');
       if (canvas) {
         canvas.style.pointerEvents = on ? 'auto' : 'none';
-        canvas.style.zIndex = on ? '40' : '5';
+        // ensure canvas is above paper content but below UI panels; adjust if your panels use different z-index
+        canvas.style.zIndex = on ? '60' : '5';
       }
     };
 
@@ -882,7 +882,14 @@ window.addEventListener("DOMContentLoaded", () => {
       if (window.ink) {
         enableControls();
 
-        // Pen toggle: authoritative setter that updates ink API, body class, and canvas inline style
+        // Ensure ink internal mode matches state at startup
+        try {
+          if (typeof window.ink.setPenMode === 'function') window.ink.setPenMode(!!state.penOn);
+        } catch (e) { console.warn("ink.setPenMode startup error", e); }
+
+        // Ensure canvas inline state matches state at startup
+        setCanvasInteraction(!!state.penOn);
+
         if (el.penToggle) {
           el.penToggle.addEventListener("click", () => {
             state.penOn = !state.penOn;
@@ -890,7 +897,6 @@ window.addEventListener("DOMContentLoaded", () => {
             if (inkApi && typeof inkApi.setPenMode === "function") {
               try { inkApi.setPenMode(state.penOn); } catch (e) { console.error("ink.setPenMode error", e); }
             }
-            // authoritative DOM updates
             if (state.penOn) document.body.classList.add('pen-active'); else document.body.classList.remove('pen-active');
             setCanvasInteraction(state.penOn);
             // ensure ink canvas sizing/redraw after toggling
@@ -930,7 +936,7 @@ window.addEventListener("DOMContentLoaded", () => {
         }
 
       } else {
-        // Fallback: enable controls but keep behavior defensive
+        // Fallback: enable controls and wire a defensive pen toggle
         setTimeout(() => {
           enableControls();
           if (el.penToggle) {
@@ -1015,15 +1021,11 @@ window.addEventListener("DOMContentLoaded", () => {
   }
 
   /* ------------------ Viewport pan guard (prevent stealing clicks) ------------------ */
-  // This mirrors the pan logic used elsewhere but ensures interactive elements are respected.
   (function ensureViewportPanGuard() {
     if (!el.viewport) return;
 
-    // Keep pan state variables in sync with any existing ones
-    if (typeof window.__panState === 'undefined') {
-      window.__panState = { panDrag: { active: false, startX: 0, startY: 0, basePanX: 0, basePanY: 0 }, panPending: false, PAN_THRESHOLD: 6 };
-    }
-    const P = window.__panState;
+    // local pan state (kept separate to avoid clobbering other code)
+    const P = { panDrag: { active: false, startX: 0, startY: 0, basePanX: 0, basePanY: 0 }, panPending: false, PAN_THRESHOLD: 6 };
 
     function beginPanInit(e) {
       P.panPending = true;
@@ -1055,9 +1057,13 @@ window.addEventListener("DOMContentLoaded", () => {
 
     // pointerdown: only start pending pan if not pen mode and not on interactive element
     el.viewport.addEventListener("pointerdown", (e) => {
+      // If pen is active we must not start panning here
       if (state.penOn) return;
+
+      // If the pointerdown started on an interactive element, don't begin pan.
       const interactive = e.target && e.target.closest && e.target.closest('input, button, label, a, textarea, select, [contenteditable]');
       if (interactive) return;
+
       beginPanInit(e);
       try { el.viewport.setPointerCapture?.(e.pointerId); } catch (err) {}
     });
@@ -1092,6 +1098,7 @@ window.addEventListener("DOMContentLoaded", () => {
   })();
 
 });
+
 
 
 /* --------------------------- Initial setup ----------------------------- */
