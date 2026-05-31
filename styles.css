@@ -7,8 +7,61 @@
   --pad: 10px;
   --font: 17px;
   --line: 1.35;
+  --slot-bg: #ffffff;
+  --slot-border: #000000;
+  --slot-border-width: 2px;
+  --slot-used-bg-start: #f3f4f6;
+  --slot-used-bg-end: #ffffff;
+  --slot-size: 18px;
+  --slot-radius: 4px;
+  --wizard-box-bg: #ffffff;
+  --wizard-box-border: #e6e9ef;
+  --wizard-box-size-w: 34px;
+  --wizard-box-size-h: 28px;
 }
 
+
+/* Sorcerer slot boxes */
+.slot-box-inline {
+  display:inline-block;
+  width:var(--slot-size);
+  height:var(--slot-size);
+  margin:2px;
+  border-radius:var(--slot-radius);
+  border:var(--slot-border-width) solid var(--slot-border);
+  background:var(--slot-bg);
+  box-shadow:0 1px 0 rgba(0,0,0,0.03);
+  cursor:pointer;
+}
+
+/* Used (ticked) state */
+.slot-box-inline.used {
+  background: linear-gradient(180deg, var(--slot-used-bg-start), var(--slot-used-bg-end));
+  opacity:0.6;
+  text-decoration:line-through;
+  /* optionally change border color when used */
+  border-color: #b6c2d6;
+}
+
+/* Zero / empty state */
+.slot-box-inline.zero {
+  opacity:0.35;
+  cursor:default;
+  border-style:dashed;
+}
+
+/* Wizard prepared boxes */
+.wizard-prep-box {
+  width:var(--wizard-box-size-w);
+  height:var(--wizard-box-size-h);
+  border-radius:6px;
+  border:var(--slot-border-width) solid var(--wizard-box-border);
+  background:var(--wizard-box-bg);
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  font-weight:600;
+}
 html, body {
   margin: 0;
   padding: 0;
