@@ -1184,35 +1184,169 @@ function renderSpellTable(rows, meta, castingMod, showPrep) {
   `;
 }
 
+// Replace or add this function in app.js
 function renderSpells() {
-  const g = state.data.general;
-  const meta = state.data.spells.meta || { sorcLevels:1, wizLevels:5, umLevels:2, arcaneSpellpower:1 };
-  const d = g ? computeGeneralDerived(g) : null;
-  const intMod = d ? d.abilities.int.mod : 0;
-  const chaMod = d ? d.abilities.cha.mod : 0;
+  // Ensure SlotCalculator is present
+  if (typeof SlotCalculator === 'undefined') {
+    console.warn('SlotCalculator not loaded.');
+    el.app.innerHTML = '<div class="panel">Slot calculator missing. Include slotCalculator.js</div>';
+    return;
+  }
 
-  const sorcRows = state.data.spells.sorc || [];
-  const wizRows  = state.data.spells.wiz || [];
+  // Compute slots from current state. Use overrides if state doesn't contain effective levels.
+  // You can pass applySpecialistPreparedBonus: true to include Evoker +1 prepared per level.
+  const calc = SlotCalculator.computeAllSlots(state, { applySpecialistPreparedBonus: true });
 
-  el.app.innerHTML = `
-    <div class="panel">
-      <h2>Spells</h2>
-      <div class="hint">Pan/zoom the paper; use Pen to write in prep boxes.</div>
+  // Container
+  const container = document.createElement('div');
+  container.className = 'panel spells-panel';
+  container.id = 'spellsContainer';
 
-      <div class="grid">
-        <div class="panel">
-          <h3>Sorcerer / UM</h3>
-          ${renderSpellTable(sorcRows, meta, chaMod, false)}
-        </div>
+  // Title
+  const title = document.createElement('h3');
+  title.textContent = 'Spell Slots & Prepared Counts';
+  title.style.marginTop = '0';
+  container.appendChild(title);
 
-        <div class="panel">
-          <h3>Wizard</h3>
-          ${renderSpellTable(wizRows, meta, intMod, true)}
-        </div>
-      </div>
-    </div>
-  `;
+  // Helper: load/save used state per view (localStorage key)
+  const storageKey = (view) => `ink_slots_used:${view || state.view || 'General'}`;
+  function loadUsed(view) {
+    try {
+      const raw = localStorage.getItem(storageKey(view));
+      return raw ? JSON.parse(raw) : {};
+    } catch { return {}; }
+  }
+  function saveUsed(view, obj) {
+    try { localStorage.setItem(storageKey(view), JSON.stringify(obj)); } catch {}
+  }
+
+  // Render a row of boxes for a class
+  function renderSlotRow(labelText, arrBase, arrFinal, viewKey) {
+    const row = document.createElement('div');
+    row.className = 'slot-row';
+
+    const label = document.createElement('div');
+    label.className = 'slot-label';
+    label.textContent = labelText;
+    row.appendChild(label);
+
+    const usedState = loadUsed(state.view);
+
+    // For spell levels 0..9
+    for (let lvl = 0; lvl <= 9; lvl++) {
+      const boxWrap = document.createElement('div');
+      boxWrap.style.display = 'flex';
+      boxWrap.style.alignItems = 'center';
+      boxWrap.style.gap = '6px';
+
+      const levelTag = document.createElement('div');
+      levelTag.className = 'spell-level';
+      levelTag.textContent = lvl;
+      boxWrap.appendChild(levelTag);
+
+      const count = arrFinal[lvl] || 0;
+      const base = arrBase[lvl] || 0;
+
+      const box = document.createElement('div');
+      box.className = 'slot-box';
+      if (count === 0) box.classList.add('zero');
+      // show final count (base + bonus)
+      box.textContent = String(count);
+
+      // data attributes for toggling
+      box.dataset.spellLevel = String(lvl);
+      box.dataset.classKey = viewKey;
+
+      // mark used if present in usedState (key: `${classKey}:${lvl}:${index?}`)
+      const usedKey = `${viewKey}:${lvl}`;
+      if (usedState[usedKey]) box.classList.add('used');
+
+      // click toggles used (only if count > 0)
+      box.addEventListener('click', (e) => {
+        if (count === 0) return;
+        const cur = loadUsed(state.view);
+        const k = usedKey;
+        if (cur[k]) {
+          delete cur[k];
+          box.classList.remove('used');
+        } else {
+          cur[k] = true;
+          box.classList.add('used');
+        }
+        saveUsed(state.view, cur);
+      });
+
+      boxWrap.appendChild(box);
+
+      // small hint showing base vs bonus if different
+      if (base !== count) {
+        const hint = document.createElement('div');
+        hint.className = 'hint';
+        hint.textContent = `(${base}+${count-base})`;
+        boxWrap.appendChild(hint);
+      }
+
+      row.appendChild(boxWrap);
+    }
+
+    return row;
+  }
+
+  // Sorcerer row
+  const sorBase = calc.sorcerer.base;
+  const sorFinal = calc.sorcerer.final;
+  const sorRow = renderSlotRow('Sorcerer slots (per day)', sorBase, sorFinal, 'sorcerer');
+  container.appendChild(sorRow);
+
+  // Wizard row (final slots)
+  const wizBase = calc.wizard.base;
+  const wizFinal = calc.wizard.final;
+  const wizRow = renderSlotRow('Wizard slots (per day)', wizBase, wizFinal, 'wizard');
+  container.appendChild(wizRow);
+
+  // Wizard prepared counts (specialist applied)
+  const prepRow = document.createElement('div');
+  prepRow.className = 'slot-row';
+  const prepLabel = document.createElement('div');
+  prepLabel.className = 'slot-label';
+  prepLabel.textContent = 'Wizard prepared (Evoker specialty)';
+  prepRow.appendChild(prepLabel);
+
+  const prepared = calc.wizardPrepared || wizFinal;
+  for (let lvl = 0; lvl <= 9; lvl++) {
+    const pWrap = document.createElement('div');
+    pWrap.style.display = 'flex';
+    pWrap.style.alignItems = 'center';
+    pWrap.style.gap = '6px';
+
+    const levelTag = document.createElement('div');
+    levelTag.className = 'spell-level';
+    levelTag.textContent = lvl;
+    pWrap.appendChild(levelTag);
+
+    const pBox = document.createElement('div');
+    pBox.className = 'slot-box';
+    pBox.textContent = String(prepared[lvl] || 0);
+    if ((prepared[lvl] || 0) === 0) pBox.classList.add('zero');
+
+    pWrap.appendChild(pBox);
+    prepRow.appendChild(pWrap);
+  }
+  container.appendChild(prepRow);
+
+  // Small note and hint about crossing out with pen
+  const note = document.createElement('div');
+  note.className = 'prep-note';
+  note.textContent = 'Tap a slot to mark used, or cross out with the pen. Used marks persist per view.';
+  container.appendChild(note);
+
+  // Replace spells area in the app
+  // If you have a dedicated spells container, use that; otherwise replace el.app contents
+  const spellsArea = document.getElementById('spellsContainer') || el.app;
+  spellsArea.innerHTML = '';
+  spellsArea.appendChild(container);
 }
+
 
 function render() {
   if (!el.app) return;
