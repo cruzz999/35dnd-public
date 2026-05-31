@@ -1,8 +1,9 @@
 /* ======================================================================
-   app.js - Drop-in replacement (with robust ensureGs loader)
-   - Adds dynamic loader ensureGs() to reliably load gs_ingest.js if missing
-   - Replaces loadGs click handler to await ensureGs()
-   - Keeps overlay canvas, DPR sizing, pan/zoom mirroring, and pen behavior
+   app.js - Complete drop-in replacement
+   - Robust ensureGs loader + mergeWindowStateIfPresent
+   - Overlay canvas moved to #inkOverlay (root stacking context)
+   - DPR-backed canvas sizing and transform mirroring
+   - Pan guard and pen interaction fixes
    ====================================================================== */
 
 /* ----------------------------- DOM helpers ------------------------------ */
@@ -42,13 +43,12 @@ const state = {
   penWidth: 0.5,
   penGrey: 0,
   strokesByView: {},
-  data: { general: null, spells: { sorc: [], wiz: [], meta: null } }
+  data: { general: null, spells: null }
 };
 
 /* ---------------------------- Utilities -------------------------------- */
 function escapeHtml(s) { return String(s || "").replace(/[&<>\\'"]/g, (m) => ({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;" }[m])); }
-function fmtSign(n){ n = Number(n)||0; return (n>=0?"+":"")+n; }
-function abilityMod(score){ return Math.floor((Number(score)-10)/2); }
+function clampZoom(z){ return Math.max(0.5, Math.min(3.0, z)); }
 
 /* -------------------- Viewport height sync ------------------------------- */
 function syncViewportHeight(){
@@ -77,7 +77,6 @@ function applyWorldTransform(){
     canvas.style.transform = `translate(${state.pan.x}px, ${state.pan.y}px) scale(${state.zoom})`;
   }
 }
-function clampZoom(z){ return Math.max(0.5, Math.min(3.0, z)); }
 function setZoom(newZoom, anchorClientX=null, anchorClientY=null){
   const oldZoom = state.zoom;
   newZoom = clampZoom(newZoom);
@@ -111,8 +110,6 @@ if (el.zoomIn) el.zoomIn.onclick = () => setZoom(state.zoom * 1.15);
 if (el.zoomReset) el.zoomReset.onclick = () => resetView();
 
 /* ----------------------------- Pan mode -------------------------------- */
-let panDrag = { active:false, startX:0, startY:0, basePanX:0, basePanY:0 };
-let panPending = false;
 const PAN_THRESHOLD = 6;
 
 /* -------------------- Overlay canvas sizing & placement ------------------ */
@@ -163,6 +160,86 @@ function ensureCanvasSize(){
   canvasEl.style.zIndex = state.penOn ? '1000' : '5';
 }
 
+/* -------------------- ensureGs dynamic loader --------------------------- */
+/* Attempts to return the ingest API object (tries common globals and loads gs_ingest.js if needed) */
+async function loadScript(src, { timeout = 8000 } = {}) {
+  return new Promise((resolve, reject) => {
+    for (const s of document.scripts) {
+      if (s.src && s.src.indexOf(src) !== -1) {
+        return requestAnimationFrame(() => resolve(s));
+      }
+    }
+    const scr = document.createElement('script');
+    scr.src = src;
+    scr.async = true;
+    scr.onload = () => resolve(scr);
+    scr.onerror = () => reject(new Error(`Failed to load script ${src}`));
+    document.head.appendChild(scr);
+    if (timeout > 0) {
+      setTimeout(() => reject(new Error(`Loading ${src} timed out after ${timeout}ms`)), timeout);
+    }
+  });
+}
+
+async function ensureGs() {
+  // Common global names used by different ingest scripts
+  if (window.gsIngest) return window.gsIngest;
+  if (window.gs && typeof window.gs.loadFromGoogleSheets === 'function') return window.gs;
+  if (window.GS_INGEST && typeof window.GS_INGEST.loadFromGoogleSheets === 'function') return window.GS_INGEST;
+
+  const candidatePaths = ['gs_ingest.js', './gs_ingest.js', '/gs_ingest.js'];
+  let lastErr = null;
+  for (const p of candidatePaths) {
+    try {
+      await loadScript(p, { timeout: 8000 });
+      await new Promise((r) => requestAnimationFrame(r));
+      if (window.gsIngest) return window.gsIngest;
+      if (window.gs && typeof window.gs.loadFromGoogleSheets === 'function') return window.gs;
+      if (window.GS_INGEST && typeof window.GS_INGEST.loadFromGoogleSheets === 'function') return window.GS_INGEST;
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  const msg = lastErr ? lastErr.message : 'gs_ingest did not expose expected API';
+  const e = new Error(`ensureGs failed: ${msg}`);
+  e.detail = { candidatePaths };
+  throw e;
+}
+
+/* ---------------------- Merge helper (robust) ------------------------- */
+function mergeWindowStateIfPresent() {
+  try {
+    if (!window.state || !window.state.data) return;
+    const g = window.state.data.general ?? null;
+    const s = window.state.data.spells ?? null;
+    let changed = false;
+
+    if (g) {
+      g.buffs = g.buffs || {};
+      g.buffs.mageArmor = Number(g.buffs.mageArmor) || 0;
+      g.buffs.shieldSpell = Number(g.buffs.shieldSpell) || 0;
+      state.data = state.data || {};
+      state.data.general = g;
+      changed = true;
+    }
+
+    if (s) {
+      state.data = state.data || {};
+      state.data.spells = s;
+      changed = true;
+    }
+
+    if (changed) {
+      state.loaded = true;
+      try { render(); } catch (err) { console.warn("render failed during merge", err); }
+      try { ensureCanvasSize(); } catch (err) { console.warn("ensureCanvasSize failed during merge", err); }
+      try { if (window.ink && typeof window.ink.redraw === "function") window.ink.redraw(); } catch (err) { console.warn("ink.redraw failed during merge", err); }
+    }
+  } catch (e) {
+    console.warn("mergeWindowStateIfPresent failed", e);
+  }
+}
+
 /* ------------------------------ Inline Ink ------------------------------ */
 const ink = (() => {
   const canvas = el.ink || document.getElementById('inkWorld');
@@ -196,7 +273,10 @@ const ink = (() => {
   }
 
   function redraw(){
-    if (!canvas || !ctx) return;
+    if (!canvas) return;
+    // refresh ctx in case canvas was resized/moved
+    ctx = canvas.getContext('2d');
+    if (!ctx) return;
     ensureCanvasSize();
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     const strokes = getStrokesForView(state.view);
@@ -340,57 +420,14 @@ function render(){
   ensureCanvasSize();
 }
 
-/* ------------------ ensureGs helper with dynamic loader ------------------ */
-/* Usage: const gs = await ensureGs(); // throws on failure */
-async function loadScript(src, { timeout = 8000 } = {}) {
-  return new Promise((resolve, reject) => {
-    // If a script with the same src substring is already present, resolve after a tick
-    for (const s of document.scripts) {
-      if (s.src && s.src.indexOf(src) !== -1) {
-        return requestAnimationFrame(() => resolve(s));
-      }
-    }
-    const scr = document.createElement('script');
-    scr.src = src;
-    scr.async = true;
-    scr.onload = () => resolve(scr);
-    scr.onerror = () => reject(new Error(`Failed to load script ${src}`));
-    document.head.appendChild(scr);
-    if (timeout > 0) {
-      setTimeout(() => reject(new Error(`Loading ${src} timed out after ${timeout}ms`)), timeout);
-    }
-  });
-}
-
-async function ensureGs() {
-  if (window.gsIngest) return window.gsIngest;
-  if (window.gs && typeof window.gs.loadFromGoogleSheets === 'function') return window.gs;
-
-  const candidatePaths = ['gs_ingest.js', './gs_ingest.js', '/gs_ingest.js'];
-  let lastErr = null;
-  for (const p of candidatePaths) {
-    try {
-      await loadScript(p, { timeout: 8000 });
-      await new Promise((r) => requestAnimationFrame(r));
-      if (window.gsIngest) return window.gsIngest;
-      if (window.gs && typeof window.gs.loadFromGoogleSheets === 'function') return window.gs;
-    } catch (err) {
-      lastErr = err;
-    }
-  }
-  const msg = lastErr ? lastErr.message : 'gs_ingest did not expose expected API';
-  const e = new Error(`ensureGs failed: ${msg}`);
-  e.detail = { candidatePaths };
-  throw e;
-}
-
-/* ---------------------- Hook Google Sheets button ---------------------- */
+/* ---------------------- Hook DOMContentLoaded --------------------------- */
 window.addEventListener("DOMContentLoaded", () => {
-  // Ensure topbar/viewport sizing is correct
   syncViewportHeight();
   ensureCanvasSize();
+  applyWorldTransform();
+  render();
 
-  // Keep topbar size changes in sync
+  // Watch topbar size
   (function watchTopbarSize(){
     const topbar = document.querySelector('.topbar');
     if (!topbar) return;
@@ -403,42 +440,7 @@ window.addEventListener("DOMContentLoaded", () => {
       setInterval(()=>{ const h = topbar.getBoundingClientRect().height; if (h !== lastH){ lastH = h; syncViewportHeight(); applyWorldTransform(); ensureCanvasSize(); if (window.ink && typeof window.ink.redraw === 'function') window.ink.redraw(); } }, 300);
     }
   })();
-function mergeWindowStateIfPresent() {
-  try {
-    // If a global window.state was produced by gs_ingest, merge it into our local state
-    if (!window.state || !window.state.data) return;
 
-    const g = window.state.data.general ?? null;
-    const s = window.state.data.spells ?? null;
-    let changed = false;
-
-    if (g) {
-      // Defensive normalization
-      g.buffs = g.buffs || {};
-      g.buffs.mageArmor = Number(g.buffs.mageArmor) || 0;
-      g.buffs.shieldSpell = Number(g.buffs.shieldSpell) || 0;
-      state.data = state.data || {};
-      state.data.general = g;
-      changed = true;
-    }
-
-    if (s) {
-      state.data = state.data || {};
-      state.data.spells = s;
-      changed = true;
-    }
-
-    if (changed) {
-      state.loaded = true;
-      // Re-render and ensure canvas sizing/redraw
-      try { render(); } catch (err) { console.warn("render failed during merge", err); }
-      try { ensureCanvasSize(); } catch (err) { console.warn("ensureCanvasSize failed during merge", err); }
-      try { if (window.ink && typeof window.ink.redraw === "function") window.ink.redraw(); } catch (err) { console.warn("ink.redraw failed during merge", err); }
-    }
-  } catch (e) {
-    console.warn("mergeWindowStateIfPresent failed", e);
-  }
-}
   // Inject panning styles once
   (function injectPanningStyles(){
     const id = 'app.js:is-panning';
@@ -453,11 +455,11 @@ function mergeWindowStateIfPresent() {
     document.head.appendChild(s);
   })();
 
-  // Auto-populate GS URL
+  // Auto-populate GS URL (optional)
   const AUTO_SHEET = "https://docs.google.com/spreadsheets/d/1P_Vslp-rxiTcntUZVLR2BjJrdeQqdWfPLeigs2Gnx_U/edit?usp=sharing";
   if (el.gsUrl && !el.gsUrl.value) el.gsUrl.value = AUTO_SHEET;
 
-  // Robust Load button: use ensureGs() to dynamically load gs_ingest if needed
+  /* ------------------ Robust Load button using ensureGs ------------------ */
   if (el.loadGs && el.gsUrl) {
     el.loadGs.addEventListener("click", async () => {
       try {
@@ -483,7 +485,10 @@ function mergeWindowStateIfPresent() {
 
         if (typeof setProgress === 'function') setProgress(10, "Loading Google Sheets...");
         await gs.loadFromGoogleSheets(url);
+
+        // Merge any produced window.state into app state
         mergeWindowStateIfPresent();
+
         render();
         ensureCanvasSize();
         if (window.ink && typeof window.ink.redraw === 'function') window.ink.redraw();
@@ -667,10 +672,16 @@ function mergeWindowStateIfPresent() {
     }
 
     el.viewport.addEventListener("pointerdown", (e) => {
+      // If pen is active we must not start panning
       if (state.penOn) return;
+
+      // If the pointerdown started on an interactive element, don't begin pan.
       const interactive = e.target && e.target.closest && e.target.closest('input, button, label, a, textarea, select, [contenteditable]');
       if (interactive) return;
+
+      // If the pointerdown started on the canvas itself, don't begin pan (canvas handles it)
       if (e.target && e.target.closest && e.target.closest('canvas#inkWorld')) return;
+
       beginPanInit(e);
       try { el.viewport.setPointerCapture?.(e.pointerId); } catch (err) {}
     });
@@ -703,10 +714,5 @@ function mergeWindowStateIfPresent() {
       try { el.viewport.releasePointerCapture?.(e.pointerId); } catch (err) {}
     });
   })();
-
-  /* --------------------------- Initial setup ----------------------------- */
-  applyWorldTransform();
-  ensureCanvasSize();
-  render();
 
 });
