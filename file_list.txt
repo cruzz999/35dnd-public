@@ -1,5 +1,4 @@
 app.js
-gs_ingest.js
 index.html
 ink.js
 styles.css
