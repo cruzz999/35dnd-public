@@ -1,4 +1,5 @@
 app.js
+dom.js
 index.html
 styles.css
 utils.js
