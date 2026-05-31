@@ -352,18 +352,3 @@ label > input[type="checkbox"]#buff_shield:checked { background: linear-gradient
   background: #fff;
   font-size: 0.9rem;
 }
-/* Spell slots UI */
-.spells-panel { display:block; gap:12px; }
-.slot-row { display:flex; align-items:center; gap:8px; margin:8px 0; flex-wrap:wrap; }
-.slot-label { width:120px; color:var(--muted); font-weight:600; font-size:13px; }
-.slot-box {
-  width:34px; height:28px; border-radius:6px; border:1px solid var(--border);
-  background:#fff; display:inline-flex; align-items:center; justify-content:center;
-  font-weight:600; cursor:pointer; user-select:none;
-  box-shadow: 0 1px 0 rgba(0,0,0,0.03);
-}
-.slot-box.used { background: linear-gradient(180deg,#f8fafc,#fff); color:#9aa4b2; text-decoration:line-through; }
-.slot-box.zero { opacity:0.45; cursor:default; }
-.slot-row .hint { font-size:12px; color:var(--muted); margin-left:8px; }
-.spell-level { width:28px; text-align:center; font-size:12px; color:var(--muted); }
-.prep-note { font-size:13px; color:var(--muted); margin-left:8px; }
