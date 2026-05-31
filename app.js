@@ -735,6 +735,42 @@ function mergeWindowStateIfPresent() {
 
 /* ---------------------- Hook Google Sheets button ---------------------- */
 window.addEventListener("DOMContentLoaded", () => {
+
+   // Keep viewport/paper sizing in sync when the topbar wraps or changes height
+(function watchTopbarSize() {
+  const topbar = document.querySelector('.topbar');
+  if (!topbar) return;
+  // Call once to ensure initial sizing is correct
+  syncViewportHeight();
+  if (window.ink && typeof window.ink.ensureCanvasSize === 'function') window.ink.ensureCanvasSize();
+  if (window.ink && typeof window.ink.redraw === 'function') window.ink.redraw();
+
+  // Observe size changes and update layout
+  try {
+    const ro = new ResizeObserver(() => {
+      syncViewportHeight();
+      applyWorldTransform();
+      if (window.ink && typeof window.ink.ensureCanvasSize === 'function') window.ink.ensureCanvasSize();
+      if (window.ink && typeof window.ink.redraw === 'function') window.ink.redraw();
+    });
+    ro.observe(topbar);
+    // store observer for potential cleanup (optional)
+    window.__topbarResizeObserver = ro;
+  } catch (e) {
+    // ResizeObserver not supported: fallback to window resize polling
+    let lastH = topbar.getBoundingClientRect().height;
+    setInterval(() => {
+      const h = topbar.getBoundingClientRect().height;
+      if (h !== lastH) {
+        lastH = h;
+        syncViewportHeight();
+        applyWorldTransform();
+        if (window.ink && typeof window.ink.ensureCanvasSize === 'function') window.ink.ensureCanvasSize();
+        if (window.ink && typeof window.ink.redraw === 'function') window.ink.redraw();
+      }
+    }, 300);
+  }
+})();
   // Inject a small style block to suppress selection/highlight while panning
   // and to ensure tap highlight is removed during pan.
   (function injectPanningStyles() {
@@ -1010,6 +1046,8 @@ window.addEventListener("DOMContentLoaded", () => {
       }
     });
   }
+
+   
 });
 
 /* --------------------------- Initial setup ----------------------------- */
