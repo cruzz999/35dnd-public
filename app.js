@@ -1016,15 +1016,48 @@ function renderSlots() {
   // Compute slots from state (allow overrides from sheet data if present)
   const g = state.data.general || {};
   const meta = state.data.spells.meta || {};
-  // Determine effective caster levels: prefer explicit current fields, else fall back to general.classes and meta
-  const effSorc = Number(state.data.currentSorcererLevel ?? meta.sorcLevels ?? (g.classes ? g.classes.sorc : 0)) || 0;
-  const effWiz = Number(state.data.currentWizardLevel ?? meta.wizLevels ?? (g.classes ? g.classes.wiz : 0)) || 0;
+
+  // Determine base caster levels (prefer explicit current fields, else fall back to general.classes and meta)
+  const baseSorc = Number(state.data.currentSorcererLevel ?? meta.sorcLevels ?? (g.classes ? g.classes.sorc : 0)) || 0;
+  const baseWiz  = Number(state.data.currentWizardLevel  ?? meta.wizLevels  ?? (g.classes ? g.classes.wiz  : 0)) || 0;
+  const umLevels  = Number(state.data.currentUmLevel ?? meta.umLevels ?? (g.classes ? g.classes.um : 0)) || 0;
+
   // Determine ability totals
   const d = g ? computeGeneralDerived(g) : null;
   const chaTotal = d ? d.abilities.cha.total : (state.cha || 0);
   const intTotal = d ? d.abilities.int.total : (state.int || 0);
 
-  const calc = SlotCalculator.computeAllSlots(state, { overrides: { sorcererLevel: effSorc, wizardLevel: effWiz, sorCha: chaTotal, wizInt: intTotal }, applySpecialistPreparedBonus: true });
+  /*
+    UM leveling rules (per user):
+    - For every UM level EXCEPT 1, 4, and 7, each UM level adds +1 to BOTH sorcerer and wizard.
+    - For UM levels 1, 4, and 7, that UM level adds +1 only to the currently lower of sorcerer and wizard.
+      If they are equal, add to wizard (tie-breaker).
+  */
+  function computeEffectiveCasterLevels(sBase, wBase, um) {
+    let s = Number(sBase) || 0;
+    let w = Number(wBase) || 0;
+    const special = new Set([1, 4, 7]);
+    for (let i = 1; i <= (Number(um) || 0); i++) {
+      if (special.has(i)) {
+        if (s < w) s++;
+        else if (w < s) w++;
+        else s++; // tie -> add to sorcerer by default
+      } else {
+        s++;
+        w++;
+      }
+    }
+    return { sorc: s, wiz: w };
+  }
+
+  const eff = computeEffectiveCasterLevels(baseSorc, baseWiz, umLevels);
+  const effSorc = eff.sorc;
+  const effWiz = eff.wiz;
+
+  const calc = SlotCalculator.computeAllSlots(state, {
+    overrides: { sorcererLevel: effSorc, wizardLevel: effWiz, sorCha: chaTotal, wizInt: intTotal },
+    applySpecialistPreparedBonus: true
+  });
 
   // localStorage helpers
   const storageKey = (view) => `ink_slots_used:${view || state.view || 'General'}`;
@@ -1063,7 +1096,7 @@ function renderSlots() {
   const sorCol = document.createElement('div');
   sorCol.className = 'slots-column';
   const sorTitle = document.createElement('h3');
-  sorTitle.textContent = `Sorcerer slots (effective level ${calc.meta.sorcererLevel})`;
+  sorTitle.textContent = `Sorcerer slots (effective level ${effSorc})`;
   sorCol.appendChild(sorTitle);
 
   const sorTable = document.createElement('table');
@@ -1113,7 +1146,7 @@ function renderSlots() {
   const wizCol = document.createElement('div');
   wizCol.className = 'slots-column';
   const wizTitle = document.createElement('h3');
-  wizTitle.textContent = `Wizard slots (effective level ${calc.meta.wizardLevel})`;
+  wizTitle.textContent = `Wizard slots (effective level ${effWiz})`;
   wizCol.appendChild(wizTitle);
 
   // Wizard per-day slots (0..9) as small boxes with count displayed
@@ -1176,6 +1209,7 @@ function renderSlots() {
   note.textContent = 'Click sorcerer boxes to mark used; marks persist per view. You can also cross out with the pen.';
   container.appendChild(note);
 }
+
 
 function renderSpellTable(rows, meta, castingMod, showPrep) {
   if (!rows || !rows.length) return `<div class="hint">No spells loaded.</div>`;
