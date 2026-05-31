@@ -3,63 +3,55 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>DnD Ink Sheet</title>
-  <link rel="stylesheet" href="styles.css">
+  <title>DnD 3.5 Ink Sheet (MVP)</title>
+  <link rel="stylesheet" href="/35dnd/styles.css?v=20260528b" />
+  <!-- SheetJS from CDN (works offline too if you download it locally later) -->
+  <script src="/35dnd/xlsx.full.min.js"></script>
 </head>
+
 <body>
-  <div class="topbar">
+  <header class="topbar">
     <div class="left">
-      <button id="viewGeneral" class="btn">General</button>
-      <button id="viewSpells" class="btn">Spells</button>
-      <button id="viewSlots" class="btn">Slots</button>
-      <button id="viewSkills" class="btn">Skills</button>
-    </div>
-
-    <div class="controls">
-      <button id="zoomOut" class="btn">−</button>
-      <button id="zoomReset" class="btn">Reset</button>
-      <button id="zoomIn" class="btn">+</button>
-
-      <button id="penToggle" class="btn">Pen: OFF</button>
-      <button id="eraser" class="btn">Eraser</button>
-      <button id="undo" class="btn">Undo</button>
-      <button id="clearInk" class="btn">Clear Ink</button>
-
-      <label class="small">
-        Width
-        <input id="penWidth" type="range" min="0.25" max="4" step="0.25" value="0.5">
-        <span id="penWidthLabel">0.5</span>
-      </label>
-
-      <label class="small">
-        Grey
-        <input id="penGrey" type="range" min="0" max="100" step="1" value="0">
-        <span id="penGreyLabel">#000000</span>
-      </label>
+      <input id="file" type="file" accept=".xlsx" />
+      <input id="gsUrl" type="text"
+       placeholder="Paste Google Sheets URL"
+       value="https://docs.google.com/spreadsheets/d/1P_Vslp-rxiTcntUZVLR2BjJrdeQqdWfPLeigs2Gnx_U/edit?usp=sharing"
+       style="width:420px; max-width:100%;">
+      <button id="loadGs">Load Sheet</button>
+      <span id="status">Load your XLSX to begin.</span>
+      <div class="progress">
+        <div id="progressBar"></div>
+      </div>
     </div>
 
     <div class="right">
-      <input id="gsUrl" class="gsurl" placeholder="Google Sheets URL">
-      <button id="fillGs" class="btn">Fill</button>
-      <button id="loadGs" class="btn">Load</button>
-      <input id="file" type="file" style="display:none;">
-    </div>
-  </div>
+      <button id="viewGeneral">General</button>
+      <button id="viewSpells">Spells</button>
+      <button id="viewSlots">Slots</button>
+      <button id="viewSkills">Skills</button>
 
-  <!-- viewport contains the world (paper) which is transformed for pan/zoom -->
-  <div id="viewport" class="viewport">
-    <div id="world" class="world">
-      <!-- app content is rendered into #app -->
+      <span class="sep"></span>
+
+      <button id="zoomOut">−</button>
+      <button id="zoomReset">Reset</button>
+      <button id="zoomIn">+</button>
+
+      <span class="sep"></span>
+
+      <button id="penToggle">Pen: OFF</button>
+      <button id="eraser">Eraser</button>
+      <button id="undo">Undo</button>
+      <button id="clearInk">Clear</button>
+    </div>
+  </header>
+
+  <!-- Paper viewport (no page scroll). Everything is panned/zoomed inside this. -->
+  <div id="viewport">
+    <div id="world">
       <div id="app" class="app"></div>
+      <canvas id="inkWorld"></canvas>
     </div>
   </div>
-
-  <!-- Canvas is created in DOM and will be moved into a top-level overlay by app.js -->
-  <canvas id="inkWorld" class="ink" aria-hidden="true"></canvas>
-
-  <!-- Scripts -->
-  <!-- gs_ingest.js is expected to be present in the project and loaded before app.js -->
-  <script src="gs_ingest.js"></script>
-  <script src="app.js"></script>
+  <script src="/35dnd/app.js?v=20260528b"></script>
 </body>
 </html>
