@@ -600,109 +600,183 @@ function findHeaderRow(grid, headerText) {
   - also extracts current class levels if present
 */
 function ingestSpellsFromGrid(grid) {
-  const cell = (r, c) => (grid[r] && grid[r][c] != null) ? String(grid[r][c]) : "";
-  const num = (s, fb = 0) => {
-    const n = Number(String(s).replace(",", "."));
-    return Number.isFinite(n) ? n : fb;
-  };
+  try {
+    state.data.spells = state.data.spells || { sorc: [], wiz: [], meta: null };
 
-  const findRowContaining = (text) =>
-    grid.findIndex(row => (row || []).some(v => String(v).trim() === text));
-
-  const sorcHeader = findRowContaining("Spell slots (S)");
-  const wizHeader  = findRowContaining("Spell slots (W)");
-
-  function headerMap(rowIdx) {
-    const row = grid[rowIdx] || [];
-    const map = {};
-    for (let c = 0; c < row.length; c++) {
-      const key = String(row[c] ?? "").trim();
-      if (key) map[key] = c;
+    if (!Array.isArray(grid) || grid.length === 0) {
+      console.debug("ingestSpellsFromGrid: empty grid");
+      state.data.spells.sorc = [];
+      state.data.spells.wiz = [];
+      return false;
     }
-    return map;
-  }
 
-  function findSpellColByScanning(headerRow, preferredCol) {
-    // If preferredCol exists, verify it actually contains spell names in next rows.
-    // Otherwise scan the row for first column with non-empty values for several rows.
-    const candidates = [];
-    if (preferredCol != null) candidates.push(preferredCol, preferredCol - 1, preferredCol + 1);
+    const cell = (r, c) => (grid[r] && grid[r][c] != null) ? String(grid[r][c]) : "";
+    const norm = (s) => String(s || "").trim().toLowerCase();
 
-    // Add all columns as fallback candidates (left->right)
-    const header = grid[headerRow] || [];
-    for (let c = 0; c < header.length; c++) candidates.push(c);
-
-    const seen = new Set();
-    for (const c of candidates) {
-      if (c == null || c < 0) continue;
-      if (seen.has(c)) continue;
-      seen.add(c);
-
-      // Look at next few rows; if 2+ are non-empty and not numeric-only, accept
-      let hits = 0;
-      for (let r = headerRow + 1; r < Math.min(headerRow + 15, grid.length); r++) {
-        const t = cell(r, c).trim();
-        if (!t) continue;
-        // Ignore obvious numeric columns
-        if (/^[0-9.]+$/.test(t)) continue;
-        hits++;
+    // Find candidate header rows by scanning for common labels
+    const headerCandidates = [];
+    for (let r = 0; r < Math.min(grid.length, 40); r++) {
+      const row = grid[r] || [];
+      const joined = row.map(x => norm(x)).join("|");
+      if (joined.includes("spell") || joined.includes("spell slots") || joined.includes("sorcerer") || joined.includes("wizard") || joined.includes("sl") || joined.includes("preparations")) {
+        headerCandidates.push(r);
       }
-      if (hits >= 2) return c;
     }
-    return preferredCol ?? 0;
-  }
 
-  function readBlock(headerRow, mode) {
-    if (headerRow < 0) return [];
-    const h = headerMap(headerRow);
-
-    const colSL = h["SL"];
-    const colType = h["Type"];
-    const colEvo = h["Evo?"];
-    const colFire = h["Fire?"];
-    const colRange = h["Range"];
-    const colArea = h["Area"];
-    const colDamage = h["Damage"];
-    const colDuration = h["Duration"];
-    const colNotes = h["Notes"];
-    const colPrep = h["Preparations"];
-
-    // Spell column label differs between blocks. Grab whichever exists, but validate by scanning.
-    const preferredSpellCol =
-      h["Sorcerer"] ?? h["Wizard"] ?? h["  Wizard"] ?? h["Spell"] ?? null;
-
-    const colSpell = findSpellColByScanning(headerRow, preferredSpellCol);
-
-    const rows = [];
-    for (let r = headerRow + 1; r < grid.length; r++) {
-      const name = cell(r, colSpell).trim();
-      if (!name) break;
-
-      rows.push({
-        mode,
-        name,
-        url: "", // CSV won't preserve hyperlink targets reliably
-        sl: num(cell(r, colSL), 0),
-        type: cell(r, colType),
-        evo: num(cell(r, colEvo), 0) === 1,
-        fire: num(cell(r, colFire), 0) === 1,
-        range: cell(r, colRange),
-        area: cell(r, colArea),
-        damage: cell(r, colDamage),
-        duration: cell(r, colDuration),
-        notes: cell(r, colNotes),
-        prep: mode === "wiz" ? cell(r, colPrep) : ""
-      });
+    // fallback: scan entire sheet for "Spell slots (S)" / "Spell slots (W)"
+    function findExactRow(text) {
+      for (let r = 0; r < grid.length; r++) {
+        const row = grid[r] || [];
+        for (let c = 0; c < row.length; c++) {
+          if (String(row[c] || "").trim() === text) return r;
+        }
+      }
+      return -1;
     }
-    return rows;
+    const exactS = findExactRow("Spell slots (S)");
+    const exactW = findExactRow("Spell slots (W)");
+    if (exactS >= 0 && !headerCandidates.includes(exactS)) headerCandidates.push(exactS);
+    if (exactW >= 0 && !headerCandidates.includes(exactW)) headerCandidates.push(exactW);
+
+    // Helper: decide if a column looks like a spell name column by scanning next rows
+    function findSpellCol(headerRow, preferredCol) {
+      const header = grid[headerRow] || [];
+      const maxCol = Math.max(header.length, 12);
+      const candidates = [];
+      if (preferredCol != null) candidates.push(preferredCol, preferredCol - 1, preferredCol + 1);
+      for (let c = 0; c < maxCol; c++) candidates.push(c);
+      const seen = new Set();
+      for (const c of candidates) {
+        if (c == null || c < 0) continue;
+        if (seen.has(c)) continue;
+        seen.add(c);
+        let nonEmptyText = 0;
+        let numericOnly = 0;
+        for (let r = headerRow + 1; r < Math.min(grid.length, headerRow + 20); r++) {
+          const t = String((grid[r] || [])[c] || "").trim();
+          if (!t) continue;
+          if (/^[0-9.\-+() ]+$/.test(t)) numericOnly++;
+          else nonEmptyText++;
+          if (nonEmptyText >= 2) return c;
+        }
+      }
+      // fallback: return first column after header that has any non-empty cell
+      for (let c = 0; c < maxCol; c++) {
+        for (let r = headerRow + 1; r < Math.min(grid.length, headerRow + 8); r++) {
+          if (String((grid[r] || [])[c] || "").trim()) return c;
+        }
+      }
+      return null;
+    }
+
+    function readBlock(headerRow, mode) {
+      if (headerRow == null || headerRow < 0) return [];
+      const header = grid[headerRow] || [];
+      // map header labels to columns
+      const map = {};
+      for (let c = 0; c < header.length; c++) {
+        const k = norm(header[c]);
+        if (!k) continue;
+        map[k] = c;
+      }
+      // try to find preferred spell column names
+      const preferred = map["sorcerer"] ?? map["wizard"] ?? map["spell"] ?? map["spellname"] ?? null;
+      const colSpell = findSpellCol(headerRow, preferred);
+      // find SL column if present
+      let colSL = null;
+      for (let c = 0; c < header.length; c++) {
+        const h = norm(header[c]);
+        if (h === "sl" || h === "spelllevel" || h === "level" || h === "lvl") { colSL = c; break; }
+      }
+      // other optional columns
+      let colType = null, colEvo = null, colFire = null, colRange = null, colArea = null, colDamage = null, colDuration = null, colPrep = null, colNotes = null;
+      for (let c = 0; c < header.length; c++) {
+        const h = norm(header[c]);
+        if (!colType && h.includes("type")) colType = c;
+        if (!colEvo && h.includes("evo")) colEvo = c;
+        if (!colFire && h.includes("fire")) colFire = c;
+        if (!colRange && h.includes("range")) colRange = c;
+        if (!colArea && h.includes("area")) colArea = c;
+        if (!colDamage && h.includes("damage")) colDamage = c;
+        if (!colDuration && h.includes("duration")) colDuration = c;
+        if (!colPrep && h.includes("prepar")) colPrep = c;
+        if (!colNotes && h.includes("note")) colNotes = c;
+      }
+
+      const rows = [];
+      if (colSpell == null) {
+        console.debug("readBlock: no spell column found at headerRow", headerRow, "mode", mode, "header:", header);
+        return rows;
+      }
+
+      for (let r = headerRow + 1; r < grid.length; r++) {
+        const name = String((grid[r] || [])[colSpell] || "").trim();
+        if (!name) break;
+        const slRaw = colSL != null ? String((grid[r] || [])[colSL] || "").trim() : "";
+        const sl = /^\d+$/.test(slRaw) ? Number(slRaw) : (slRaw ? Number((slRaw.match(/\d+/)||[])[0]||0) : 0);
+        rows.push({
+          mode,
+          name,
+          url: "",
+          sl: sl,
+          type: colType != null ? String((grid[r] || [])[colType] || "") : "",
+          evo: colEvo != null ? (String((grid[r] || [])[colEvo] || "").trim() === "1") : false,
+          fire: colFire != null ? (String((grid[r] || [])[colFire] || "").trim() === "1") : false,
+          range: colRange != null ? String((grid[r] || [])[colRange] || "") : "",
+          area: colArea != null ? String((grid[r] || [])[colArea] || "") : "",
+          damage: colDamage != null ? String((grid[r] || [])[colDamage] || "") : "",
+          duration: colDuration != null ? String((grid[r] || [])[colDuration] || "") : "",
+          notes: colNotes != null ? String((grid[r] || [])[colNotes] || "") : "",
+          prep: mode === "wiz" && colPrep != null ? String((grid[r] || [])[colPrep] || "") : ""
+        });
+      }
+      return rows;
+    }
+
+    // Try to locate explicit headers first
+    let sorcHeader = exactS >= 0 ? exactS : -1;
+    let wizHeader = exactW >= 0 ? exactW : -1;
+
+    // If not found, scan headerCandidates for rows that look like spell tables
+    for (const r of headerCandidates) {
+      const rowText = (grid[r] || []).map(x => norm(x)).join("|");
+      if (rowText.includes("sorcerer") && sorcHeader < 0) sorcHeader = r;
+      if ((rowText.includes("wizard") || rowText.includes("evoker")) && wizHeader < 0) wizHeader = r;
+      if (rowText.includes("spell slots") && sorcHeader < 0) sorcHeader = r;
+    }
+
+    // As a last resort, try to find any row that contains "SL" and a nearby "Spell" label
+    if (sorcHeader < 0 || wizHeader < 0) {
+      for (let r = 0; r < grid.length; r++) {
+        const row = (grid[r] || []).map(x => norm(x)).join("|");
+        if (row.includes("sl") && row.includes("spell")) {
+          if (sorcHeader < 0) sorcHeader = r;
+          else if (wizHeader < 0) wizHeader = r;
+        }
+      }
+    }
+
+    // Read blocks
+    const sorcRows = readBlock(sorcHeader, "sorc");
+    const wizRows = readBlock(wizHeader, "wiz");
+
+    state.data.spells.sorc = sorcRows;
+    state.data.spells.wiz = wizRows;
+    // keep existing meta if present, otherwise set defaults
+    state.data.spells.meta = state.data.spells.meta || { sorcLevels: 1, wizLevels: 5, umLevels: 2, arcaneSpellpower: 1 };
+
+    console.debug("ingestSpellsFromGrid: found sorcHeader", sorcHeader, "rows", sorcRows.length);
+    console.debug("ingestSpellsFromGrid: found wizHeader", wizHeader, "rows", wizRows.length);
+
+    return true;
+  } catch (e) {
+    console.error("ingestSpellsFromGrid error:", e);
+    state.data.spells.sorc = [];
+    state.data.spells.wiz = [];
+    return false;
   }
-
-  state.data.spells.sorc = readBlock(sorcHeader, "sorc");
-  state.data.spells.wiz  = readBlock(wizHeader, "wiz");
-
-  // Meta: keep your current baseline; we can pull levels from sheet later if desired
-  state.data.spells.meta = { sorcLevels: 1, wizLevels: 5, umLevels: 2, arcaneSpellpower: 1 };
 }
+
 
 /*
   ingestGeneralFromGrid(grid)
