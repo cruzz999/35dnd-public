@@ -734,48 +734,46 @@ function mergeWindowStateIfPresent() {
 }
 
 /* ---------------------- Hook Google Sheets button ---------------------- */
+/* ---------------------- Hook Google Sheets button (drop-in replacement) ---------------------- */
 window.addEventListener("DOMContentLoaded", () => {
 
-   // Keep viewport/paper sizing in sync when the topbar wraps or changes height
-(function watchTopbarSize() {
-  const topbar = document.querySelector('.topbar');
-  if (!topbar) return;
-  // Call once to ensure initial sizing is correct
-  syncViewportHeight();
-  if (window.ink && typeof window.ink.ensureCanvasSize === 'function') window.ink.ensureCanvasSize();
-  if (window.ink && typeof window.ink.redraw === 'function') window.ink.redraw();
+  /* ------------------ Keep topbar/viewport sizing in sync ------------------ */
+  (function watchTopbarSize() {
+    const topbar = document.querySelector('.topbar');
+    if (!topbar) return;
+    // Ensure initial sizing is correct
+    try { syncViewportHeight(); } catch (e) {}
+    if (window.ink && typeof window.ink.ensureCanvasSize === 'function') window.ink.ensureCanvasSize();
+    if (window.ink && typeof window.ink.redraw === 'function') window.ink.redraw();
 
-  // Observe size changes and update layout
-  try {
-    const ro = new ResizeObserver(() => {
-      syncViewportHeight();
-      applyWorldTransform();
-      if (window.ink && typeof window.ink.ensureCanvasSize === 'function') window.ink.ensureCanvasSize();
-      if (window.ink && typeof window.ink.redraw === 'function') window.ink.redraw();
-    });
-    ro.observe(topbar);
-    // store observer for potential cleanup (optional)
-    window.__topbarResizeObserver = ro;
-  } catch (e) {
-    // ResizeObserver not supported: fallback to window resize polling
-    let lastH = topbar.getBoundingClientRect().height;
-    setInterval(() => {
-      const h = topbar.getBoundingClientRect().height;
-      if (h !== lastH) {
-        lastH = h;
-        syncViewportHeight();
-        applyWorldTransform();
+    try {
+      const ro = new ResizeObserver(() => {
+        try { syncViewportHeight(); } catch (e) {}
+        try { applyWorldTransform(); } catch (e) {}
         if (window.ink && typeof window.ink.ensureCanvasSize === 'function') window.ink.ensureCanvasSize();
         if (window.ink && typeof window.ink.redraw === 'function') window.ink.redraw();
-      }
-    }, 300);
-  }
-})();
-  // Inject a small style block to suppress selection/highlight while panning
-  // and to ensure tap highlight is removed during pan.
+      });
+      ro.observe(topbar);
+      window.__topbarResizeObserver = ro;
+    } catch (e) {
+      // Fallback polling
+      let lastH = topbar.getBoundingClientRect().height;
+      setInterval(() => {
+        const h = topbar.getBoundingClientRect().height;
+        if (h !== lastH) {
+          lastH = h;
+          try { syncViewportHeight(); } catch (err) {}
+          try { applyWorldTransform(); } catch (err) {}
+          if (window.ink && typeof window.ink.ensureCanvasSize === 'function') window.ink.ensureCanvasSize();
+          if (window.ink && typeof window.ink.redraw === 'function') window.ink.redraw();
+        }
+      }, 300);
+    }
+  })();
+
+  /* ------------------ Inject panning styles (prevent highlight) ------------------ */
   (function injectPanningStyles() {
     const css = `
-      /* When body has is-panning, prevent text selection and tap highlight */
       body.is-panning, body.is-panning * {
         -webkit-user-select: none !important;
         -moz-user-select: none !important;
@@ -783,28 +781,31 @@ window.addEventListener("DOMContentLoaded", () => {
         user-select: none !important;
         -webkit-tap-highlight-color: transparent !important;
       }
-      /* Make selection invisible while panning (extra guard) */
       body.is-panning ::selection { background: transparent !important; }
     `;
-    const s = document.createElement('style');
-    s.setAttribute('data-generated-by', 'app.js:is-panning');
-    s.appendChild(document.createTextNode(css));
-    document.head.appendChild(s);
+    if (!document.head.querySelector('style[data-generated-by="app.js:is-panning"]')) {
+      const s = document.createElement('style');
+      s.setAttribute('data-generated-by', 'app.js:is-panning');
+      s.appendChild(document.createTextNode(css));
+      document.head.appendChild(s);
+    }
   })();
 
-  // Ensure body class matches initial pen state (authoritative)
-  if (state.penOn) document.body.classList.add('pen-active'); else document.body.classList.remove('pen-active');
-  // Ensure canvas inline style matches initial state
+  /* ------------------ Authoritative canvas / pen initial state ------------------ */
+  try {
+    if (state.penOn) document.body.classList.add('pen-active'); else document.body.classList.remove('pen-active');
+  } catch (e) {}
   const canvasInit = document.getElementById('inkWorld');
   if (canvasInit) {
     canvasInit.style.pointerEvents = state.penOn ? 'auto' : 'none';
     canvasInit.style.zIndex = state.penOn ? '40' : '5';
   }
 
-  // Auto-populate GS URL if empty
+  /* ------------------ Auto-populate Google Sheets URL ------------------ */
   const AUTO_SHEET = "https://docs.google.com/spreadsheets/d/1P_Vslp-rxiTcntUZVLR2BjJrdeQqdWfPLeigs2Gnx_U/edit?usp=sharing";
   if (el.gsUrl && !el.gsUrl.value) el.gsUrl.value = AUTO_SHEET;
 
+  /* ------------------ Load from Google Sheets button ------------------ */
   if (el.loadGs && el.gsUrl) {
     el.loadGs.addEventListener("click", async () => {
       try {
@@ -845,7 +846,7 @@ window.addEventListener("DOMContentLoaded", () => {
     el.gsUrl.addEventListener("keydown", (e) => { if (e.key === "Enter") el.loadGs.click(); });
   }
 
-  /* ------------------ Wire ink controls and pen toggle ------------------ */
+  /* ------------------ Wire ink controls and pen toggle (authoritative) ------------------ */
   (function wireInkControls() {
     function safeInk() {
       if (window.ink) return window.ink;
@@ -869,27 +870,36 @@ window.addEventListener("DOMContentLoaded", () => {
       if (el.clearInk) el.clearInk.disabled = false;
     };
 
+    const setCanvasInteraction = (on) => {
+      const canvas = document.getElementById('inkWorld');
+      if (canvas) {
+        canvas.style.pointerEvents = on ? 'auto' : 'none';
+        canvas.style.zIndex = on ? '40' : '5';
+      }
+    };
+
     const inkReadyCheck = () => {
       if (window.ink) {
         enableControls();
+
+        // Pen toggle: authoritative setter that updates ink API, body class, and canvas inline style
         if (el.penToggle) {
           el.penToggle.addEventListener("click", () => {
-            // Toggle pen state and call authoritative setter
             state.penOn = !state.penOn;
             const inkApi = safeInk();
             if (inkApi && typeof inkApi.setPenMode === "function") {
               try { inkApi.setPenMode(state.penOn); } catch (e) { console.error("ink.setPenMode error", e); }
             }
-            // Authoritative: set body class and canvas inline style
+            // authoritative DOM updates
             if (state.penOn) document.body.classList.add('pen-active'); else document.body.classList.remove('pen-active');
-            const canvas = document.getElementById('inkWorld');
-            if (canvas) {
-              canvas.style.pointerEvents = state.penOn ? 'auto' : 'none';
-              canvas.style.zIndex = state.penOn ? '40' : '5';
-            }
+            setCanvasInteraction(state.penOn);
+            // ensure ink canvas sizing/redraw after toggling
+            if (window.ink && typeof window.ink.ensureCanvasSize === 'function') window.ink.ensureCanvasSize();
+            if (window.ink && typeof window.ink.redraw === 'function') window.ink.redraw();
             updatePenLabel();
           });
         }
+
         if (el.eraser) {
           el.eraser.addEventListener("click", () => {
             state.erasing = !state.erasing;
@@ -900,6 +910,7 @@ window.addEventListener("DOMContentLoaded", () => {
             updateEraserLabel();
           });
         }
+
         if (el.undo) {
           el.undo.addEventListener("click", () => {
             const inkApi = safeInk();
@@ -908,6 +919,7 @@ window.addEventListener("DOMContentLoaded", () => {
             } else { console.warn("undo not available"); }
           });
         }
+
         if (el.clearInk) {
           el.clearInk.addEventListener("click", () => {
             const inkApi = safeInk();
@@ -916,38 +928,32 @@ window.addEventListener("DOMContentLoaded", () => {
             } else { console.warn("clear not available"); }
           });
         }
+
       } else {
-        // Wait briefly then enable controls in a safe fallback mode
+        // Fallback: enable controls but keep behavior defensive
         setTimeout(() => {
-          if (!window.ink) {
-            enableControls();
-            console.warn("Ink API not present after wait; controls enabled but may warn on use.");
-            if (el.penToggle) {
-              el.penToggle.addEventListener("click", () => {
-                state.penOn = !state.penOn;
-                if (state.penOn) document.body.classList.add('pen-active'); else document.body.classList.remove('pen-active');
-                const canvas = document.getElementById('inkWorld');
-                if (canvas) {
-                  canvas.style.pointerEvents = state.penOn ? 'auto' : 'none';
-                  canvas.style.zIndex = state.penOn ? '40' : '5';
-                }
-                updatePenLabel();
-              });
-            }
-            if (el.eraser) {
-              el.eraser.addEventListener("click", () => {
-                state.erasing = !state.erasing;
-                updateEraserLabel();
-              });
-            }
-            if (el.undo) {
-              el.undo.addEventListener("click", () => { console.warn("undo not available"); });
-            }
-            if (el.clearInk) {
-              el.clearInk.addEventListener("click", () => { console.warn("clear not available"); });
-            }
-          } else {
-            inkReadyCheck();
+          enableControls();
+          if (el.penToggle) {
+            el.penToggle.addEventListener("click", () => {
+              state.penOn = !state.penOn;
+              if (state.penOn) document.body.classList.add('pen-active'); else document.body.classList.remove('pen-active');
+              setCanvasInteraction(state.penOn);
+              if (window.ink && typeof window.ink.ensureCanvasSize === 'function') window.ink.ensureCanvasSize();
+              if (window.ink && typeof window.ink.redraw === 'function') window.ink.redraw();
+              updatePenLabel();
+            });
+          }
+          if (el.eraser) {
+            el.eraser.addEventListener("click", () => {
+              state.erasing = !state.erasing;
+              updateEraserLabel();
+            });
+          }
+          if (el.undo) {
+            el.undo.addEventListener("click", () => { console.warn("undo not available"); });
+          }
+          if (el.clearInk) {
+            el.clearInk.addEventListener("click", () => { console.warn("clear not available"); });
           }
         }, 300);
       }
@@ -987,48 +993,9 @@ window.addEventListener("DOMContentLoaded", () => {
         }
       });
     }
-
-    // Wrap render to ensure canvas sizing after layout change
-    const originalRender = render;
-    render = function () {
-      originalRender();
-      const appEl = document.getElementById("app");
-      if (appEl) {
-        if (state.view === "Spells") appEl.classList.add("landscape"); else appEl.classList.remove("landscape");
-      }
-      if (window.ink && typeof window.ink.ensureCanvasSize === "function") window.ink.ensureCanvasSize();
-      if (window.ink && typeof window.ink.redraw === "function") window.ink.redraw();
-    };
-
-    // Greyscale control
-    const penGreyEl = document.getElementById("penGrey");
-    const penGreyLabel = document.getElementById("penGreyLabel");
-    if (penGreyEl) {
-      penGreyEl.value = state.penGrey ?? 0;
-      const updateGreyLabel = (val) => {
-        const grey = Math.round(val * 2.55);
-        const hex = grey.toString(16).padStart(2, "0");
-        penGreyLabel.textContent = `#${hex}${hex}${hex}`;
-      };
-      updateGreyLabel(penGreyEl.value);
-      penGreyEl.addEventListener("input", () => {
-        const v = Number(penGreyEl.value) || 0;
-        state.penGrey = v;
-        updateGreyLabel(v);
-        const inkApi = safeInk();
-        if (inkApi && typeof inkApi.setPenGrey === "function") inkApi.setPenGrey(v);
-      });
-    }
-
-    updatePenLabel();
-    updateEraserLabel();
   })();
 
-  /* ---------------------------------------------------------------------
-     Checkbox handling: single delegated listener on #app
-     Use requestAnimationFrame to let the browser commit the input state
-     before we re-render and replace the DOM.
-     --------------------------------------------------------------------- */
+  /* ------------------ Checkbox delegation (safe re-render) ------------------ */
   if (el.app) {
     el.app.addEventListener('change', (ev) => {
       const tgt = ev.target;
@@ -1047,8 +1014,85 @@ window.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-   
+  /* ------------------ Viewport pan guard (prevent stealing clicks) ------------------ */
+  // This mirrors the pan logic used elsewhere but ensures interactive elements are respected.
+  (function ensureViewportPanGuard() {
+    if (!el.viewport) return;
+
+    // Keep pan state variables in sync with any existing ones
+    if (typeof window.__panState === 'undefined') {
+      window.__panState = { panDrag: { active: false, startX: 0, startY: 0, basePanX: 0, basePanY: 0 }, panPending: false, PAN_THRESHOLD: 6 };
+    }
+    const P = window.__panState;
+
+    function beginPanInit(e) {
+      P.panPending = true;
+      P.panDrag.startX = e.clientX;
+      P.panDrag.startY = e.clientY;
+      P.panDrag.basePanX = state.pan.x;
+      P.panDrag.basePanY = state.pan.y;
+      document.body.classList.add('is-panning');
+    }
+    function beginPanCommit() {
+      P.panDrag.active = true;
+    }
+    function movePanHandler(e) {
+      if (!P.panDrag.active) return;
+      const dx = e.clientX - P.panDrag.startX;
+      const dy = e.clientY - P.panDrag.startY;
+      state.pan.x = P.panDrag.basePanX + dx;
+      state.pan.y = P.panDrag.basePanY + dy;
+      try { applyWorldTransform(); } catch (err) {}
+      if (window.ink && typeof window.ink.ensureCanvasSize === "function") window.ink.ensureCanvasSize();
+      if (window.ink && typeof window.ink.redraw === "function") window.ink.redraw();
+    }
+    function endPanHandler(e) {
+      P.panPending = false;
+      P.panDrag.active = false;
+      document.body.classList.remove('is-panning');
+      try { el.viewport.releasePointerCapture?.(e?.pointerId); } catch (err) {}
+    }
+
+    // pointerdown: only start pending pan if not pen mode and not on interactive element
+    el.viewport.addEventListener("pointerdown", (e) => {
+      if (state.penOn) return;
+      const interactive = e.target && e.target.closest && e.target.closest('input, button, label, a, textarea, select, [contenteditable]');
+      if (interactive) return;
+      beginPanInit(e);
+      try { el.viewport.setPointerCapture?.(e.pointerId); } catch (err) {}
+    });
+
+    el.viewport.addEventListener("pointermove", (e) => {
+      if (!P.panPending && !P.panDrag.active) return;
+      if (!P.panDrag.active) {
+        const dx = Math.abs(e.clientX - P.panDrag.startX);
+        const dy = Math.abs(e.clientY - P.panDrag.startY);
+        if (dx + dy < P.PAN_THRESHOLD) return;
+        beginPanCommit();
+      }
+      movePanHandler(e);
+    });
+
+    el.viewport.addEventListener("pointerup", (e) => {
+      if (!P.panDrag.active) {
+        P.panPending = false;
+        document.body.classList.remove('is-panning');
+        try { el.viewport.releasePointerCapture?.(e.pointerId); } catch (err) {}
+        return;
+      }
+      endPanHandler(e);
+    });
+
+    el.viewport.addEventListener("pointercancel", (e) => {
+      P.panPending = false;
+      P.panDrag.active = false;
+      document.body.classList.remove('is-panning');
+      try { el.viewport.releasePointerCapture?.(e.pointerId); } catch (err) {}
+    });
+  })();
+
 });
+
 
 /* --------------------------- Initial setup ----------------------------- */
 applyWorldTransform();
