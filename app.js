@@ -329,13 +329,15 @@ function ensureCanvasSize() {
   canvasEl.style.userSelect = 'none';
 }
 
-  function screenToWorld(clientX, clientY) {
-    if (!el.viewport) return { x: 0, y: 0 };
-    const vr = el.viewport.getBoundingClientRect();
-    const vx = clientX - vr.left;
-    const vy = clientY - vr.top;
-    return { x: (vx - state.pan.x) / state.zoom, y: (vy - state.pan.y) / state.zoom };
-  }
+function screenToWorld(clientX, clientY) {
+  // Use the viewport rect as the reference frame (topbar may push the viewport down)
+  const vr = el.viewport ? el.viewport.getBoundingClientRect() : document.documentElement.getBoundingClientRect();
+  // client coordinates relative to the viewport content area
+  const vx = clientX - vr.left;
+  const vy = clientY - vr.top;
+  // Convert to world coordinates by undoing pan and zoom
+  return { x: (vx - state.pan.x) / state.zoom, y: (vy - state.pan.y) / state.zoom };
+}
 
   function drawStroke(stroke) {
     if (!ctx) return;
