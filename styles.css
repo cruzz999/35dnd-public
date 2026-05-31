@@ -395,7 +395,17 @@ body.pen-active canvas#inkWorld {
 .topbar {
   min-height: 44px;
 }
+/* When pen mode is active, prevent text selection and tap highlight */
+body.pen-active, body.pen-active * {
+  -webkit-user-select: none !important;
+  -moz-user-select: none !important;
+  -ms-user-select: none !important;
+  user-select: none !important;
+  -webkit-tap-highlight-color: transparent !important;
+}
 
+/* Extra guard: make selection invisible while pen is active */
+body.pen-active ::selection { background: transparent !important; }
 /* Utility */
 .hidden { display: none !important; }
 .center { text-align: center; }
