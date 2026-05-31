@@ -110,8 +110,19 @@ function hpAverageD4(totalLvl) {
 /* -------------------- Viewport height sync (topbar wrap) --------------- */
 function syncViewportHeight() {
   const topbar = document.querySelector(".topbar");
-  const h = topbar ? topbar.getBoundingClientRect().height : 64;
-  if (el.viewport) el.viewport.style.height = `calc(100vh - ${h}px)`;
+  const topbarRect = topbar ? topbar.getBoundingClientRect() : { height: 64 };
+  const topbarH = Math.ceil(topbarRect.height);
+
+  // Ensure the viewport has top padding equal to the topbar height so content isn't hidden
+  const vp = el.viewport;
+  if (vp) {
+    // Use padding-top so the fixed topbar doesn't overlap content
+    vp.style.paddingTop = `${topbarH}px`;
+    // Set explicit height so viewport fills remaining viewport height
+    vp.style.height = `calc(100vh - ${topbarH}px)`;
+    // Ensure overflow is enabled so scaled world can be scrolled
+    vp.style.overflow = 'auto';
+  }
 }
 
 window.addEventListener("resize", () => {
@@ -147,6 +158,7 @@ function setZoom(newZoom, anchorClientX = null, anchorClientY = null) {
   }
   state.zoom = newZoom;
   applyWorldTransform();
+  syncViewportHeight();
   ink.redraw();
 }
 
