@@ -185,30 +185,43 @@ const ink = (() => {
     redraw();
   }
 
-  function ensureCanvasSize() {
-    if (!canvas || !ctx) return;
-    const w = Math.max(el.app?.scrollWidth || 0, 1200);
-    const h = Math.max(el.app?.scrollHeight || 0, 800);
-    const dpr = window.devicePixelRatio || 1;
-    canvas.style.position = "absolute";
-    canvas.style.left = "0px";
-    canvas.style.top = "0px";
-    canvas.style.width = `${w}px`;
-    canvas.style.height = `${h}px`;
-    canvas.width = Math.floor(w * dpr);
-    canvas.height = Math.floor(h * dpr);
+function ensureCanvasSize() {
+  if (!canvas || !ctx) return;
+
+  // Choose the element that represents the paper area
+  const targetEl = el.world || el.viewport || el.app || document.body;
+  const targetRect = targetEl.getBoundingClientRect();
+
+  // CSS pixel size to cover the entire paper area
+  const cssW = Math.max(Math.ceil(targetRect.width), 800);
+  const cssH = Math.max(Math.ceil(targetRect.height), 600);
+
+  // Position canvas to align with the target element in viewport coordinates
+  canvas.style.position = 'absolute';
+  canvas.style.left = `${Math.floor(targetRect.left)}px`;
+  canvas.style.top = `${Math.floor(targetRect.top)}px`;
+  canvas.style.width = `${cssW}px`;
+  canvas.style.height = `${cssH}px`;
+
+  // Backing store for high-DPI
+  const dpr = window.devicePixelRatio || 1;
+  const backingW = Math.floor(cssW * dpr);
+  const backingH = Math.floor(cssH * dpr);
+  if (canvas.width !== backingW || canvas.height !== backingH) {
+    canvas.width = backingW;
+    canvas.height = backingH;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    // critical on Android
-    canvas.style.touchAction = "none";
   }
 
-  function screenToWorld(clientX, clientY) {
-    if (!el.viewport) return { x: 0, y: 0 };
-    const vr = el.viewport.getBoundingClientRect();
-    const vx = clientX - vr.left;
-    const vy = clientY - vr.top;
-    return { x: (vx - state.pan.x) / state.zoom, y: (vy - state.pan.y) / state.zoom };
-  }
+  // Keep canvas under UI but above world for drawing
+  canvas.style.zIndex = '5';
+  if (el.world) el.world.style.zIndex = '4';
+  if (el.app) el.app.style.zIndex = '20';
+
+  // Only intercept pointer events when pen mode is active
+  canvas.style.pointerEvents = state.penOn ? 'auto' : 'none';
+  canvas.style.touchAction = 'none';
+}
 
   function drawStroke(stroke) {
     if (!ctx) return;
