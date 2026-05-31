@@ -263,3 +263,14 @@ html, body {
 #world {
   z-index: 2;
 }
+#viewport { position: relative; }         /* ensure a stacking context */
+#viewport > canvas#inkWorld {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 5;            /* below UI panels but above world if needed */
+  pointer-events: none;  /* default: don't intercept until pen is enabled */
+  touch-action: none;
+}
