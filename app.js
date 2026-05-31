@@ -10,7 +10,6 @@ DnD 3.5 Ink Sheet (Paper Mode) - app.js
 const $ = (id) => document.getElementById(id);
 
 const el = {
-  // file input removed
   status: $("status"),
   progressBar: $("progressBar"),
   viewGeneral: $("viewGeneral"),
@@ -40,18 +39,14 @@ function assertEl(name) {
 
 /* ------------------------------ App state ------------------------------ */
 const state = {
-  loaded: false, // becomes true after Google load
-  view: "General", // Paper transform
+  loaded: false,
+  view: "General",
   pan: { x: 20, y: 20 },
   zoom: 1.0,
-  // Pen state
   penOn: false,
   erasing: false,
-  // Ink storage per view
   strokesByView: {},
-  // Data
   data: { general: null, spells: { sorc: [], wiz: [], meta: null } },
-  // drawing widths
   lineWidth: 2,
   eraserWidth: 18
 };
@@ -113,23 +108,24 @@ function syncViewportHeight() {
   const topbarRect = topbar ? topbar.getBoundingClientRect() : { height: 64 };
   const topbarH = Math.ceil(topbarRect.height);
 
-  // Ensure the viewport has top padding equal to the topbar height so content isn't hidden
   const vp = el.viewport;
   if (vp) {
-    // Use padding-top so the fixed topbar doesn't overlap content
     vp.style.paddingTop = `${topbarH}px`;
-    // Set explicit height so viewport fills remaining viewport height
     vp.style.height = `calc(100vh - ${topbarH}px)`;
-    // Ensure overflow is enabled so scaled world can be scrolled
     vp.style.overflow = 'auto';
   }
 }
 
 window.addEventListener("resize", () => {
   syncViewportHeight();
-  ensureCanvasSize()
+  // ensure canvas and transforms are recalculated on resize
+  if (ink && typeof ink.ensureCanvasSize === "function") {
+    try { ink.ensureCanvasSize(); } catch {}
+  }
   applyWorldTransform();
-  ink.redraw();
+  if (ink && typeof ink.redraw === "function") {
+    try { ink.redraw(); } catch {}
+  }
 });
 syncViewportHeight();
 
@@ -160,7 +156,12 @@ function setZoom(newZoom, anchorClientX = null, anchorClientY = null) {
   state.zoom = newZoom;
   applyWorldTransform();
   syncViewportHeight();
-  ink.redraw();
+  if (ink && typeof ink.ensureCanvasSize === "function") {
+    try { ink.ensureCanvasSize(); } catch {}
+  }
+  if (ink && typeof ink.redraw === "function") {
+    try { ink.redraw(); } catch {}
+  }
 }
 
 function resetView() {
@@ -168,7 +169,12 @@ function resetView() {
   state.pan.x = 20;
   state.pan.y = 20;
   applyWorldTransform();
-  ink.redraw();
+  if (ink && typeof ink.ensureCanvasSize === "function") {
+    try { ink.ensureCanvasSize(); } catch {}
+  }
+  if (ink && typeof ink.redraw === "function") {
+    try { ink.redraw(); } catch {}
+  }
 }
 
 /* --------------------------- View routing ------------------------------ */
@@ -224,7 +230,7 @@ function movePan(e) {
   state.pan.x = panDrag.basePanX + dx;
   state.pan.y = panDrag.basePanY + dy;
   applyWorldTransform();
-  ink.redraw();
+  if (ink && typeof ink.redraw === "function") ink.redraw();
 }
 
 function endPan() {
@@ -268,54 +274,58 @@ const ink = (() => {
     redraw();
   }
 
-function ensureCanvasSize() {
-  if (!canvas || !ctx || !el.viewport) return;
-  // Measure the viewport area (the visible paper area)
-  const vr = el.viewport.getBoundingClientRect();
+  // Expose ensureCanvasSize for external calls
+  function ensureCanvasSize() {
+    if (!canvas || !ctx || !el.viewport) return;
 
-  // Position the canvas to exactly overlay the viewport in client coordinates
-  canvas.style.position = 'fixed';
-  canvas.style.left = `${Math.floor(vr.left)}px`;
-  canvas.style.top = `${Math.floor(vr.top)}px`;
-  canvas.style.width = `${Math.ceil(vr.width)}px`;
-  canvas.style.height = `${Math.ceil(vr.height)}px`;
-  canvas.style.zIndex = '5';
-  canvas.style.touchAction = 'none';
+    // Make canvas an absolute child of the viewport and fill it
+    canvas.style.position = 'absolute';
+    canvas.style.left = '0px';
+    canvas.style.top = '0px';
+    canvas.style.width = '100%';
+    canvas.style.height = '100%';
+    canvas.style.zIndex = '5';
+    canvas.style.touchAction = 'none';
 
-  // Backing store for high-DPI
-  const dpr = window.devicePixelRatio || 1;
-  const backingW = Math.max(1, Math.floor(vr.width * dpr));
-  const backingH = Math.max(1, Math.floor(vr.height * dpr));
-  if (canvas.width !== backingW || canvas.height !== backingH) {
-    canvas.width = backingW;
-    canvas.height = backingH;
+    // Use layout size (clientWidth/clientHeight) to avoid transform artifacts
+    const cssW = Math.max(1, el.viewport.clientWidth);
+    const cssH = Math.max(1, el.viewport.clientHeight);
+
+    const dpr = window.devicePixelRatio || 1;
+    const backingW = Math.max(1, Math.floor(cssW * dpr));
+    const backingH = Math.max(1, Math.floor(cssH * dpr));
+
+    if (canvas.width !== backingW || canvas.height !== backingH) {
+      canvas.width = backingW;
+      canvas.height = backingH;
+    }
+
+    // Only intercept pointer events when pen mode is active
+    canvas.style.pointerEvents = state.penOn ? 'auto' : 'none';
   }
 
-  // Only intercept pointer events when pen mode is active
-  canvas.style.pointerEvents = state.penOn ? 'auto' : 'none';
-}
+  // Invert the transform used in redraw()
+  function screenToWorld(clientX, clientY) {
+    if (!canvas || !el.viewport) return { x: 0, y: 0 };
 
-function screenToWorld(clientX, clientY) {
-  if (!canvas || !el.viewport) return { x: 0, y: 0 };
+    // Canvas is positioned at top-left of viewport; use its client rect
+    const crect = canvas.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
 
-  // Canvas is fixed over the viewport; get its client rect
-  const crect = canvas.getBoundingClientRect();
-  const dpr = window.devicePixelRatio || 1;
+    // client coords relative to canvas top-left (CSS pixels)
+    const cx = clientX - crect.left;
+    const cy = clientY - crect.top;
 
-  // client coords relative to canvas top-left (CSS pixels)
-  const cx = clientX - crect.left;
-  const cy = clientY - crect.top;
+    // convert to CSS pixels (remove DPR)
+    const xCss = cx / dpr;
+    const yCss = cy / dpr;
 
-  // convert to CSS pixels (remove DPR)
-  const xCss = cx / dpr;
-  const yCss = cy / dpr;
-
-  // invert world transform: world = (css - pan) / zoom
-  return {
-    x: (xCss - state.pan.x) / state.zoom,
-    y: (yCss - state.pan.y) / state.zoom
-  };
-}
+    // invert world transform: world = (css - pan) / zoom
+    return {
+      x: (xCss - state.pan.x) / state.zoom,
+      y: (yCss - state.pan.y) / state.zoom
+    };
+  }
 
   function drawStroke(stroke) {
     if (!ctx) return;
@@ -338,24 +348,22 @@ function screenToWorld(clientX, clientY) {
     ctx.restore();
   }
 
-function redraw() {
-  if (!canvas || !ctx || !el.viewport) return;
-  ensureCanvasSize();
+  function redraw() {
+    if (!canvas || !ctx || !el.viewport) return;
+    ensureCanvasSize();
 
-  // Clear device-pixel canvas
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+    // Clear device-pixel canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  const dpr = window.devicePixelRatio || 1;
+    const dpr = window.devicePixelRatio || 1;
 
-  // Apply transform: scale by dpr*zoom, translate by dpr*pan
-  // This makes drawing coordinates be in "world units"
-  // setTransform(a, b, c, d, e, f) where a = scaleX, d = scaleY, e/f = translateX/translateY
-  ctx.setTransform(dpr * state.zoom, 0, 0, dpr * state.zoom, dpr * state.pan.x, dpr * state.pan.y);
+    // Apply transform: scale by dpr*zoom, translate by dpr*pan
+    ctx.setTransform(dpr * state.zoom, 0, 0, dpr * state.zoom, dpr * state.pan.x, dpr * state.pan.y);
 
-  // Draw strokes (assumes stroke points are stored in world coordinates)
-  const strokes = (state.strokesByView[state.view] || []);
-  for (const stroke of strokes) drawStroke(stroke);
-}
+    // Draw strokes (assumes stroke points are stored in world coordinates)
+    const strokes = (state.strokesByView[state.view] || []);
+    for (const stroke of strokes) drawStroke(stroke);
+  }
 
   function clear() {
     state.strokesByView[state.view] = [];
@@ -383,7 +391,7 @@ function redraw() {
     const p = screenToWorld(e.clientX, e.clientY);
     currentStroke = { erase: state.erasing, pts: [p], width: state.erasing ? state.eraserWidth : state.lineWidth };
     getStrokesForView(state.view).push(currentStroke);
-    try { canvas.setPointerCapture(e.pointerId); } catch {}
+    try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
     e.preventDefault();
     redraw();
   }
@@ -403,7 +411,7 @@ function redraw() {
     drawing = false;
     currentStroke = null;
     if (canvas && e) {
-      try { canvas.releasePointerCapture(e.pointerId); } catch {}
+      try { canvas.releasePointerCapture(e.pointerId); } catch (err) {}
     }
     activePointerId = null;
     saveForView(state.view);
@@ -445,7 +453,8 @@ function redraw() {
   window.addEventListener("resize", () => { ensureCanvasSize(); redraw(); });
   ensureCanvasSize();
 
-  return { redraw, loadForView, setPenMode, setEraser };
+  // expose ensureCanvasSize/redraw for external callers
+  return { redraw, loadForView, setPenMode, setEraser, ensureCanvasSize };
 })();
 
 /* ----------------- Derived computations (General view) ----------------- */
@@ -503,7 +512,6 @@ async function fetchCsvViaProxy(sheetId, gid) {
 }
 
 // Lightweight CSV parser that returns an array-of-arrays (grid)
-// Handles quoted fields and basic escaping.
 function csvToGrid(csvText) {
   const rows = [];
   let cur = [];
@@ -546,7 +554,6 @@ function csvToGrid(csvText) {
     }
 
     if (ch === '\r') {
-      // ignore, handle on \n
       i++;
       continue;
     }
@@ -564,9 +571,7 @@ function csvToGrid(csvText) {
     i++;
   }
 
-  // push last field/row
   if (inQuotes) {
-    // malformed CSV but try to salvage
     cur.push(field);
     rows.push(cur);
   } else if (field !== "" || cur.length > 0) {
@@ -590,7 +595,6 @@ async function loadFromGoogleSheets(sheetUrl) {
     const spellsGrid = csvToGrid(spellsCsv);
     const generalGrid = csvToGrid(generalCsv);
 
-    // Parse first; don't mark loaded until parsing succeeds
     ingestSpellsFromGrid(spellsGrid);
     ingestGeneralFromGrid(generalGrid);
 
@@ -1072,7 +1076,7 @@ window.addEventListener("DOMContentLoaded", () => {
     console.warn("Google Sheets UI not present (#gsUrl / #loadGs).");
   }
 
-  // Line width controls wiring (keeps previous behavior)
+  // Line width controls wiring
   (function wireLineWidthControls() {
     let range = document.getElementById('lineWidthRange');
     let num = document.getElementById('lineWidthNumber');
