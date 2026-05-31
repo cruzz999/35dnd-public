@@ -29,6 +29,74 @@ html,body{height:100%;margin:0;background:var(--bg);color:#111}
 .topbar .right{display:flex;align-items:center;gap:8px}
 .topbar button{background:#fff;border:1px solid var(--border);padding:6px 10px;border-radius:6px;cursor:pointer}
 .topbar .sep{width:10px}
+/* Topbar: fixed, responsive, and non-overflowing on small screens */
+.topbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  box-sizing: border-box;
+  background: linear-gradient(180deg,#ffffff,#fbfdff);
+  border-bottom: 1px solid var(--border);
+  /* allow wrapping of left/right groups on narrow screens */
+  flex-wrap: wrap;
+}
+
+/* Keep left and right groups flexible and allow them to wrap */
+.topbar .left,
+.topbar .right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Prevent the topbar from causing horizontal overflow; allow internal scroll if needed */
+.topbar {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Make sure inputs/buttons shrink on small screens */
+.topbar input[type="text"],
+.topbar button,
+.topbar .line-width {
+  max-width: 48vw;
+  min-width: 40px;
+  flex-shrink: 1;
+}
+
+/* Ensure the page content is not hidden under the fixed topbar */
+body > #viewport {
+  /* top padding equals topbar height; JS will keep this in sync */
+  padding-top: 64px; /* fallback; JS will overwrite with exact height */
+  box-sizing: border-box;
+}
+
+/* Viewport should scroll when world is scaled so content is not clipped */
+#viewport {
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  height: calc(100vh - 64px); /* fallback; JS will set exact height */
+}
+
+/* Keep world transform origin at top-left (existing behavior) */
+#world {
+  transform-origin: 0 0;
+}
+
+/* Small screens: reduce topbar padding and shrink controls */
+@media (max-width: 720px) {
+  .topbar { padding: 8px; }
+  .topbar input[type="text"] { max-width: 60vw; }
+  .topbar .line-width input[type="range"] { width: 120px; }
+}
 
 /* progress */
 .progress{width:220px;height:6px;background:#f1f5f9;border-radius:6px;overflow:hidden}
