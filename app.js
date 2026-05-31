@@ -1,13 +1,12 @@
-/* ========================================================================== 
-   DnD Ink Sheet - app.js (drop-in replacement)
-   - Fix: avoid starting pan when pointerdown originates on interactive elements
-   - Pan threshold to avoid accidental capture on small moves
-   - Prevent page element highlighting while panning by toggling a body class
-   - Canvas attached to #world so it moves with pan/zoom
-   - Canvas pointer-events authoritative via body.pen-active and inline styles
-   - Delegated checkbox handling with requestAnimationFrame to avoid races
-   - Defensive ink API guards
-   ========================================================================== */
+/* ======================================================================
+   app.js - Drop-in replacement
+   - Overlay canvas moved to #inkOverlay (root stacking context)
+   - Proper DPR-backed canvas sizing
+   - Canvas transform mirrors #world pan/zoom so ink aligns with paper
+   - Pan guard prevents stealing clicks; pen mode prevents pan
+   - Canvas consumes pointer events when pen active (stopPropagation/preventDefault)
+   - ResizeObserver keeps viewport sizing in sync with topbar
+   ====================================================================== */
 
 /* ----------------------------- DOM helpers ------------------------------ */
 const $ = (id) => document.getElementById(id);
@@ -34,8 +33,6 @@ const el = {
   loadGs: $("loadGs"),
   fillGs: $("fillGs")
 };
-function assertEl(name) { if (!el[name]) console.warn(`Missing element #${name}`); }
-["viewport", "world", "app", "ink", "status", "progressBar"].forEach(assertEl);
 
 /* ------------------------------ App state ------------------------------ */
 const state = {
@@ -51,62 +48,40 @@ const state = {
   data: { general: null, spells: { sorc: [], wiz: [], meta: null } }
 };
 
-/* ------------------ ensureGs helper (defensive) ------------------------- */
-function ensureGs() {
-  if (window.gsIngest) return window.gsIngest;
-  if (typeof setProgress === "function") setProgress(0, "gs_ingest.js not loaded. Check script order.");
-  throw new Error("gs_ingest.js not loaded (window.gsIngest missing). Ensure gs_ingest.js is included before app.js.");
-}
-
-/* ------------------------------ Progress ------------------------------- */
-function setProgress(pct, text) {
-  if (el.progressBar) el.progressBar.style.width = `${pct}%`;
-  if (el.status) el.status.textContent = text;
-}
-function nextFrame() { return new Promise((resolve) => requestAnimationFrame(resolve)); }
-
 /* ---------------------------- Utilities -------------------------------- */
-function escapeHtml(s) {
-  return String(s).replace(/[&<>\\'"]/g, (m) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#039;" }[m]));
-}
-function fmtSign(n) { n = Number(n) || 0; return (n >= 0 ? "+" : "") + n; }
-function abilityMod(score) { return Math.floor((Number(score) - 10) / 2); }
-function babPoor(level) { level = Number(level) || 0; return Math.floor(level / 2); }
-function saveGood(level) { level = Number(level) || 0; return 2 + Math.floor(level / 2); }
-function savePoor(level) { level = Number(level) || 0; return Math.floor(level / 3); }
-function totalLevel(classes) { return (Number(classes.sorc) || 0) + (Number(classes.wiz) || 0) + (Number(classes.um) || 0); }
-function hpAverageD4(totalLvl) { totalLvl = Number(totalLvl) || 0; if (totalLvl <= 0) return 0; return 4 + (totalLvl - 1) * 3; }
+function escapeHtml(s) { return String(s || "").replace(/[&<>\\'"]/g, (m) => ({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;" }[m])); }
+function fmtSign(n){ n = Number(n)||0; return (n>=0?"+":"")+n; }
+function abilityMod(score){ return Math.floor((Number(score)-10)/2); }
 
 /* -------------------- Viewport height sync ------------------------------- */
-function syncViewportHeight() {
+function syncViewportHeight(){
   const topbar = document.querySelector(".topbar");
-  const h = topbar ? topbar.getBoundingClientRect().height : 64;
+  const h = topbar ? topbar.getBoundingClientRect().height : 56;
   if (el.viewport) el.viewport.style.height = `calc(100vh - ${h}px)`;
 }
 window.addEventListener("resize", () => {
   syncViewportHeight();
   applyWorldTransform();
-  if (window.ink && typeof window.ink.ensureCanvasSize === "function") window.ink.ensureCanvasSize();
+  ensureCanvasSize();
   if (window.ink && typeof window.ink.redraw === "function") window.ink.redraw();
 });
 syncViewportHeight();
 
 /* -------------------- Paper transform (pan/zoom) ----------------------- */
-function applyWorldTransform() {
+function applyWorldTransform(){
   if (!el.world) return;
   el.world.style.transformOrigin = "0 0";
   el.world.style.transform = `translate(${state.pan.x}px, ${state.pan.y}px) scale(${state.zoom})`;
 
-  // ALSO apply the same transform to the ink canvas so it visually matches the world
-  // The canvas lives in a top-level overlay (see ensureCanvasSize) so it must be transformed manually.
+  // Mirror transform to overlay canvas so ink aligns with world
   const canvas = document.getElementById('inkWorld');
   if (canvas) {
     canvas.style.transformOrigin = "0 0";
     canvas.style.transform = `translate(${state.pan.x}px, ${state.pan.y}px) scale(${state.zoom})`;
   }
 }
-function clampZoom(z) { return Math.max(0.5, Math.min(3.0, z)); }
-function setZoom(newZoom, anchorClientX = null, anchorClientY = null) {
+function clampZoom(z){ return Math.max(0.5, Math.min(3.0, z)); }
+function setZoom(newZoom, anchorClientX=null, anchorClientY=null){
   const oldZoom = state.zoom;
   newZoom = clampZoom(newZoom);
   if (newZoom === oldZoom) return;
@@ -121,30 +96,13 @@ function setZoom(newZoom, anchorClientX = null, anchorClientY = null) {
   }
   state.zoom = newZoom;
   applyWorldTransform();
-  if (window.ink && typeof window.ink.ensureCanvasSize === "function") window.ink.ensureCanvasSize();
+  ensureCanvasSize();
   if (window.ink && typeof window.ink.redraw === "function") window.ink.redraw();
 }
-function resetView() {
-  state.zoom = 1.0;
-  state.pan.x = 20;
-  state.pan.y = 20;
-  applyWorldTransform();
-  if (window.ink && typeof window.ink.ensureCanvasSize === "function") window.ink.ensureCanvasSize();
-  if (window.ink && typeof window.ink.redraw === "function") window.ink.redraw();
-}
+function resetView(){ state.zoom = 1.0; state.pan.x = 20; state.pan.y = 20; applyWorldTransform(); ensureCanvasSize(); if (window.ink && typeof window.ink.redraw === "function") window.ink.redraw(); }
 
 /* --------------------------- View routing ------------------------------ */
-function setView(viewName) {
-  state.view = viewName;
-  setProgress(1, `View: ${viewName}`);
-  try {
-    render();
-    if (window.ink && typeof window.ink.loadForView === "function") window.ink.loadForView(viewName);
-  } catch (e) {
-    console.error(e);
-    setProgress(0, `Render error: ${e?.message || e}`);
-  }
-}
+function setView(viewName){ state.view = viewName; render(); if (window.ink && typeof window.ink.loadForView === "function") window.ink.loadForView(viewName); }
 if (el.viewGeneral) el.viewGeneral.onclick = () => setView("General");
 if (el.viewSpells) el.viewSpells.onclick = () => setView("Spells");
 if (el.viewSlots) el.viewSlots.onclick = () => setView("Slots");
@@ -154,192 +112,70 @@ if (el.viewSkills) el.viewSkills.onclick = () => setView("Skills");
 if (el.zoomOut) el.zoomOut.onclick = () => setZoom(state.zoom / 1.15);
 if (el.zoomIn) el.zoomIn.onclick = () => setZoom(state.zoom * 1.15);
 if (el.zoomReset) el.zoomReset.onclick = () => resetView();
-if (el.viewport) {
-  el.viewport.addEventListener("wheel", (e) => {
-    if (!e.ctrlKey) return;
-    e.preventDefault();
-    const factor = e.deltaY < 0 ? 1.08 : (1 / 1.08);
-    setZoom(state.zoom * factor, e.clientX, e.clientY);
-  }, { passive: false });
-}
 
 /* ----------------------------- Pan mode -------------------------------- */
-/* panDrag: active pan state
-   panPending: pointerdown started a potential pan but not yet committed
-   PAN_THRESHOLD: pixels to move before committing to pan (prevents accidental capture)
-*/
-let panDrag = { active: false, startX: 0, startY: 0, basePanX: 0, basePanY: 0 };
+let panDrag = { active:false, startX:0, startY:0, basePanX:0, basePanY:0 };
 let panPending = false;
-const PAN_THRESHOLD = 6; // pixels
+const PAN_THRESHOLD = 6;
 
-function beginPanCommit() {
-  panDrag.active = true;
-  // while actively panning, add class to prevent selection/highlight
-  document.body.classList.add('is-panning');
-}
-function beginPanInit(e) {
-  panPending = true;
-  panDrag.startX = e.clientX;
-  panDrag.startY = e.clientY;
-  panDrag.basePanX = state.pan.x;
-  panDrag.basePanY = state.pan.y;
-  // add class early so accidental selection is suppressed during drag
-  document.body.classList.add('is-panning');
-}
-function movePan(e) {
-  if (!panDrag.active) return;
-  const dx = e.clientX - panDrag.startX;
-  const dy = e.clientY - panDrag.startY;
-  state.pan.x = panDrag.basePanX + dx;
-  state.pan.y = panDrag.basePanY + dy;
-  applyWorldTransform();
-  if (window.ink && typeof window.ink.ensureCanvasSize === "function") window.ink.ensureCanvasSize();
-  if (window.ink && typeof window.ink.redraw === "function") window.ink.redraw();
-}
-function endPan(e) {
-  panPending = false;
-  panDrag.active = false;
-  // remove panning class when finished
-  document.body.classList.remove('is-panning');
-  try { el.viewport && el.viewport.releasePointerCapture && el.viewport.releasePointerCapture(e?.pointerId); } catch (err) {}
-}
-
-/* Viewport pointer handling with interactive-element guard and threshold */
-if (el.viewport) {
-  el.viewport.addEventListener("pointerdown", (e) => {
-    // If pen is active we don't start panning
-    if (state.penOn) return;
-
-    // If the pointerdown started on an interactive element, don't begin pan.
-    // This prevents the pan code from stealing mouseup/change events for inputs.
-    const interactive = e.target && e.target.closest && e.target.closest('input, button, label, a, textarea, select, [contenteditable]');
-    if (interactive) return;
-
-    // Initialize pending pan; commit only after threshold movement
-    beginPanInit(e);
-    try { el.viewport.setPointerCapture?.(e.pointerId); } catch (err) {}
-  });
-
-  el.viewport.addEventListener("pointermove", (e) => {
-    if (!panPending && !panDrag.active) return;
-    if (!panDrag.active) {
-      const dx = Math.abs(e.clientX - panDrag.startX);
-      const dy = Math.abs(e.clientY - panDrag.startY);
-      if (dx + dy < PAN_THRESHOLD) return; // not enough movement yet
-      // commit to panning
-      beginPanCommit();
-    }
-    movePan(e);
-  });
-
-  el.viewport.addEventListener("pointerup", (e) => {
-    // If we never committed to a pan, let the click/mouseup proceed normally
-    if (!panDrag.active) {
-      panPending = false;
-      // remove panning class if it was added during pending state
-      document.body.classList.remove('is-panning');
-      try { el.viewport.releasePointerCapture?.(e.pointerId); } catch (err) {}
-      return;
-    }
-    endPan(e);
-  });
-
-  el.viewport.addEventListener("pointercancel", (e) => {
-    panPending = false;
-    panDrag.active = false;
-    document.body.classList.remove('is-panning');
-    try { el.viewport.releasePointerCapture?.(e.pointerId); } catch (err) {}
-  });
-}
-
-/* ------------------------------ Inline Ink ------------------------------ */
-const ink = (() => {
-  const canvas = el.ink;
-  let ctx = canvas ? canvas.getContext("2d") : null;
-
-  function getStrokesForView(view) { state.strokesByView[view] ||= []; return state.strokesByView[view]; }
-  function saveForView(view) {
-    try { localStorage.setItem(`ink:${view}`, JSON.stringify(getStrokesForView(view))); }
-    catch (e) { console.warn("ink save failed", e); }
-  }
-  function loadForView(view) {
-    try {
-      const raw = localStorage.getItem(`ink:${view}`);
-      state.strokesByView[view] = raw ? JSON.parse(raw) : [];
-    } catch { state.strokesByView[view] = []; }
-    redraw();
-  }
-
-  // Ensure canvas is a child of #world (so it inherits pan/zoom) and sized to world scroll size
-function ensureCanvasSize() {
+/* -------------------- Overlay canvas sizing & placement ------------------ */
+function ensureCanvasSize(){
   const canvasEl = el.ink || document.getElementById('inkWorld');
   if (!canvasEl) return;
 
-  // Create or reuse a top-level overlay container so the canvas is in the root stacking context
+  // Create overlay container if missing
   let overlay = document.getElementById('inkOverlay');
   if (!overlay) {
     overlay = document.createElement('div');
     overlay.id = 'inkOverlay';
-    // overlay sits under topbar (1000) but above panels (900) when pen active
     overlay.style.position = 'fixed';
     overlay.style.left = '0';
     overlay.style.top = '0';
     overlay.style.right = '0';
     overlay.style.bottom = '0';
-    overlay.style.pointerEvents = 'none'; // overlay itself inert; canvas controls pointer-events
-    overlay.style.zIndex = '900'; // baseline; canvas will be raised when active
+    overlay.style.pointerEvents = 'none';
+    overlay.style.zIndex = '900';
     document.body.appendChild(overlay);
   }
 
-  // If canvas is not a child of overlay, move it there
+  // Move canvas into overlay if needed
   if (canvasEl.parentElement !== overlay) {
-    // preserve absolute positioning
     canvasEl.style.position = 'absolute';
     canvasEl.style.left = '0px';
     canvasEl.style.top = '0px';
     overlay.appendChild(canvasEl);
   }
 
-  // Size the canvas to cover the world/app content area (use viewport size so it overlays correctly)
-  // Use devicePixelRatio for crisp drawing
+  // Size canvas to viewport area (so it overlays the visible paper)
   const dpr = window.devicePixelRatio || 1;
-  // Use the viewport element's client size (so canvas covers visible area and panning still maps correctly)
   const ref = el.viewport || document.documentElement;
-  const w = Math.max(1, Math.floor((ref.clientWidth || window.innerWidth)));
-  const h = Math.max(1, Math.floor((ref.clientHeight || window.innerHeight)));
+  const w = Math.max(1, Math.floor(ref.clientWidth || window.innerWidth));
+  const h = Math.max(1, Math.floor(ref.clientHeight || window.innerHeight));
 
-  // CSS size
   canvasEl.style.width = `${w}px`;
   canvasEl.style.height = `${h}px`;
-
-  // Backing store size
   canvasEl.width = Math.floor(w * dpr);
   canvasEl.height = Math.floor(h * dpr);
 
-  // Ensure context uses DPR so drawing coordinates match screen coordinates after transforms
   const ctx = canvasEl.getContext('2d');
   if (ctx) ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-  // Make canvas inert by default; JS toggles pointer-events when pen is active
-  canvasEl.style.pointerEvents = state.penOn ? 'auto' : 'none';
-  // Authoritative z-index: keep below topbar (1000) but above panels (900) when active
-  canvasEl.style.zIndex = state.penOn ? '950' : '5';
-  // Prevent browser gestures interfering
   canvasEl.style.touchAction = 'none';
   canvasEl.style.userSelect = 'none';
+  canvasEl.style.pointerEvents = state.penOn ? 'auto' : 'none';
+  canvasEl.style.zIndex = state.penOn ? '1000' : '5';
 }
 
-function screenToWorld(clientX, clientY) {
-  // Use the viewport rect as the reference frame (topbar may push the viewport down)
-  const vr = el.viewport ? el.viewport.getBoundingClientRect() : document.documentElement.getBoundingClientRect();
-  // client coordinates relative to the viewport content area
-  const vx = clientX - vr.left;
-  const vy = clientY - vr.top;
-  // Convert to world coordinates by undoing pan and zoom
-  return { x: (vx - state.pan.x) / state.zoom, y: (vy - state.pan.y) / state.zoom };
-}
+/* ------------------------------ Inline Ink ------------------------------ */
+const ink = (() => {
+  const canvas = el.ink || document.getElementById('inkWorld');
+  let ctx = canvas ? canvas.getContext('2d') : null;
 
-  function drawStroke(stroke) {
+  function getStrokesForView(view){ state.strokesByView[view] ||= []; return state.strokesByView[view]; }
+  function saveForView(view){ try { localStorage.setItem(`ink:${view}`, JSON.stringify(getStrokesForView(view))); } catch(e){} }
+  function loadForView(view){ try { const raw = localStorage.getItem(`ink:${view}`); state.strokesByView[view] = raw ? JSON.parse(raw) : []; } catch(e){ state.strokesByView[view]=[]; } redraw(); }
+
+  function drawStroke(stroke){
     if (!ctx) return;
     const pts = stroke.pts || [];
     if (pts.length < 2) return;
@@ -362,75 +198,66 @@ function screenToWorld(clientX, clientY) {
     ctx.restore();
   }
 
-  function redraw() {
-    const canvasEl = canvas;
-    if (!canvasEl || !ctx) return;
+  function redraw(){
+    if (!canvas || !ctx) return;
     ensureCanvasSize();
-    ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
+    // Clear backing store (use full backing size)
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
     const strokes = getStrokesForView(state.view);
-    for (const stroke of strokes) drawStroke(stroke);
+    for (const s of strokes) drawStroke(s);
   }
 
-  function clear() { state.strokesByView[state.view] = []; redraw(); saveForView(state.view); }
-  function undo() { const s = getStrokesForView(state.view); s.pop(); redraw(); saveForView(state.view); }
+  function clear(){ state.strokesByView[state.view] = []; redraw(); saveForView(state.view); }
+  function undo(){ const s = getStrokesForView(state.view); s.pop(); redraw(); saveForView(state.view); }
 
   // Pointer state
   let drawing = false;
   let currentStroke = null;
   let activePointerId = null;
 
-function pointerDown(e) {
-  const s = state;
-  if (!s.penOn || !canvas) return;
-  if (e.pointerType === "touch") return;
+  function pointerDown(e){
+    const s = state;
+    if (!s.penOn || !canvas) return;
+    if (e.pointerType === "touch") return;
 
-  // Prevent the viewport pan handler from seeing this event
-  e.stopPropagation();
-  e.preventDefault();
+    // Prevent pan handlers from seeing this event
+    try { e.stopPropagation(); e.preventDefault(); } catch (err) {}
 
-  drawing = true;
-  activePointerId = e.pointerId;
-  const p = screenToWorld(e.clientX, e.clientY);
-  const width = Number(s.penWidth) || 0.5;
-  const grey = Math.round((Number(s.penGrey) || 0) * 2.55);
-  const color = `rgb(${grey},${grey},${grey})`;
-  currentStroke = { erase: s.erasing, pts: [p], width, color };
-  getStrokesForView(s.view).push(currentStroke);
-  try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
-  redraw();
-}
-
-function pointerMove(e) {
-  const s = state;
-  if (!s.penOn || !drawing || !currentStroke) return;
-  if (activePointerId !== null && e.pointerId !== activePointerId) return;
-  if (e.pointerType === "touch") return;
-
-  // Keep pan handler from interfering
-  e.stopPropagation();
-  e.preventDefault();
-
-  currentStroke.pts.push(screenToWorld(e.clientX, e.clientY));
-  redraw();
-}
-
-function endStroke(e) {
-  const s = state;
-  if (!s.penOn) return;
-  if (e && activePointerId !== null && e.pointerId !== activePointerId) return;
-
-  // Prevent other handlers from reacting to this pointerup
-  if (e) { try { e.stopPropagation(); e.preventDefault(); } catch (err) {} }
-
-  drawing = false;
-  currentStroke = null;
-  if (canvas && e) {
-    try { canvas.releasePointerCapture(e.pointerId); } catch (err) {}
+    drawing = true;
+    activePointerId = e.pointerId;
+    const p = screenToWorld(e.clientX, e.clientY);
+    const width = Number(s.penWidth) || 0.5;
+    const grey = Math.round((Number(s.penGrey) || 0) * 2.55);
+    const color = `rgb(${grey},${grey},${grey})`;
+    currentStroke = { erase: s.erasing, pts: [p], width, color };
+    getStrokesForView(s.view).push(currentStroke);
+    try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
+    redraw();
   }
-  activePointerId = null;
-  saveForView(state.view);
-  redraw();
-}
+
+  function pointerMove(e){
+    const s = state;
+    if (!s.penOn || !drawing || !currentStroke) return;
+    if (activePointerId !== null && e.pointerId !== activePointerId) return;
+    if (e.pointerType === "touch") return;
+
+    try { e.stopPropagation(); e.preventDefault(); } catch (err) {}
+    currentStroke.pts.push(screenToWorld(e.clientX, e.clientY));
+    redraw();
+  }
+
+  function endStroke(e){
+    const s = state;
+    if (!s.penOn) return;
+    if (e && activePointerId !== null && e.pointerId !== activePointerId) return;
+    try { if (e) { e.stopPropagation(); e.preventDefault(); } } catch (err) {}
+    drawing = false;
+    currentStroke = null;
+    if (canvas && e) { try { canvas.releasePointerCapture(e.pointerId); } catch (err) {} }
+    activePointerId = null;
+    saveForView(state.view);
+    redraw();
+  }
 
   // Attach listeners
   if (canvas) {
@@ -440,393 +267,113 @@ function endStroke(e) {
     canvas.addEventListener("pointercancel", endStroke);
     canvas.addEventListener("lostpointercapture", endStroke);
     canvas.addEventListener("pointerleave", endStroke);
-    // authoritative default: inert unless penOn is true
     canvas.style.pointerEvents = state.penOn ? 'auto' : 'none';
     canvas.style.touchAction = "none";
-    canvas.style.zIndex = '5';
+    canvas.style.userSelect = "none";
   }
 
-  function setPenMode(on) {
+  function setPenMode(on){
     state.penOn = !!on;
     if (el.penToggle) el.penToggle.textContent = state.penOn ? "Pen: ON" : "Pen: OFF";
-    // authoritative body class
-    if (state.penOn) document.body.classList.add('pen-active');
-    else document.body.classList.remove('pen-active');
-    // authoritative inline canvas style
+    if (state.penOn) document.body.classList.add('pen-active'); else document.body.classList.remove('pen-active');
     if (canvas) {
       canvas.style.pointerEvents = state.penOn ? 'auto' : 'none';
-      canvas.style.zIndex = state.penOn ? '950' : '5';
+      canvas.style.zIndex = state.penOn ? '1000' : '5';
     }
     if (!state.penOn) { drawing = false; currentStroke = null; activePointerId = null; }
+    ensureCanvasSize();
+    // Re-assert next frame in case something else overwrote inline styles
+    requestAnimationFrame(() => {
+      if (canvas) {
+        canvas.style.pointerEvents = state.penOn ? 'auto' : 'none';
+        canvas.style.zIndex = state.penOn ? '1000' : '5';
+      }
+    });
   }
 
-  function setEraser(on) {
-    state.erasing = !!on;
-    if (el.eraser) el.eraser.textContent = state.erasing ? "Eraser: ON" : "Eraser";
-  }
+  function setEraser(on){ state.erasing = !!on; if (el.eraser) el.eraser.textContent = state.erasing ? "Eraser: ON" : "Eraser"; }
 
   return {
-    redraw,
-    loadForView,
-    ensureCanvasSize,
-    setPenMode,
-    setEraser,
-    setPenWidth: (w) => { state.penWidth = Number(w); },
-    setPenGrey: (g) => { state.penGrey = Number(g); },
-    undo,
-    clear,
-    saveForView,
-    _internal: { screenToWorld }
+    redraw, loadForView, ensureCanvasSize, setPenMode, setEraser, setPenWidth: (w)=>{ state.penWidth = Number(w); }, setPenGrey: (g)=>{ state.penGrey = Number(g); }, undo, clear, saveForView, _internal:{ screenToWorld }
   };
 })();
 
-// Expose inline ink to window so other code that expects window.ink works
 window.ink = window.ink || ink;
 
-/* ----------------- Derived computations (General view) ----------------- */
-function computeGeneralDerived(g) {
-  const cls = g.classes;
-  const abilities = {};
-  for (const k of ["str","dex","con","int","wis","cha"]) {
-    const a = g.abilities[k];
-    const base = (Number(a.pointBuy)||0) + (Number(a.asi)||0);
-    const total = base + (Number(a.items)||0) + (Number(a.buffs)||0);
-    abilities[k] = { total, mod: abilityMod(total) };
-  }
-  const lvl = totalLevel(cls);
-  const hpBase = hpAverageD4(lvl);
-  const hpMax = hpBase + abilities.con.mod * lvl;
-  const ac = g.ac;
-  const armorItem = Number(ac.armor)||0;
-  const shieldItem = Number(ac.shield)||0;
-  const mageArmorBonus = Number(g.buffs?.mageArmor)||0;
-  const shieldSpellBonus = Number(g.buffs?.shieldSpell)||0;
-  const armorUsed = Math.max(armorItem, mageArmorBonus);
-  const shieldUsed = Math.max(shieldItem, shieldSpellBonus);
-  const acTotal = 10 + armorUsed + shieldUsed + abilities.dex.mod + (Number(ac.size)||0) + (Number(ac.natural)||0) + (Number(ac.deflect)||0) + (Number(ac.misc)||0);
-  const touch = 10 + abilities.dex.mod + (Number(ac.size)||0) + (Number(ac.deflect)||0) + (Number(ac.miscTouch)||0);
-  const flat = 10 + armorUsed + shieldUsed + (Number(ac.size)||0) + (Number(ac.natural)||0) + (Number(ac.deflect)||0) + (Number(ac.misc)||0);
-  const bab = babPoor(cls.sorc) + babPoor(cls.wiz) + babPoor(cls.um);
-  const fortBase = savePoor(cls.sorc) + savePoor(cls.wiz) + savePoor(cls.um);
-  const refBase = savePoor(cls.sorc) + savePoor(cls.wiz) + savePoor(cls.um);
-  const willBase = saveGood(cls.sorc) + saveGood(cls.wiz) + saveGood(cls.um);
-  const saves = {
-    fort: fortBase + abilities.con.mod + (Number(g.saves.fortMisc)||0),
-    ref: refBase + abilities.dex.mod + (Number(g.saves.refMisc)||0),
-    will: willBase + abilities.wis.mod + (Number(g.saves.willMisc)||0)
-  };
-  const init = abilities.dex.mod + (Number(g.initMisc)||0);
-  const melee = bab + abilities.str.mod + (Number(g.attacks.meleeMisc)||0);
-  const ranged = bab + abilities.dex.mod + (Number(g.attacks.rangedMisc)||0);
-  return { lvl, abilities, hpMax, acTotal, touch, flat, bab, saves, init, melee, ranged };
+/* -------------------- Coordinate mapping ------------------------------- */
+function screenToWorld(clientX, clientY){
+  // Map client coords to viewport-local coords, then undo pan/zoom
+  const vr = el.viewport ? el.viewport.getBoundingClientRect() : document.documentElement.getBoundingClientRect();
+  const vx = clientX - vr.left;
+  const vy = clientY - vr.top;
+  return { x: (vx - state.pan.x) / state.zoom, y: (vy - state.pan.y) / state.zoom };
 }
 
-/* ------------------------------ Rendering ------------------------------ */
-function computeSpellDC(sl, castingMod) { return 10 + (Number(sl)||0) + (Number(castingMod)||0); }
-function computeSpellCL(spell, meta) {
-  const bonusFireEvo = (spell.evo && spell.fire) ? 2 : 0;
-  if (spell.mode === "wiz") return (meta.wizLevels||0) + (meta.umLevels||0) + bonusFireEvo;
-  return (meta.sorcLevels||0) + (meta.umLevels||0) + (meta.arcaneSpellpower||0) + bonusFireEvo;
-}
-
-function renderGeneral() {
-  const g = state.data.general;
-  if (!g) {
-    el.app.innerHTML = `<div class="panel"><h2>General</h2><div class="hint">No general data loaded.</div></div>`;
-    return;
-  }
-
-  g.feats = Array.isArray(g.feats) ? g.feats : [];
-  g.languages = Array.isArray(g.languages) ? g.languages : [];
-  g.abilities = g.abilities || {};
-  for (const k of ["str","dex","con","int","wis","cha"]) {
-    g.abilities[k] = g.abilities[k] || { pointBuy: 0, asi: 0, items: 0, buffs: 0 };
-  }
-  g.ac = g.ac || { armor: 0, shield: 0, size: 0, natural: 0, deflect: 0, misc: 0, miscTouch: 0 };
-  g.buffs = g.buffs || { mageArmor: 0, shieldSpell: 0 };
-  g.classes = g.classes || { sorc: 1, wiz: 5, um: 2 };
-  g.saves = g.saves || { fortMisc: 0, refMisc: 0, willMisc: 0 };
-  g.attacks = g.attacks || { meleeMisc: 0, rangedMisc: 0, grappleMisc: 0 };
-  g.initMisc = g.initMisc || 0;
-
-  const d = computeGeneralDerived(g);
-  const A = d.abilities;
-
-  const abilityRow = (label, key) => `
-    <div><strong>${label}</strong></div>
-    <div class="val">${g.abilities[key].pointBuy ?? 0}</div>
-    <div class="val">
-      <input type="number" inputmode="numeric" data-ab="${key}" data-field="asi" value="${Number(g.abilities[key].asi ?? 0)}">
-    </div>
-    <div class="val">
-      <input type="number" inputmode="numeric" data-ab="${key}" data-field="items" value="${Number(g.abilities[key].items ?? 0)}">
-    </div>
-    <div class="val">
-      <input type="number" inputmode="numeric" data-ab="${key}" data-field="buffs" value="${Number(g.abilities[key].buffs ?? 0)}">
-    </div>
-    <div class="val"><strong>${A[key].total}</strong></div>
-    <div class="val"><strong>${fmtSign(A[key].mod)}</strong></div>
-  `;
-
+/* --------------------------- Rendering -------------------------------- */
+function renderGeneral(){
+  const g = state.data.general || { abilities:{}, feats:[], languages:[], ac:{}, buffs:{} , classes:{sorc:1,wiz:5,um:0}, saves:{}, attacks:{} };
   el.app.innerHTML = `
-  <div class="panel">
-    <h2>General</h2>
-    <div class="grid">
-      <div class="panel">
-        <h3>Identity</h3>
-        <div><strong>${escapeHtml(g.characterName || "")}</strong> (${escapeHtml(g.alignment || "")})</div>
-        <div>Player: ${escapeHtml(g.playerName || "")}</div>
-        <div>Race: ${escapeHtml(g.race || "")}</div>
-        <div>Class: ${escapeHtml(g.classLine || "")}</div>
-        <div>Level: <strong>${d.lvl}</strong></div>
-      </div>
-
-      <div class="panel">
-        <h3>Combat</h3>
-        <div>HP (max): <strong>${d.hpMax}</strong></div>
-        <div>AC: <strong>${d.acTotal}</strong> (Touch ${d.touch}, Flat ${d.flat})</div>
-        <div>Init: <strong>${fmtSign(d.init)}</strong></div>
-        <div>BAB: <strong>${fmtSign(d.bab)}</strong></div>
-        <div>Melee: <strong>${fmtSign(d.melee)}</strong> | Ranged: <strong>${fmtSign(d.ranged)}</strong></div>
-        <div style="margin-top:8px;">
-          <h4>Active Buffs (AC)</h4>
-          <label><input id="buff_mage" type="checkbox" ${g.buffs.mageArmor ? "checked" : ""}> Mage Armor (+4)</label><br>
-          <label><input id="buff_shield" type="checkbox" ${g.buffs.shieldSpell ? "checked" : ""}> Shield (+4)</label>
-        </div>
-      </div>
-    </div>
-
     <div class="panel">
-      <h3>Abilities (breakdown)</h3>
-      <div class="hint">Point buy array / ASI / Items / Penalties-buffs → Total → Mod</div>
-      <div class="ability-breakdown-grid">
-        <div></div>
-        <div class="hdr">Point buy</div>
-        <div class="hdr">ASI</div>
-        <div class="hdr">Items</div>
-        <div class="hdr">Buffs</div>
-        <div class="hdr">Total</div>
-        <div class="hdr">Mod</div>
-        ${abilityRow("STR","str")}
-        ${abilityRow("DEX","dex")}
-        ${abilityRow("CON","con")}
-        ${abilityRow("INT","int")}
-        ${abilityRow("WIS","wis")}
-        ${abilityRow("CHA","cha")}
+      <h2>General</h2>
+      <div>Character: ${escapeHtml(g.characterName||"")}</div>
+      <div style="margin-top:8px;">
+        <label><input id="buff_mage" type="checkbox" ${g.buffs?.mageArmor ? "checked" : ""}> Mage Armor (+4)</label><br>
+        <label><input id="buff_shield" type="checkbox" ${g.buffs?.shieldSpell ? "checked" : ""}> Shield (+4)</label>
       </div>
     </div>
-
-    <div class="grid">
-      <div class="panel">
-        <h3>Feats</h3>
-        <ul>${g.feats.length ? g.feats.map(f => `<li>${escapeHtml(f.label ?? f)}</li>`).join("") : "<li>(none found)</li>"}</ul>
-        <div class="hint">CSV export doesn’t preserve hyperlinks; feats are text-only in Google mode.</div>
-      </div>
-
-      <div class="panel">
-        <h3>Languages</h3>
-        <ul>${g.languages.length ? g.languages.map(x => `<li>${escapeHtml(x)}</li>`).join("") : "<li>(none found)</li>"}</ul>
-      </div>
-    </div>
-  </div>
   `;
-
-  // Ability input wiring (defer re-render to next frame)
-  document.querySelectorAll('.ability-breakdown-grid input[data-ab][data-field]').forEach(inp => {
-    inp.addEventListener('input', () => {
-      const ab = inp.getAttribute('data-ab');
-      const field = inp.getAttribute('data-field');
-      const val = Number(inp.value);
-      g.abilities[ab][field] = Number.isFinite(val) ? val : 0;
-      requestAnimationFrame(() => { renderGeneral(); if (window.ink && typeof window.ink.redraw === "function") window.ink.redraw(); });
+  // wire delegated inputs
+  document.querySelectorAll('#app input').forEach(inp => {
+    inp.addEventListener('change', () => {
+      requestAnimationFrame(()=>{ renderGeneral(); if (window.ink && typeof window.ink.redraw === 'function') window.ink.redraw(); });
     });
   });
-
-  // Ensure canvas sizing after DOM changes so pointer mapping remains correct
-  if (window.ink && typeof window.ink.ensureCanvasSize === "function") window.ink.ensureCanvasSize();
 }
 
-/* ---------------------- Spell table rendering -------------------------- */
-function renderSpellTable(rows, meta, castingMod, showPrep) {
-  if (!rows || !rows.length) return `<div class="hint">No spells loaded.</div>`;
-  return `
-    <div class="table-wrapper">
-      <table class="table">
-        <thead>
-          <tr>
-            <th>Spell</th><th>SL</th><th>CL</th><th>DC</th>
-            ${showPrep ? "<th>Prep</th>" : ""}
-            <th>Type</th><th>F</th><th>E</th><th>Range</th><th>Area</th><th>Damage</th><th>Duration</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${rows.map(s => {
-            const cl = computeSpellCL(s, meta);
-            const dc = computeSpellDC(s.sl, castingMod);
-            const spellCell = s.url ? `<a href="${String(s.url).replace(/"/g, "&quot;")}" target="_blank" rel="noopener noreferrer">${escapeHtml(s.name)}</a>` : escapeHtml(s.name);
-            const anchorId = `${s.mode}:${s.name}:prep`.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9:_-]/g, "");
-            const prepCell = showPrep ? `<td><span class="prep-box" data-ink-anchor="${anchorId}"></span></td>` : "";
-            return `
-              <tr>
-                <td>${spellCell}</td>
-                <td>${Number(s.sl) || 0}</td>
-                <td>${cl}</td>
-                <td>${dc}</td>
-                ${prepCell}
-                <td>${escapeHtml(s.type || "")}</td>
-                <td>${s.fire ? "✓" : ""}</td>
-                <td>${s.evo ? "✓" : ""}</td>
-                <td>${escapeHtml(s.range || "")}</td>
-                <td>${escapeHtml(s.area || "")}</td>
-                <td>${escapeHtml(s.damage || "")}</td>
-                <td>${escapeHtml(s.duration || "")}</td>
-              </tr>
-            `;
-          }).join("")}
-        </tbody>
-      </table>
-    </div>
-  `;
+function renderSpells(){
+  el.app.innerHTML = `<div class="panel"><h2>Spells</h2><div class="hint">Spell lists</div></div>`;
 }
 
-function renderSpells() {
-  const g = state.data.general;
-  const meta = state.data.spells.meta || { sorcLevels:1, wizLevels:5, umLevels:2, arcaneSpellpower:1 };
-  const d = g ? computeGeneralDerived(g) : null;
-  const intMod = d ? d.abilities.int.mod : 0;
-  const chaMod = d ? d.abilities.cha.mod : 0;
-  const sorcRows = state.data.spells.sorc || [];
-  const wizRows = state.data.spells.wiz || [];
-  el.app.innerHTML = `
-    <div class="panel">
-      <h2>Spells</h2>
-      <div class="hint">Pan/zoom the paper; use Pen to write in prep boxes.</div>
-      <div class="grid">
-        <div class="panel">
-          <h3>Sorcerer / UM</h3>
-          ${renderSpellTable(sorcRows, meta, chaMod, false)}
-        </div>
-        <div class="panel">
-          <h3>Wizard</h3>
-          ${renderSpellTable(wizRows, meta, intMod, true)}
-        </div>
-      </div>
-    </div>
-  `;
-}
-
-/* --------------------------- Main render wrapper ----------------------- */
-function render() {
-  if (!el.app) return;
+function render(){
   if (!state.loaded) {
-    el.app.innerHTML = `<div class="panel"><h2>Load</h2><div class="hint"> Load via Google Sheets (recommended on Boox). </div></div>`;
+    el.app.innerHTML = `<div class="panel"><h2>Load</h2><div class="hint">Load data via Google Sheets</div></div>`;
     applyWorldTransform();
-    if (window.ink && typeof window.ink.ensureCanvasSize === "function") window.ink.ensureCanvasSize();
-    if (window.ink && typeof window.ink.redraw === "function") window.ink.redraw();
+    ensureCanvasSize();
     return;
   }
   if (state.view === "General") renderGeneral();
   else if (state.view === "Spells") renderSpells();
-  else el.app.innerHTML = `<div class="panel"><h2>${escapeHtml(state.view)}</h2><div class="hint">Not implemented yet.</div></div>`;
-
+  else el.app.innerHTML = `<div class="panel"><h2>${escapeHtml(state.view)}</h2></div>`;
   applyWorldTransform();
-  const appEl = document.getElementById("app");
-  if (appEl) {
-    if (state.view === "Spells") appEl.classList.add("landscape"); else appEl.classList.remove("landscape");
-  }
-  if (window.ink && typeof window.ink.ensureCanvasSize === "function") window.ink.ensureCanvasSize();
-  if (window.ink && typeof window.ink.redraw === "function") window.ink.redraw();
-}
-
-/* --------------------------- XLSX loading (disabled) ------------------------------ */
-if (el.file) {
-  el.file.addEventListener("change", () => {
-    setProgress(0, "XLSX uploads are disabled. Use Google Sheets URL instead.");
-    el.file.value = "";
-  });
-}
-
-/* ---------------------- Merge helper (robust) ------------------------- */
-function mergeWindowStateIfPresent() {
-  try {
-    if (window.state && window.state.data) {
-      const g = window.state.data.general ?? null;
-      const s = window.state.data.spells ?? null;
-      let changed = false;
-
-      if (g) {
-        g.buffs = g.buffs || {};
-        g.buffs.mageArmor = Number(g.buffs.mageArmor) || 0;
-        g.buffs.shieldSpell = Number(g.buffs.shieldSpell) || 0;
-        state.data = state.data || {};
-        state.data.general = g;
-        changed = true;
-      }
-
-      if (s) {
-        state.data = state.data || {};
-        state.data.spells = s;
-        changed = true;
-      }
-
-      if (changed) {
-        state.loaded = true;
-        if (typeof render === "function") render();
-        if (window.ink && typeof window.ink.ensureCanvasSize === "function") window.ink.ensureCanvasSize();
-        if (window.ink && typeof window.ink.redraw === "function") window.ink.redraw();
-      }
-    }
-  } catch (e) { console.warn("mergeWindowStateIfPresent failed", e); }
+  ensureCanvasSize();
 }
 
 /* ---------------------- Hook Google Sheets button ---------------------- */
-/* ---------------------- Hook Google Sheets button (drop-in replacement) ---------------------- */
 window.addEventListener("DOMContentLoaded", () => {
+  // Ensure topbar/viewport sizing is correct
+  syncViewportHeight();
+  ensureCanvasSize();
 
-  /* ------------------ Keep topbar/viewport sizing in sync ------------------ */
-  (function watchTopbarSize() {
+  // Keep topbar size changes in sync
+  (function watchTopbarSize(){
     const topbar = document.querySelector('.topbar');
     if (!topbar) return;
-    try { syncViewportHeight(); } catch (e) {}
-    if (window.ink && typeof window.ink.ensureCanvasSize === 'function') window.ink.ensureCanvasSize();
-    if (window.ink && typeof window.ink.redraw === 'function') window.ink.redraw();
-
     try {
-      const ro = new ResizeObserver(() => {
-        try { syncViewportHeight(); } catch (e) {}
-        try { applyWorldTransform(); } catch (e) {}
-        if (window.ink && typeof window.ink.ensureCanvasSize === 'function') window.ink.ensureCanvasSize();
-        if (window.ink && typeof window.ink.redraw === 'function') window.ink.redraw();
-      });
+      const ro = new ResizeObserver(() => { syncViewportHeight(); applyWorldTransform(); ensureCanvasSize(); if (window.ink && typeof window.ink.redraw === 'function') window.ink.redraw(); });
       ro.observe(topbar);
       window.__topbarResizeObserver = ro;
     } catch (e) {
       let lastH = topbar.getBoundingClientRect().height;
-      setInterval(() => {
-        const h = topbar.getBoundingClientRect().height;
-        if (h !== lastH) {
-          lastH = h;
-          try { syncViewportHeight(); } catch (err) {}
-          try { applyWorldTransform(); } catch (err) {}
-          if (window.ink && typeof window.ink.ensureCanvasSize === 'function') window.ink.ensureCanvasSize();
-          if (window.ink && typeof window.ink.redraw === 'function') window.ink.redraw();
-        }
-      }, 300);
+      setInterval(()=>{ const h = topbar.getBoundingClientRect().height; if (h !== lastH){ lastH = h; syncViewportHeight(); applyWorldTransform(); ensureCanvasSize(); if (window.ink && typeof window.ink.redraw === 'function') window.ink.redraw(); } }, 300);
     }
   })();
 
-  /* ------------------ Inject panning styles (prevent highlight) ------------------ */
-  (function injectPanningStyles() {
+  // Inject panning styles once
+  (function injectPanningStyles(){
     const id = 'app.js:is-panning';
     if (document.head.querySelector(`style[data-generated-by="${id}"]`)) return;
     const css = `
-      body.is-panning, body.is-panning * {
-        -webkit-user-select: none !important;
-        -moz-user-select: none !important;
-        -ms-user-select: none !important;
-        user-select: none !important;
-        -webkit-tap-highlight-color: transparent !important;
-      }
+      body.is-panning, body.is-panning * { -webkit-user-select:none!important; user-select:none!important; -webkit-tap-highlight-color:transparent!important; }
       body.is-panning ::selection { background: transparent !important; }
     `;
     const s = document.createElement('style');
@@ -835,56 +382,36 @@ window.addEventListener("DOMContentLoaded", () => {
     document.head.appendChild(s);
   })();
 
-  /* ------------------ Authoritative canvas / pen initial state ------------------ */
-  try {
-    if (state.penOn) document.body.classList.add('pen-active'); else document.body.classList.remove('pen-active');
-  } catch (e) {}
-  const canvasInit = document.getElementById('inkWorld');
-  if (canvasInit) {
-    // authoritative inline defaults; JS will keep these in sync when toggling pen
-    canvasInit.style.pointerEvents = state.penOn ? 'auto' : 'none';
-    // choose a z-index that places canvas above paper content but below UI panels
-    canvasInit.style.zIndex = state.penOn ? '950' : '5';
-  }
-
-  /* ------------------ Auto-populate Google Sheets URL ------------------ */
+  // Auto-populate GS URL
   const AUTO_SHEET = "https://docs.google.com/spreadsheets/d/1P_Vslp-rxiTcntUZVLR2BjJrdeQqdWfPLeigs2Gnx_U/edit?usp=sharing";
   if (el.gsUrl && !el.gsUrl.value) el.gsUrl.value = AUTO_SHEET;
 
-  /* ------------------ Load from Google Sheets button ------------------ */
+  // Wire Google Sheets loader (defensive)
   if (el.loadGs && el.gsUrl) {
     el.loadGs.addEventListener("click", async () => {
       try {
         const url = el.gsUrl.value.trim();
-        if (!url) { setProgress(0, "Paste a Google Sheets URL first."); return; }
-        const gs = ensureGs();
-        if (!gs.__patchedForApp) {
-          const orig = gs.loadFromGoogleSheets.bind(gs);
-          gs.loadFromGoogleSheets = async function (sheetUrl) {
-            await orig(sheetUrl);
-            try {
-              const general = window.state?.data?.general ?? null;
-              const spells = window.state?.data?.spells ?? null;
-              if (typeof window.receiveIngestedData === "function") {
-                window.receiveIngestedData(general, spells);
-              }
-            } catch (err) { console.warn("post-ingest merge failed", err); }
-          };
-          gs.__patchedForApp = true;
+        if (!url) { console.warn("Paste a Google Sheets URL first."); return; }
+        if (typeof ensureGs === 'function') {
+          const gs = ensureGs();
+          if (!gs.__patchedForApp) {
+            const orig = gs.loadFromGoogleSheets.bind(gs);
+            gs.loadFromGoogleSheets = async function(sheetUrl){
+              await orig(sheetUrl);
+              try { const general = window.state?.data?.general ?? null; const spells = window.state?.data?.spells ?? null; if (typeof window.receiveIngestedData === "function") window.receiveIngestedData(general, spells); } catch(e){ console.warn("post-ingest merge failed", e); }
+            };
+            gs.__patchedForApp = true;
+          }
+          await gs.loadFromGoogleSheets(url);
+          mergeWindowStateIfPresent();
+          render();
+          ensureCanvasSize();
+          if (window.ink && typeof window.ink.redraw === 'function') window.ink.redraw();
+        } else {
+          console.warn("ensureGs not available in this environment.");
         }
-        await gs.loadFromGoogleSheets(url);
-        mergeWindowStateIfPresent();
-        if (typeof render === "function") render();
-        if (window.ink && typeof window.ink.ensureCanvasSize === "function") window.ink.ensureCanvasSize();
-        if (window.ink && typeof window.ink.redraw === "function") window.ink.redraw();
-        setProgress(100, "Done ✅");
-      } catch (e) {
-        console.error(e);
-        setProgress(0, "Google Sheets load failed (see console).");
-      }
+      } catch (e) { console.error(e); }
     });
-  } else {
-    console.warn("Google Sheets UI not present (#gsUrl / #loadGs).");
   }
 
   if (el.fillGs && el.gsUrl) {
@@ -892,48 +419,32 @@ window.addEventListener("DOMContentLoaded", () => {
     el.gsUrl.addEventListener("keydown", (e) => { if (e.key === "Enter") el.loadGs.click(); });
   }
 
-  /* ------------------ Wire ink controls and pen toggle (authoritative) ------------------ */
-  (function wireInkControls() {
-    function safeInk() {
-      if (window.ink) return window.ink;
-      console.warn("ink API not ready yet");
-      return null;
-    }
-
-    function updatePenLabel() { if (!el.penToggle) return; el.penToggle.textContent = `Pen: ${state.penOn ? "ON" : "OFF"}`; }
-    function updateEraserLabel() { if (!el.eraser) return; el.eraser.textContent = state.erasing ? "Eraser: ON" : "Eraser"; }
+  /* ------------------ Wire ink controls and pen toggle ------------------ */
+  (function wireInkControls(){
+    function safeInk(){ if (window.ink) return window.ink; console.warn("ink API not ready"); return null; }
+    function updatePenLabel(){ if (!el.penToggle) return; el.penToggle.textContent = `Pen: ${state.penOn ? "ON" : "OFF"}`; }
+    function updateEraserLabel(){ if (!el.eraser) return; el.eraser.textContent = state.erasing ? "Eraser: ON" : "Eraser"; }
 
     if (el.penToggle) el.penToggle.disabled = true;
     if (el.eraser) el.eraser.disabled = true;
     if (el.undo) el.undo.disabled = true;
     if (el.clearInk) el.clearInk.disabled = true;
 
-    const enableControls = () => {
-      if (el.penToggle) el.penToggle.disabled = false;
-      if (el.eraser) el.eraser.disabled = false;
-      if (el.undo) el.undo.disabled = false;
-      if (el.clearInk) el.clearInk.disabled = false;
-    };
+    const enableControls = () => { if (el.penToggle) el.penToggle.disabled = false; if (el.eraser) el.eraser.disabled = false; if (el.undo) el.undo.disabled = false; if (el.clearInk) el.clearInk.disabled = false; };
 
     const setCanvasInteraction = (on) => {
       const canvas = document.getElementById('inkWorld');
       if (canvas) {
         canvas.style.pointerEvents = on ? 'auto' : 'none';
-        // ensure canvas is above paper content but below UI panels; adjust if your panels use different z-index
-        canvas.style.zIndex = on ? '950' : '5';
+        canvas.style.zIndex = on ? '1000' : '5';
       }
     };
 
     const inkReadyCheck = () => {
       if (window.ink) {
         enableControls();
-
-        // Ensure ink internal mode matches state at startup
-        try {
-          if (typeof window.ink.setPenMode === 'function') window.ink.setPenMode(!!state.penOn);
-        } catch (e) { console.warn("ink.setPenMode startup error", e); }
-
-        // Ensure canvas inline state matches state at startup
+        // Sync ink internal mode with state
+        try { if (typeof window.ink.setPenMode === 'function') window.ink.setPenMode(!!state.penOn); } catch(e){}
         setCanvasInteraction(!!state.penOn);
 
         if (el.penToggle) {
@@ -945,9 +456,8 @@ window.addEventListener("DOMContentLoaded", () => {
             }
             if (state.penOn) document.body.classList.add('pen-active'); else document.body.classList.remove('pen-active');
             setCanvasInteraction(state.penOn);
-            // ensure ink canvas sizing/redraw after toggling
-            if (window.ink && typeof window.ink.ensureCanvasSize === 'function') window.ink.ensureCanvasSize();
-            if (window.ink && typeof window.ink.redraw === 'function') window.ink.redraw();
+            ensureCanvasSize();
+            requestAnimationFrame(()=> setCanvasInteraction(state.penOn));
             updatePenLabel();
           });
         }
@@ -964,49 +474,27 @@ window.addEventListener("DOMContentLoaded", () => {
         }
 
         if (el.undo) {
-          el.undo.addEventListener("click", () => {
-            const inkApi = safeInk();
-            if (inkApi && typeof inkApi.undo === "function") {
-              try { inkApi.undo(); } catch (e) { console.error("ink.undo error", e); }
-            } else { console.warn("undo not available"); }
-          });
+          el.undo.addEventListener("click", () => { try { window.ink.undo(); } catch(e){ console.warn("undo failed", e); } });
         }
-
         if (el.clearInk) {
-          el.clearInk.addEventListener("click", () => {
-            const inkApi = safeInk();
-            if (inkApi && typeof inkApi.clear === "function") {
-              try { inkApi.clear(); } catch (e) { console.error("ink.clear error", e); }
-            } else { console.warn("clear not available"); }
-          });
+          el.clearInk.addEventListener("click", () => { try { window.ink.clear(); } catch(e){ console.warn("clear failed", e); } });
         }
-
       } else {
-        // Fallback: enable controls and wire a defensive pen toggle
-        setTimeout(() => {
+        setTimeout(()=> {
           enableControls();
           if (el.penToggle) {
             el.penToggle.addEventListener("click", () => {
               state.penOn = !state.penOn;
               if (state.penOn) document.body.classList.add('pen-active'); else document.body.classList.remove('pen-active');
               setCanvasInteraction(state.penOn);
-              if (window.ink && typeof window.ink.ensureCanvasSize === 'function') window.ink.ensureCanvasSize();
-              if (window.ink && typeof window.ink.redraw === 'function') window.ink.redraw();
+              ensureCanvasSize();
+              requestAnimationFrame(()=> setCanvasInteraction(state.penOn));
               updatePenLabel();
             });
           }
-          if (el.eraser) {
-            el.eraser.addEventListener("click", () => {
-              state.erasing = !state.erasing;
-              updateEraserLabel();
-            });
-          }
-          if (el.undo) {
-            el.undo.addEventListener("click", () => { console.warn("undo not available"); });
-          }
-          if (el.clearInk) {
-            el.clearInk.addEventListener("click", () => { console.warn("clear not available"); });
-          }
+          if (el.eraser) el.eraser.addEventListener("click", ()=>{ state.erasing = !state.erasing; updateEraserLabel(); });
+          if (el.undo) el.undo.addEventListener("click", ()=>{ console.warn("undo not available"); });
+          if (el.clearInk) el.clearInk.addEventListener("click", ()=>{ console.warn("clear not available"); });
         }, 300);
       }
     };
@@ -1018,31 +506,29 @@ window.addEventListener("DOMContentLoaded", () => {
     const penWidthLabel = document.getElementById("penWidthLabel");
     if (penWidthEl) {
       penWidthEl.value = state.penWidth ?? 0.5;
-      penWidthLabel.textContent = (Number(penWidthEl.value) % 1 === 0) ? String(Number(penWidthEl.value)) : Number(penWidthEl.value).toFixed(2).replace(/\.00$/, "");
+      penWidthLabel.textContent = (Number(penWidthEl.value) % 1 === 0) ? String(Number(penWidthEl.value)) : Number(penWidthEl.value).toFixed(2);
       penWidthEl.addEventListener("input", () => {
         const v = parseFloat(penWidthEl.value) || 0.25;
         state.penWidth = v;
-        penWidthLabel.textContent = (v % 1 === 0) ? String(v) : v.toFixed(2).replace(/\.00$/, "");
-        const inkApi = safeInk();
+        penWidthLabel.textContent = (v % 1 === 0) ? String(v) : v.toFixed(2);
+        const inkApi = window.ink;
         if (inkApi && typeof inkApi.setPenWidth === "function") inkApi.setPenWidth(v);
       });
     }
 
-    // Add writable space button
-    const addWriteSpaceBtn = document.getElementById("addWriteSpace");
-    if (addWriteSpaceBtn) {
-      addWriteSpaceBtn.addEventListener("click", () => {
-        const ws = document.createElement("div");
-        ws.className = "panel write-space";
-        ws.setAttribute("contenteditable", "true");
-        ws.textContent = "";
-        const appEl = document.getElementById("app");
-        if (appEl) {
-          appEl.appendChild(ws);
-          if (window.ink && typeof window.ink.ensureCanvasSize === "function") window.ink.ensureCanvasSize();
-          if (window.ink && typeof window.ink.redraw === "function") window.ink.redraw();
-          ws.focus();
-        }
+    // Greyscale control
+    const penGreyEl = document.getElementById("penGrey");
+    const penGreyLabel = document.getElementById("penGreyLabel");
+    if (penGreyEl) {
+      penGreyEl.value = state.penGrey ?? 0;
+      const updateGreyLabel = (val) => { const grey = Math.round(val * 2.55); const hex = grey.toString(16).padStart(2,"0"); penGreyLabel.textContent = `#${hex}${hex}${hex}`; };
+      updateGreyLabel(penGreyEl.value);
+      penGreyEl.addEventListener("input", () => {
+        const v = Number(penGreyEl.value) || 0;
+        state.penGrey = v;
+        updateGreyLabel(v);
+        const inkApi = window.ink;
+        if (inkApi && typeof inkApi.setPenGrey === "function") inkApi.setPenGrey(v);
       });
     }
   })();
@@ -1067,13 +553,11 @@ window.addEventListener("DOMContentLoaded", () => {
   }
 
   /* ------------------ Viewport pan guard (prevent stealing clicks) ------------------ */
-  (function ensureViewportPanGuard() {
+  (function ensureViewportPanGuard(){
     if (!el.viewport) return;
+    const P = { panDrag:{ active:false, startX:0, startY:0, basePanX:0, basePanY:0 }, panPending:false, PAN_THRESHOLD: PAN_THRESHOLD };
 
-    // local pan state (kept separate to avoid clobbering other code)
-    const P = { panDrag: { active: false, startX: 0, startY: 0, basePanX: 0, basePanY: 0 }, panPending: false, PAN_THRESHOLD: 6 };
-
-    function beginPanInit(e) {
+    function beginPanInit(e){
       P.panPending = true;
       P.panDrag.startX = e.clientX;
       P.panDrag.startY = e.clientY;
@@ -1081,41 +565,39 @@ window.addEventListener("DOMContentLoaded", () => {
       P.panDrag.basePanY = state.pan.y;
       document.body.classList.add('is-panning');
     }
-    function beginPanCommit() {
-      P.panDrag.active = true;
-    }
-    function movePanHandler(e) {
+    function beginPanCommit(){ P.panDrag.active = true; }
+    function movePanHandler(e){
       if (!P.panDrag.active) return;
       const dx = e.clientX - P.panDrag.startX;
       const dy = e.clientY - P.panDrag.startY;
       state.pan.x = P.panDrag.basePanX + dx;
       state.pan.y = P.panDrag.basePanY + dy;
-      try { applyWorldTransform(); } catch (err) {}
-      if (window.ink && typeof window.ink.ensureCanvasSize === "function") window.ink.ensureCanvasSize();
+      applyWorldTransform();
+      ensureCanvasSize();
       if (window.ink && typeof window.ink.redraw === "function") window.ink.redraw();
     }
-    function endPanHandler(e) {
+    function endPanHandler(e){
       P.panPending = false;
       P.panDrag.active = false;
       document.body.classList.remove('is-panning');
       try { el.viewport.releasePointerCapture?.(e?.pointerId); } catch (err) {}
     }
 
-    // pointerdown: only start pending pan if not pen mode and not on interactive element
-el.viewport.addEventListener("pointerdown", (e) => {
-  // If pen is active we must not start panning
-  if (state.penOn) return;
+    el.viewport.addEventListener("pointerdown", (e) => {
+      // If pen is active we must not start panning
+      if (state.penOn) return;
 
-  // If the pointerdown started on an interactive element, don't begin pan.
-  const interactive = e.target && e.target.closest && e.target.closest('input, button, label, a, textarea, select, [contenteditable]');
-  if (interactive) return;
+      // If the pointerdown started on an interactive element, don't begin pan.
+      const interactive = e.target && e.target.closest && e.target.closest('input, button, label, a, textarea, select, [contenteditable]');
+      if (interactive) return;
 
-  // If the pointerdown started on the canvas itself, don't begin pan (canvas handles it)
-  if (e.target && e.target.closest && e.target.closest('canvas#inkWorld')) return;
+      // If pointerdown started on the canvas itself, bail (canvas handles it)
+      if (e.target && e.target.closest && e.target.closest('canvas#inkWorld')) return;
 
-  beginPanInit(e);
-  try { el.viewport.setPointerCapture?.(e.pointerId); } catch (err) {}
-});
+      beginPanInit(e);
+      try { el.viewport.setPointerCapture?.(e.pointerId); } catch (err) {}
+    });
+
     el.viewport.addEventListener("pointermove", (e) => {
       if (!P.panPending && !P.panDrag.active) return;
       if (!P.panDrag.active) {
@@ -1145,15 +627,9 @@ el.viewport.addEventListener("pointerdown", (e) => {
     });
   })();
 
+  /* --------------------------- Initial setup ----------------------------- */
+  applyWorldTransform();
+  ensureCanvasSize();
+  render();
+
 });
-
-
-
-/* --------------------------- Initial setup ----------------------------- */
-applyWorldTransform();
-// Ensure canvas inline state is authoritative at startup
-const c0 = document.getElementById('inkWorld');
-if (c0) { c0.style.pointerEvents = state.penOn ? 'auto' : 'none'; c0.style.zIndex = state.penOn ? '950' : '5'; }
-if (window.ink && typeof window.ink.ensureCanvasSize === "function") window.ink.ensureCanvasSize();
-if (window.ink && typeof window.ink.loadForView === "function") window.ink.loadForView(state.view);
-render();
