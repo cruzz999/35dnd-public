@@ -1,408 +1,115 @@
-/* styles.css - cleaned and single-definition layout
-   - ability-breakdown-grid defined once (7 columns)
-   - compact numeric columns, centered inputs
-   - boxed panels, spells table wrapper, writeable area
-*/
-
-/* Reset / base */
-:root {
+:root{
+  --topbar-bg: rgba(255,255,255,0.96);
   --panel-bg: #fff;
-  --panel-border: rgba(0,0,0,0.08);
-  --muted: #666;
-  --accent: #4caf50;
-  --paper-width-landscape: 1120px;
-  --ability-col-width: 56px;
-  --ability-input-width: 44px;
+  --panel-border: rgba(0,0,0,0.06);
+  --gap: 8px;
 }
 
-html, body {
-  height: 100%;
-  margin: 0;
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
-  background: #f7f7f7;
-  color: #111;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
+/* Basic reset */
+* { box-sizing: border-box; }
+html,body { height:100%; margin:0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; background:#f6f6f6; color:#111; }
 
-/* Topbar and controls */
+/* Topbar: sticky, wraps, always on top */
 .topbar {
   position: sticky;
   top: 0;
   left: 0;
   right: 0;
-  z-index: 1100; /* must be higher than the canvas when pen is active */
+  z-index: 1100; /* must be above canvas when pen active */
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-  box-sizing: border-box;
-  padding: 6px 10px;
-  background: var(--topbar-bg, rgba(255,255,255,0.95));
+  gap: var(--gap);
+  padding: 8px 12px;
+  background: var(--topbar-bg);
   backdrop-filter: blur(4px);
-  border-bottom: 1px solid rgba(0,0,0,0.06);
+  border-bottom: 1px solid var(--panel-border);
+  flex-wrap: wrap;
   min-height: 44px;
 }
-.topbar .controls {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-.topbar .controls label {
-  margin: 0 6px;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
+
+/* Left / controls / right groups wrap nicely */
+.topbar .left,
+.topbar .controls,
+.topbar .right {
+  display:flex;
+  gap:8px;
+  align-items:center;
+  flex-wrap:wrap;
 }
 
-/* Viewport, world, app */
-#viewport {
-  position: relative;
-  overflow: auto;
+/* Buttons and small controls */
+.btn {
   background: #fff;
-}
-#world {
-  transform-origin: 0 0;
-  position: relative;
-}
-#app {
-  position: relative;
-  background: transparent;
-  min-width: 320px;
-  padding: 12px;
-  box-sizing: border-box;
-}
-
-/* Panel boxes */
-.panel {
-  border: 1px solid var(--panel-border);
-  background: var(--panel-bg);
-  padding: 10px;
-  border-radius: 6px;
-  box-shadow: 0 1px 0 rgba(0,0,0,0.03);
-  margin-bottom: 10px;
-}
-
-/* Headings and small text */
-.panel h2 { margin: 0 0 8px 0; font-size: 18px; }
-.panel h3 { margin: 0 0 8px 0; font-size: 15px; }
-.hint { color: var(--muted); font-size: 13px; margin-top: 6px; }
-
-/* Grid container used across the app */
-.grid {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-/* ---------- Ability breakdown grid (single authoritative definition) ----------
-/* Robust ability grid: explicit 7 columns, children cannot stretch to full width */
-.ability-breakdown-grid {
-  display: grid;
-  grid-auto-flow: row;
-  grid-template-columns: max-content repeat(6, 48px); /* label + 6 numeric columns */
-  column-gap: 6px;   /* gap between numeric columns only */
-  row-gap: 4px;
-  align-items: center;
-  justify-content: start;
-  width: 350px;
-  box-sizing: border-box;
-}
-
-/* Prevent any grid child from forcing a full-row width */
-.ability-breakdown-grid > * {
-  width: auto !important;
-  min-width: 0;
-  box-sizing: border-box;
-  display: block; /* keep block-level but allow grid to size it */
-  margin: 0;
-  padding: 0; /* we'll control padding per cell below */
-}
-
-/* Label cell (first cell of each 7-cell row) — small breathing room only */
-.ability-breakdown-grid > *:nth-child(7n+1) {
-  padding-left: 0;
-  padding-right: 6px;
-  justify-self: start;
-  text-align: right;
-}
-
-/* Numeric cells centered and compact */
-.ability-breakdown-grid .val {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 2px 2px;
-  min-height: 26px;
-  box-sizing: border-box;
-}
-
-/* Inputs: small and centered; do NOT let them expand to 100% */
-.ability-breakdown-grid input[type="number"],
-.ability-breakdown-grid input[type="text"] {
-  width: 40px;
-  max-width: 100%;
-  box-sizing: border-box;
-  padding: 2px;
-  height: 24px;
-  text-align: center;
-  border-radius: 4px;
   border: 1px solid rgba(0,0,0,0.08);
-  background: #fff;
-  display: inline-block; /* critical: prevents full-width expansion */
-}
-
-/* Totals and Mods: slightly smaller min-width */
-.ability-breakdown-grid .val strong {
-  min-width: 28px;
-  padding: 0 2px;
-  font-weight: 700;
-  display: inline-block;
-}
-
-
-/* Feats and languages lists */
-.panel ul { margin: 6px 0 0 18px; padding: 0; }
-
-/* Writeable space */
-.write-space {
-  border: 1px dashed rgba(0,0,0,0.10);
-  background: rgba(255,255,255,0.98);
-  min-height: 120px;
-  margin: 8px 0;
-  padding: 8px;
+  padding: 6px 10px;
   border-radius: 6px;
-  box-sizing: border-box;
-  overflow: auto;
-  resize: vertical;
+  cursor: pointer;
   font-size: 14px;
 }
-.write-space[contenteditable="true"] { outline: none; caret-color: #111; }
+.btn:active { transform: translateY(1px); }
+.small input[type="range"] { vertical-align: middle; margin-left:6px; }
+.small { display:flex; align-items:center; gap:6px; }
 
-/* Spells table and wrapper */
-.table-wrapper {
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-}
-.table {
-  table-layout: fixed;
+/* Viewport and world (paper) */
+.viewport {
   width: 100%;
-  border-collapse: collapse;
-  background: var(--panel-bg);
+  height: calc(100vh - 56px); /* fallback; JS will sync exact height */
+  overflow: auto;
+  position: relative;
+  background: #f6f6f6;
 }
-.table th, .table td {
-  padding: 6px 8px;
-  border: 1px solid rgba(0,0,0,0.06);
-  font-size: 13px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* Prep boxes */
-.prep-box {
-  display: inline-block;
-  width: 48px;
-  height: 20px;
-  border: 1px solid rgba(0,0,0,0.08);
-  border-radius: 3px;
-  text-align: center;
-  line-height: 20px;
-  font-size: 12px;
+.world {
+  position: relative;
+  transform-origin: 0 0;
+  /* world content background (paper) */
   background: #fff;
+  margin: 20px;
+  padding: 20px;
+  min-height: 800px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  z-index: 10;
 }
 
-/* Landscape container for spells view */
-#app.landscape {
-  width: var(--paper-width-landscape);
-  max-width: none;
+/* Panels and app content */
+.app .panel {
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  padding: 12px;
+  margin-bottom: 12px;
+  border-radius: 6px;
+  position: relative;
+  z-index: 900; /* panels sit above world but below canvas when pen active */
 }
 
-/* Canvas ink styling */
-canvas.ink {
-  display: block;
+/* Ink overlay and canvas defaults */
+#inkOverlay {
+  position: fixed;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none; /* overlay inert; canvas controls pointer-events */
+  z-index: 900; /* baseline; canvas will be raised when active */
+}
+canvas#inkWorld {
   position: absolute;
   left: 0;
   top: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none; /* authoritative JS toggles this when pen active */
   z-index: 5;
   touch-action: none;
+  user-select: none;
 }
 
-/* Small responsive tweaks */
-@media (max-width: 720px) {
-  .ability-breakdown-grid {
-    grid-template-columns: 1fr repeat(6, 48px);
-    font-size: 12px;
-  }
-  :root { --ability-col-width: 48px; --ability-input-width: 40px; }
-}
-/* --- Reduce horizontal whitespace and tighten layout --- */
-
-/* Cap the app width and center it so it doesn't expand indefinitely */
-#app {
-  max-width: 980px;        /* prevents mile-long paper */
-  margin-left: auto;
-  margin-right: auto;
-  padding: 8px;            /* slightly reduced padding */
-  box-sizing: border-box;
-}
-
-/* Slightly tighter topbar so controls don't push layout */
-.topbar {
-  padding: 6px 10px;
-  gap: 8px;
-}
-
-/* Ability grid: smaller label column and compact numeric columns */
-.ability-breakdown-grid {
-  grid-template-columns: 1fr repeat(6, 48px); /* label uses remaining space; numeric columns fixed */
-  gap: 6px;
-}
-
-/* Make numeric inputs a touch narrower */
-:root { --ability-input-width: 40px; }
-.ability-breakdown-grid input[type="number"],
-.ability-breakdown-grid input[type="text"] {
-  width: var(--ability-input-width);
-  padding: 2px 4px;
-  font-size: 13px;
-}
-
-/* Reduce min widths for totals/mods so they don't force expansion */
-.ability-breakdown-grid .val strong {
-  min-width: 32px;
-}
-
-/* Landscape mode: allow it but don't force huge width; center and allow scroll if needed */
-#app.landscape {
-  max-width: 1120px;      /* keep landscape but capped */
-  width: 100%;
-  margin-left: auto;
-  margin-right: auto;
-}
-
-/* Table wrapper: only scroll when necessary */
-.table-wrapper {
-  overflow-x: auto;
-  max-width: 100%;
-}
-
-/* Prevent the viewport from adding extra horizontal padding */
-#viewport {
-  padding: 0;
-  overflow: auto;
-}
-
-/* Reduce default left/right margins on panels to save horizontal space */
-.panel {
-  margin-left: 0;
-  margin-right: 0;
-}
-
-/* Small screens: keep things usable */
-@media (max-width: 900px) {
-  #app { padding: 8px; max-width: 100%; }
-  .ability-breakdown-grid { grid-template-columns: 1fr repeat(6, 44px); }
-  :root { --ability-input-width: 36px; }
-}
-/* Ensure ink canvas does not steal mouseup when pen is off */
-canvas#inkWorld {
-  pointer-events: none !important;
-  z-index: 5 !important;
-}
-
-/* When pen mode is active, body gets a class and canvas can accept pointers */
+/* When pen mode is active, canvas becomes interactive and raised above panels */
 body.pen-active canvas#inkWorld {
   pointer-events: auto !important;
-  z-index: 950 !important;
-}
-/* Make checkboxes and labels sit above the canvas and accept pointer events */
-.panel input,
-.panel label input,
-.ability-breakdown-grid input,
-.ability-breakdown-grid input[type="checkbox"] {
-  position: relative !important;
-  z-index: 60 !important;
-  pointer-events: auto !important;
-}
-/* Prevent pseudo-elements from catching pointer events */
-.panel *::before,
-.panel *::after,
-.ability-breakdown-grid *::before,
-.ability-breakdown-grid *::after {
-  pointer-events: none !important;
+  z-index: 1000 !important; /* below topbar (1100) but above panels (900) */
 }
 
-/* Topbar: always visible, never cut off, buttons wrap to new row when needed */
-.topbar {
-  position: sticky;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 1000;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  box-sizing: border-box;
-  padding: 6px 10px;
-  background: var(--topbar-bg, rgba(255,255,255,0.95));
-  backdrop-filter: blur(4px);
-  border-bottom: 1px solid rgba(0,0,0,0.06);
-}
-
-/* Ensure controls inside the topbar wrap instead of overflowing */
-.topbar .controls,
-.topbar .left,
-.topbar .right {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  flex-wrap: wrap;
-}
-
-/* Make sure buttons and inputs can wrap and remain accessible */
-.topbar button,
-.topbar input,
-.topbar select,
-.topbar label {
-  white-space: nowrap;
-  flex: 0 0 auto;
-}
-
-/* Prevent the topbar from being clipped by overflow on ancestors */
-.topbar,
-.topbar * {
-  overflow: visible;
-}
-
-/* Canvas stacking: keep canvas behind topbar and UI panels */
-canvas#inkWorld {
-  z-index: 5 !important;
-  pointer-events: none !important; /* default inert; JS toggles when pen-active */
-}
-
-/* Top UI panels and controls should sit above the canvas */
-.panel,
-.topbar,
-.topbar * {
-  position: relative;
-  z-index: 900;
-  pointer-events: auto;
-}
-
-/* When pen mode is active, body.pen-active enables canvas pointer events */
-body.pen-active canvas#inkWorld {
-  pointer-events: auto !important;
-  z-index: 40 !important;
-}
-
-/* Small responsive tweak: ensure topbar height is not constrained */
-.topbar {
-  min-height: 44px;
-}
-/* When pen mode is active, prevent text selection and tap highlight */
+/* Prevent selection while pen is active or panning */
 body.pen-active, body.pen-active * {
   -webkit-user-select: none !important;
   -moz-user-select: none !important;
@@ -410,10 +117,16 @@ body.pen-active, body.pen-active * {
   user-select: none !important;
   -webkit-tap-highlight-color: transparent !important;
 }
+body.is-panning, body.is-panning * {
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  -webkit-tap-highlight-color: transparent !important;
+}
+body.pen-active ::selection,
+body.is-panning ::selection { background: transparent !important; }
 
-/* Extra guard: make selection invisible while pen is active */
-body.pen-active ::selection { background: transparent !important; }
-/* Utility */
-.hidden { display: none !important; }
-.center { text-align: center; }
-.small { font-size: 12px; color: var(--muted); }
+/* Responsive tweaks */
+@media (max-width:720px){
+  .topbar { padding: 8px; gap:6px; }
+  .btn { padding:6px 8px; font-size:13px; }
+}
