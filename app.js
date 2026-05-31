@@ -2,6 +2,7 @@
    DnD Ink Sheet - app.js (drop-in replacement)
    - Fix: avoid starting pan when pointerdown originates on interactive elements
    - Pan threshold to avoid accidental capture on small moves
+   - Prevent page element highlighting while panning by toggling a body class
    - Canvas attached to #world so it moves with pan/zoom
    - Canvas pointer-events authoritative via body.pen-active and inline styles
    - Delegated checkbox handling with requestAnimationFrame to avoid races
@@ -165,6 +166,8 @@ const PAN_THRESHOLD = 6; // pixels
 
 function beginPanCommit() {
   panDrag.active = true;
+  // while actively panning, add class to prevent selection/highlight
+  document.body.classList.add('is-panning');
 }
 function beginPanInit(e) {
   panPending = true;
@@ -172,6 +175,8 @@ function beginPanInit(e) {
   panDrag.startY = e.clientY;
   panDrag.basePanX = state.pan.x;
   panDrag.basePanY = state.pan.y;
+  // add class early so accidental selection is suppressed during drag
+  document.body.classList.add('is-panning');
 }
 function movePan(e) {
   if (!panDrag.active) return;
@@ -186,6 +191,8 @@ function movePan(e) {
 function endPan(e) {
   panPending = false;
   panDrag.active = false;
+  // remove panning class when finished
+  document.body.classList.remove('is-panning');
   try { el.viewport && el.viewport.releasePointerCapture && el.viewport.releasePointerCapture(e?.pointerId); } catch (err) {}
 }
 
@@ -221,6 +228,8 @@ if (el.viewport) {
     // If we never committed to a pan, let the click/mouseup proceed normally
     if (!panDrag.active) {
       panPending = false;
+      // remove panning class if it was added during pending state
+      document.body.classList.remove('is-panning');
       try { el.viewport.releasePointerCapture?.(e.pointerId); } catch (err) {}
       return;
     }
@@ -230,6 +239,7 @@ if (el.viewport) {
   el.viewport.addEventListener("pointercancel", (e) => {
     panPending = false;
     panDrag.active = false;
+    document.body.classList.remove('is-panning');
     try { el.viewport.releasePointerCapture?.(e.pointerId); } catch (err) {}
   });
 }
@@ -725,6 +735,27 @@ function mergeWindowStateIfPresent() {
 
 /* ---------------------- Hook Google Sheets button ---------------------- */
 window.addEventListener("DOMContentLoaded", () => {
+  // Inject a small style block to suppress selection/highlight while panning
+  // and to ensure tap highlight is removed during pan.
+  (function injectPanningStyles() {
+    const css = `
+      /* When body has is-panning, prevent text selection and tap highlight */
+      body.is-panning, body.is-panning * {
+        -webkit-user-select: none !important;
+        -moz-user-select: none !important;
+        -ms-user-select: none !important;
+        user-select: none !important;
+        -webkit-tap-highlight-color: transparent !important;
+      }
+      /* Make selection invisible while panning (extra guard) */
+      body.is-panning ::selection { background: transparent !important; }
+    `;
+    const s = document.createElement('style');
+    s.setAttribute('data-generated-by', 'app.js:is-panning');
+    s.appendChild(document.createTextNode(css));
+    document.head.appendChild(s);
+  })();
+
   // Ensure body class matches initial pen state (authoritative)
   if (state.penOn) document.body.classList.add('pen-active'); else document.body.classList.remove('pen-active');
   // Ensure canvas inline style matches initial state
