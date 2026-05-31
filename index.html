@@ -3,81 +3,63 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>35 DnD Ink Sheet</title>
-  <link rel="stylesheet" href="styles.css" />
+  <title>DnD Ink Sheet</title>
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <div class="topbar">
-    <div class="brand">35 DnD Ink Sheet</div>
-    <div class="controls">
-      <input id="gsUrl" class="input" placeholder="Paste Google Sheets URL here" />
-      <button id="loadGs" class="btn">Load Google Sheets</button>
+    <div class="left">
       <button id="viewGeneral" class="btn">General</button>
       <button id="viewSpells" class="btn">Spells</button>
       <button id="viewSlots" class="btn">Slots</button>
       <button id="viewSkills" class="btn">Skills</button>
+    </div>
+
+    <div class="controls">
       <button id="zoomOut" class="btn">−</button>
-      <button id="zoomIn" class="btn">+</button>
       <button id="zoomReset" class="btn">Reset</button>
-      <button id="addWriteSpace">Add Space</button>
+      <button id="zoomIn" class="btn">+</button>
+
       <button id="penToggle" class="btn">Pen: OFF</button>
       <button id="eraser" class="btn">Eraser</button>
       <button id="undo" class="btn">Undo</button>
-      <button id="clearInk" class="btn">Clear</button>
-      <!-- Add these near the other controls in the topbar -->
-<!-- Pen width control (replace existing penWidth control) -->
-<label style="display:flex;align-items:center;gap:6px;">
-  <span style="font-size:13px;">Width</span>
-  <input id="penWidth" type="range" min="0.5" max="24" step="0.25" value="0.5" style="width:120px;">
-  <span id="penWidthLabel" style="min-width:36px;text-align:center;font-size:13px;">0.5</span>
-</label>
+      <button id="clearInk" class="btn">Clear Ink</button>
 
-<!-- Greyscale control (unchanged) -->
-<label style="display:flex;align-items:center;gap:6px;">
-  <span style="font-size:13px;">Grey</span>
-  <input id="penGrey" type="range" min="0" max="100" value="0" style="width:120px;">
-  <span id="penGreyLabel" style="min-width:36px;text-align:center;font-size:13px;">#000</span>
-</label>
+      <label class="small">
+        Width
+        <input id="penWidth" type="range" min="0.25" max="4" step="0.25" value="0.5">
+        <span id="penWidthLabel">0.5</span>
+      </label>
 
-<!-- Google Sheets input (auto-populated) -->
-<input id="gsUrl" placeholder="Google Sheets URL"
-  value="https://docs.google.com/spreadsheets/d/1P_Vslp-rxiTcntUZVLR2BjJrdeQqdWfPLeigs2Gnx_U/edit?usp=sharing"
-  style="width:60%" />
+      <label class="small">
+        Grey
+        <input id="penGrey" type="range" min="0" max="100" step="1" value="0">
+        <span id="penGreyLabel">#000000</span>
+      </label>
     </div>
 
-
-
-
-
-
-
-
+    <div class="right">
+      <input id="gsUrl" class="gsurl" placeholder="Google Sheets URL">
+      <button id="fillGs" class="btn">Fill</button>
+      <button id="loadGs" class="btn">Load</button>
+      <input id="file" type="file" style="display:none;">
+    </div>
   </div>
 
+  <!-- viewport contains the world (paper) which is transformed for pan/zoom -->
   <div id="viewport" class="viewport">
     <div id="world" class="world">
+      <!-- app content is rendered into #app -->
       <div id="app" class="app"></div>
-      <canvas id="inkWorld" class="ink"></canvas>
     </div>
   </div>
 
-  <div class="statusbar">
-    <div id="status" class="status">Ready</div>
-    <div class="progress">
-      <div id="progressBar" class="progressBar"></div>
-    </div>
-  </div>
+  <!-- Canvas is created in DOM and will be moved into a top-level overlay by app.js -->
+  <canvas id="inkWorld" class="ink" aria-hidden="true"></canvas>
 
-  <template id="hint-template">
-    <div class="hint">Use the Google Sheets URL above to load your character sheet. XLSX uploads are disabled.</div>
-  </template>
-
-  <!-- Optional: keep a disabled file input if you want a visual placeholder -->
-  <div class="file-ui">
-    <label class="file-label">XLSX uploads disabled</label>
-    <input id="file" type="file" accept=".xlsx" style="display:none" />
-  </div>
-
-  <!-- gs_ingest must be loaded before app.js -->
+  <!-- Scripts -->
+  <!-- gs_ingest.js is expected to be present in the project and loaded before app.js -->
   <script src="gs_ingest.js"></script>
   <script src="app.js"></script>
+</body>
+</html>
