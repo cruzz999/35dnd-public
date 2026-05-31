@@ -826,155 +826,6 @@ function ingestSpellsFromGrid(grid) {
   // Meta: keep your current baseline; we can pull levels from sheet later if desired
   state.data.spells.meta = { sorcLevels: 1, wizLevels: 5, umLevels: 2, arcaneSpellpower: 1 };
 }
-/* ------------------------------ XLSX ingest ---------------------------- */
-function ingestGeneralFromXlsx(wb) {
-  const ws = wb.Sheets["General info"];
-  if (!ws) throw new Error("Sheet 'General info' not found");
-
-  const v = (addr, fallback="") => (ws[addr] && ws[addr].v !== undefined) ? ws[addr].v : fallback;
-
-  state.data.general = {
-    characterName: String(v("A1","")),
-    playerName: String(v("B1","")),
-    alignment: String(v("C1","")),
-    xp: Number(v("E1",0)) || 0,
-    classLine: String(v("A4","")),
-    race: String(v("D4","")),
-    size: String(v("B7","")),
-    age: Number(v("C7",0)) || 0,
-    gender: String(v("D7","")),
-    classes: { sorc: 1, wiz: 5, um: 2 },
-    abilities: {
-      str: { pointBuy: Number(v("J12",0))||0, asi: Number(v("K12",0))||0, items: Number(v("G12",0))||0, buffs: Number(v("H12",0))||0 },
-      dex: { pointBuy: Number(v("J13",0))||0, asi: Number(v("K13",0))||0, items: Number(v("G13",0))||0, buffs: Number(v("H13",0))||0 },
-      con: { pointBuy: Number(v("J14",0))||0, asi: Number(v("K14",0))||0, items: Number(v("G14",0))||0, buffs: Number(v("H14",0))||0 },
-      int: { pointBuy: Number(v("J15",0))||0, asi: Number(v("K15",0))||0, items: Number(v("G15",0))||0, buffs: Number(v("H15",0))||0 },
-      wis: { pointBuy: Number(v("J16",0))||0, asi: Number(v("K16",0))||0, items: Number(v("G16",0))||0, buffs: Number(v("H16",0))||0 },
-      cha: { pointBuy: Number(v("J17",0))||0, asi: Number(v("K17",0))||0, items: Number(v("G17",0))||0, buffs: Number(v("H17",0))||0 }
-    },
-    ac: {
-      armor: Number(v("D21",0))||0,
-      shield: Number(v("E21",0))||0,
-      size: Number(v("G21",0))||0,
-      natural: Number(v("H21",0))||0,
-      deflect: Number(v("J21",0))||0,
-      misc: Number(v("L21",0))||0,
-      miscTouch: 0
-    },
-    saves: { fortMisc: 0, refMisc: 0, willMisc: 0 },
-    attacks: { meleeMisc: 0, rangedMisc: 0, grappleMisc: 0 },
-    initMisc: 0,
-    buffs: { mageArmor: 0, shieldSpell: 0 },
-    feats: [],
-    languages: []
-  };
-}
-
-function ingestSpellsFromXlsx(wb) {
-  const ws = wb.Sheets["Spells"];
-  if (!ws) throw new Error("Sheet 'Spells' not found");
-
-  const range = XLSX.utils.decode_range(ws["!ref"]);
-  const cellAt = (r,c) => ws[XLSX.utils.encode_cell({r,c})];
-
-  function cellHasContent(cell) {
-    if (!cell) return false;
-    if (cell.v !== undefined && String(cell.v).trim() !== "") return true;
-    if (cell.f) return true;
-    if (cell.l && cell.l.Target) return true;
-    return false;
-  }
-
-  function findRowWithText(text) {
-    for (let r = range.s.r; r <= range.e.r; r++) {
-      for (let c = range.s.c; c <= range.e.c; c++) {
-        const cell = cellAt(r,c);
-        if (!cell || cell.v === undefined) continue;
-        if (String(cell.v).trim() === text) return r;
-      }
-    }
-    return -1;
-  }
-
-  const sorcHeader = findRowWithText("Spell slots (S)");
-  const wizHeader  = findRowWithText("Spell slots (W)");
-
-  function readBlock(headerRow, mode) {
-    if (headerRow < 0) return [];
-    const header = {};
-    for (let c = range.s.c; c <= range.e.c; c++) {
-      const cell = cellAt(headerRow,c);
-      const val = cell && cell.v !== undefined ? String(cell.v).trim() : "";
-      if (val) header[val] = c;
-    }
-
-    const col = {
-      prep: header["Preparations"],
-      spell: header["Sorcerer"] ?? header["Wizard"],
-      sl: header["SL"],
-      type: header["Type"],
-      evo: header["Evo?"],
-      fire: header["Fire?"],
-      range: header["Range"],
-      area: header["Area"],
-      damage: header["Damage"],
-      duration: header["Duration"],
-      notes: header["Notes"]
-    };
-
-    // resolve spell column shift by checking neighbors
-    function resolveSpellCol(spellCol) {
-      if (spellCol === undefined) return undefined;
-      for (let r = headerRow+1; r <= Math.min(headerRow+20, range.e.r); r++) {
-        const here = cellAt(r, spellCol);
-        const left = cellAt(r, spellCol-1);
-        const right = cellAt(r, spellCol+1);
-        if (cellHasContent(here)) return spellCol;
-        if (cellHasContent(left)) return spellCol-1;
-        if (cellHasContent(right)) return spellCol+1;
-      }
-      return spellCol;
-    }
-    col.spell = resolveSpellCol(col.spell);
-
-    const rows = [];
-    for (let r = headerRow+1; r <= range.e.r; r++) {
-      const spellCell = col.spell !== undefined ? cellAt(r, col.spell) : null;
-      if (!cellHasContent(spellCell)) break;
-
-      const name = spellCell.v !== undefined ? String(spellCell.v) : "(spell)";
-
-      const get = (c) => {
-        if (c === undefined) return "";
-        const cell = cellAt(r,c);
-        if (!cell) return "";
-        return (cell.w !== undefined ? cell.w : (cell.v ?? ""));
-      };
-      const num = (c) => Number(get(c)) || 0;
-
-      rows.push({
-        mode, name, url: "",
-        sl: num(col.sl),
-        type: String(get(col.type)||""),
-        evo: num(col.evo) === 1,
-        fire: num(col.fire) === 1,
-        range: String(get(col.range)||""),
-        area: String(get(col.area)||""),
-        damage: String(get(col.damage)||""),
-        duration: String(get(col.duration)||""),
-        notes: String(get(col.notes)||""),
-        prep: mode === "wiz" ? String(get(col.prep)||"") : ""
-      });
-    }
-    return rows;
-  }
-
-  state.data.spells.sorc = readBlock(sorcHeader, "sorc");
-  state.data.spells.wiz  = readBlock(wizHeader, "wiz");
-
-  // XLSX meta might exist; we keep a simple default
-  state.data.spells.meta = { sorcLevels: 1, wizLevels: 5, umLevels: 2, arcaneSpellpower: 1 };
-}
 
 /* ------------------------------ Rendering ------------------------------ */
 function computeSpellDC(sl, castingMod) {
@@ -1129,6 +980,203 @@ document.querySelectorAll('.ability-breakdown-grid input[data-ab][data-field]').
 ``
 
 }
+/* ---------------------- Slots UI integration (new) ---------------------- */
+/*
+  This section implements a non-invasive Slots UI that:
+  - uses SlotCalculator (slotCalculator.js must be included before app.js)
+  - renders into the Slots tab (renderSlots)
+  - Sorcerer slots: 10 rows (0..9), each row shows one box per available slot (clickable to mark used)
+  - Wizard prepared: shows prepared counts (specialist +1 applied)
+  - Persists used marks per view in localStorage
+*/
+
+function renderSlots() {
+  // Preserve existing content if any: build on top of it
+  const container = el.app;
+  if (!container) return;
+  container.innerHTML = '';
+
+  // Title
+  const header = document.createElement('div');
+  header.className = 'panel';
+  const h = document.createElement('h2');
+  h.textContent = 'Slots';
+  header.appendChild(h);
+  container.appendChild(header);
+
+  // Ensure SlotCalculator exists
+  if (typeof SlotCalculator === 'undefined') {
+    const p = document.createElement('div');
+    p.className = 'panel hint';
+    p.textContent = 'SlotCalculator not loaded. Include slotCalculator.js before app.js.';
+    container.appendChild(p);
+    return;
+  }
+
+  // Compute slots from state (allow overrides from sheet data if present)
+  const g = state.data.general || {};
+  const meta = state.data.spells.meta || {};
+  // Determine effective caster levels: prefer explicit current fields, else fall back to general.classes and meta
+  const effSorc = Number(state.data.currentSorcererLevel ?? meta.sorcLevels ?? (g.classes ? g.classes.sorc : 0)) || 0;
+  const effWiz = Number(state.data.currentWizardLevel ?? meta.wizLevels ?? (g.classes ? g.classes.wiz : 0)) || 0;
+  // Determine ability totals
+  const d = g ? computeGeneralDerived(g) : null;
+  const chaTotal = d ? d.abilities.cha.total : (state.cha || 0);
+  const intTotal = d ? d.abilities.int.total : (state.int || 0);
+
+  const calc = SlotCalculator.computeAllSlots(state, { overrides: { sorcererLevel: effSorc, wizardLevel: effWiz, sorCha: chaTotal, wizInt: intTotal }, applySpecialistPreparedBonus: true });
+
+  // localStorage helpers
+  const storageKey = (view) => `ink_slots_used:${view || state.view || 'General'}`;
+  function loadUsed(view) {
+    try { const raw = localStorage.getItem(storageKey(view)); return raw ? JSON.parse(raw) : {}; } catch { return {}; }
+  }
+  function saveUsed(view, obj) { try { localStorage.setItem(storageKey(view), JSON.stringify(obj)); } catch {} }
+
+  // Styles for the slots UI (scoped, minimal)
+  const styleId = 'slots-ui-inline-styles';
+  if (!document.getElementById(styleId)) {
+    const s = document.createElement('style');
+    s.id = styleId;
+    s.textContent = `
+      .slots-panel { display:block; gap:12px; }
+      .slots-grid { display:flex; gap:18px; flex-wrap:wrap; align-items:flex-start; }
+      .slots-column { display:flex; flex-direction:column; gap:8px; min-width:220px; }
+      .slots-column h3 { margin:0 0 6px 0; }
+      .sorcerer-table { border-collapse:collapse; width:100%; }
+      .sorcerer-table td { padding:4px; vertical-align:middle; }
+      .slot-box-inline { display:inline-block; width:18px; height:18px; margin:2px; border-radius:4px; border:1px solid #dfe6ef; background:#fff; box-shadow:0 1px 0 rgba(0,0,0,0.03); cursor:pointer; }
+      .slot-box-inline.used { background:linear-gradient(180deg,#f3f4f6,#fff); opacity:0.6; text-decoration:line-through; }
+      .slot-box-inline.zero { opacity:0.35; cursor:default; border-style:dashed; }
+      .slot-row-label { width:28px; text-align:center; color:#6b7280; font-size:12px; }
+      .wizard-prep-row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+      .wizard-prep-box { width:34px; height:28px; border-radius:6px; border:1px solid #e6e9ef; background:#fff; display:inline-flex; align-items:center; justify-content:center; font-weight:600; }
+      .hint.small { font-size:12px; color:#6b7280; margin-top:8px; }
+    `;
+    document.head.appendChild(s);
+  }
+
+  const panel = document.createElement('div');
+  panel.className = 'panel slots-panel';
+
+  // Sorcerer column: 10 rows (0..9), each row shows one box per available slot
+  const sorCol = document.createElement('div');
+  sorCol.className = 'slots-column';
+  const sorTitle = document.createElement('h3');
+  sorTitle.textContent = `Sorcerer slots (effective level ${calc.meta.sorcererLevel})`;
+  sorCol.appendChild(sorTitle);
+
+  const sorTable = document.createElement('table');
+  sorTable.className = 'sorcerer-table';
+  const usedState = loadUsed(state.view);
+
+  for (let lvl = 0; lvl <= 9; lvl++) {
+    const tr = document.createElement('tr');
+    const tdLabel = document.createElement('td');
+    tdLabel.className = 'slot-row-label';
+    tdLabel.textContent = String(lvl);
+    tr.appendChild(tdLabel);
+
+    const tdBoxes = document.createElement('td');
+    const count = (calc.sorcerer.final && calc.sorcerer.final[lvl]) ? calc.sorcerer.final[lvl] : 0;
+    // create 'count' boxes
+    if (count <= 0) {
+      const empty = document.createElement('div');
+      empty.className = 'slot-box-inline zero';
+      empty.title = 'No slots';
+      tdBoxes.appendChild(empty);
+    } else {
+      for (let i = 0; i < count; i++) {
+        const box = document.createElement('div');
+        box.className = 'slot-box-inline';
+        const key = `sorcerer:${lvl}:${i}`; // unique per slot
+        if (usedState[key]) box.classList.add('used');
+        box.dataset.key = key;
+        box.dataset.classKey = 'sorcerer';
+        box.dataset.level = String(lvl);
+        box.addEventListener('click', () => {
+          const cur = loadUsed(state.view);
+          if (cur[key]) { delete cur[key]; box.classList.remove('used'); }
+          else { cur[key] = true; box.classList.add('used'); }
+          saveUsed(state.view, cur);
+        });
+        tdBoxes.appendChild(box);
+      }
+    }
+    tr.appendChild(tdBoxes);
+    sorTable.appendChild(tr);
+  }
+  sorCol.appendChild(sorTable);
+  panel.appendChild(sorCol);
+
+  // Wizard column: show per-day slots and prepared counts (specialist applied)
+  const wizCol = document.createElement('div');
+  wizCol.className = 'slots-column';
+  const wizTitle = document.createElement('h3');
+  wizTitle.textContent = `Wizard slots (effective level ${calc.meta.wizardLevel})`;
+  wizCol.appendChild(wizTitle);
+
+  // Wizard per-day slots (0..9) as small boxes with count displayed
+  const wizSlotsWrap = document.createElement('div');
+  wizSlotsWrap.className = 'wizard-slots-wrap';
+  for (let lvl = 0; lvl <= 9; lvl++) {
+    const row = document.createElement('div');
+    row.style.display = 'flex';
+    row.style.alignItems = 'center';
+    row.style.gap = '8px';
+    const lvlTag = document.createElement('div');
+    lvlTag.className = 'slot-row-label';
+    lvlTag.textContent = String(lvl);
+    row.appendChild(lvlTag);
+
+    const count = (calc.wizard.final && calc.wizard.final[lvl]) ? calc.wizard.final[lvl] : 0;
+    const box = document.createElement('div');
+    box.className = 'wizard-prep-box';
+    box.textContent = String(count);
+    if (count === 0) box.style.opacity = '0.45';
+    row.appendChild(box);
+
+    // small hint for base+bonus if different
+    const base = (calc.wizard.base && calc.wizard.base[lvl]) ? calc.wizard.base[lvl] : 0;
+    if (base !== count) {
+      const hint = document.createElement('div');
+      hint.className = 'hint small';
+      hint.textContent = `(${base}+${count-base})`;
+      row.appendChild(hint);
+    }
+
+    wizSlotsWrap.appendChild(row);
+  }
+  wizCol.appendChild(wizSlotsWrap);
+
+  // Wizard prepared counts (specialist applied)
+  const prepTitle = document.createElement('h3');
+  prepTitle.textContent = 'Wizard prepared (Evoker specialty applied)';
+  wizCol.appendChild(prepTitle);
+
+  const prepWrap = document.createElement('div');
+  prepWrap.className = 'wizard-prep-row';
+  for (let lvl = 0; lvl <= 9; lvl++) {
+    const pBox = document.createElement('div');
+    pBox.className = 'wizard-prep-box';
+    pBox.textContent = String((calc.wizardPrepared && calc.wizardPrepared[lvl]) ? calc.wizardPrepared[lvl] : (calc.wizard.final ? calc.wizard.final[lvl] : 0));
+    if ((calc.wizardPrepared && calc.wizardPrepared[lvl]) === 0) pBox.style.opacity = '0.45';
+    prepWrap.appendChild(pBox);
+  }
+  wizCol.appendChild(prepWrap);
+
+  panel.appendChild(wizCol);
+
+  // Append panel to container
+  container.appendChild(panel);
+
+  // Small note
+  const note = document.createElement('div');
+  note.className = 'hint small';
+  note.textContent = 'Click sorcerer boxes to mark used; marks persist per view. You can also cross out with the pen.';
+  container.appendChild(note);
+}
+
 function renderSpellTable(rows, meta, castingMod, showPrep) {
   if (!rows || !rows.length) return `<div class="hint">No spells loaded.</div>`;
 
@@ -1239,43 +1287,6 @@ function render() {
   ink.redraw();
 }
 
-/* --------------------------- XLSX loading ------------------------------ */
-if (el.file) {
-  el.file.addEventListener("change", async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    try {
-      setProgress(5, "Reading file…");
-      await nextFrame();
-      const buf = await file.arrayBuffer();
-
-      setProgress(20, "Parsing workbook…");
-      await nextFrame();
-
-      if (typeof XLSX === "undefined") throw new Error("XLSX library not loaded (xlsx.full.min.js)");
-
-      const wb = XLSX.read(buf, { type: "array" });
-
-      setProgress(45, "Ingesting General…");
-      ingestGeneralFromXlsx(wb);
-
-      setProgress(65, "Ingesting Spells…");
-      ingestSpellsFromXlsx(wb);
-
-      state.loaded = true;
-
-      setProgress(90, "Rendering…");
-      ink.loadForView(state.view);
-      render();
-
-      setProgress(100, "Done ✅");
-    } catch (err) {
-      console.error(err);
-      setProgress(0, "XLSX load error (see console)");
-    }
-  });
-}
 
 /* ---------------------- Hook Google Sheets button ---------------------- */
 window.addEventListener("DOMContentLoaded", () => {
