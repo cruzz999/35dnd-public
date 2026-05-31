@@ -1,5 +1,4 @@
 app.js
 index.html
-ink.js
 styles.css
 xlsx.full.min.js
