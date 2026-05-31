@@ -1281,6 +1281,7 @@ function render() {
 
   if (state.view === "General") renderGeneral();
   else if (state.view === "Spells") renderSpells();
+  else if (state.view === "Slots") renderSlots();
   else el.app.innerHTML = `<div class="panel"><h2>${escapeHtml(state.view)}</h2><div class="hint">Not implemented yet.</div></div>`;
 
   applyWorldTransform();
