@@ -1,11 +1,8 @@
 /* ======================================================================
-   app.js - Drop-in replacement
-   - Overlay canvas moved to #inkOverlay (root stacking context)
-   - Proper DPR-backed canvas sizing
-   - Canvas transform mirrors #world pan/zoom so ink aligns with paper
-   - Pan guard prevents stealing clicks; pen mode prevents pan
-   - Canvas consumes pointer events when pen active (stopPropagation/preventDefault)
-   - ResizeObserver keeps viewport sizing in sync with topbar
+   app.js - Drop-in replacement (with robust ensureGs loader)
+   - Adds dynamic loader ensureGs() to reliably load gs_ingest.js if missing
+   - Replaces loadGs click handler to await ensureGs()
+   - Keeps overlay canvas, DPR sizing, pan/zoom mirroring, and pen behavior
    ====================================================================== */
 
 /* ----------------------------- DOM helpers ------------------------------ */
@@ -201,7 +198,6 @@ const ink = (() => {
   function redraw(){
     if (!canvas || !ctx) return;
     ensureCanvasSize();
-    // Clear backing store (use full backing size)
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     const strokes = getStrokesForView(state.view);
     for (const s of strokes) drawStroke(s);
@@ -220,7 +216,6 @@ const ink = (() => {
     if (!s.penOn || !canvas) return;
     if (e.pointerType === "touch") return;
 
-    // Prevent pan handlers from seeing this event
     try { e.stopPropagation(); e.preventDefault(); } catch (err) {}
 
     drawing = true;
@@ -282,7 +277,6 @@ const ink = (() => {
     }
     if (!state.penOn) { drawing = false; currentStroke = null; activePointerId = null; }
     ensureCanvasSize();
-    // Re-assert next frame in case something else overwrote inline styles
     requestAnimationFrame(() => {
       if (canvas) {
         canvas.style.pointerEvents = state.penOn ? 'auto' : 'none';
@@ -302,7 +296,6 @@ window.ink = window.ink || ink;
 
 /* -------------------- Coordinate mapping ------------------------------- */
 function screenToWorld(clientX, clientY){
-  // Map client coords to viewport-local coords, then undo pan/zoom
   const vr = el.viewport ? el.viewport.getBoundingClientRect() : document.documentElement.getBoundingClientRect();
   const vx = clientX - vr.left;
   const vy = clientY - vr.top;
@@ -322,7 +315,6 @@ function renderGeneral(){
       </div>
     </div>
   `;
-  // wire delegated inputs
   document.querySelectorAll('#app input').forEach(inp => {
     inp.addEventListener('change', () => {
       requestAnimationFrame(()=>{ renderGeneral(); if (window.ink && typeof window.ink.redraw === 'function') window.ink.redraw(); });
@@ -346,6 +338,50 @@ function render(){
   else el.app.innerHTML = `<div class="panel"><h2>${escapeHtml(state.view)}</h2></div>`;
   applyWorldTransform();
   ensureCanvasSize();
+}
+
+/* ------------------ ensureGs helper with dynamic loader ------------------ */
+/* Usage: const gs = await ensureGs(); // throws on failure */
+async function loadScript(src, { timeout = 8000 } = {}) {
+  return new Promise((resolve, reject) => {
+    // If a script with the same src substring is already present, resolve after a tick
+    for (const s of document.scripts) {
+      if (s.src && s.src.indexOf(src) !== -1) {
+        return requestAnimationFrame(() => resolve(s));
+      }
+    }
+    const scr = document.createElement('script');
+    scr.src = src;
+    scr.async = true;
+    scr.onload = () => resolve(scr);
+    scr.onerror = () => reject(new Error(`Failed to load script ${src}`));
+    document.head.appendChild(scr);
+    if (timeout > 0) {
+      setTimeout(() => reject(new Error(`Loading ${src} timed out after ${timeout}ms`)), timeout);
+    }
+  });
+}
+
+async function ensureGs() {
+  if (window.gsIngest) return window.gsIngest;
+  if (window.gs && typeof window.gs.loadFromGoogleSheets === 'function') return window.gs;
+
+  const candidatePaths = ['gs_ingest.js', './gs_ingest.js', '/gs_ingest.js'];
+  let lastErr = null;
+  for (const p of candidatePaths) {
+    try {
+      await loadScript(p, { timeout: 8000 });
+      await new Promise((r) => requestAnimationFrame(r));
+      if (window.gsIngest) return window.gsIngest;
+      if (window.gs && typeof window.gs.loadFromGoogleSheets === 'function') return window.gs;
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  const msg = lastErr ? lastErr.message : 'gs_ingest did not expose expected API';
+  const e = new Error(`ensureGs failed: ${msg}`);
+  e.detail = { candidatePaths };
+  throw e;
 }
 
 /* ---------------------- Hook Google Sheets button ---------------------- */
@@ -386,32 +422,45 @@ window.addEventListener("DOMContentLoaded", () => {
   const AUTO_SHEET = "https://docs.google.com/spreadsheets/d/1P_Vslp-rxiTcntUZVLR2BjJrdeQqdWfPLeigs2Gnx_U/edit?usp=sharing";
   if (el.gsUrl && !el.gsUrl.value) el.gsUrl.value = AUTO_SHEET;
 
-  // Wire Google Sheets loader (defensive)
+  // Robust Load button: use ensureGs() to dynamically load gs_ingest if needed
   if (el.loadGs && el.gsUrl) {
     el.loadGs.addEventListener("click", async () => {
       try {
         const url = el.gsUrl.value.trim();
-        if (!url) { console.warn("Paste a Google Sheets URL first."); return; }
-        if (typeof ensureGs === 'function') {
-          const gs = ensureGs();
-          if (!gs.__patchedForApp) {
-            const orig = gs.loadFromGoogleSheets.bind(gs);
-            gs.loadFromGoogleSheets = async function(sheetUrl){
-              await orig(sheetUrl);
-              try { const general = window.state?.data?.general ?? null; const spells = window.state?.data?.spells ?? null; if (typeof window.receiveIngestedData === "function") window.receiveIngestedData(general, spells); } catch(e){ console.warn("post-ingest merge failed", e); }
-            };
-            gs.__patchedForApp = true;
-          }
-          await gs.loadFromGoogleSheets(url);
-          mergeWindowStateIfPresent();
-          render();
-          ensureCanvasSize();
-          if (window.ink && typeof window.ink.redraw === 'function') window.ink.redraw();
-        } else {
-          console.warn("ensureGs not available in this environment.");
+        if (!url) { if (typeof setProgress === 'function') setProgress(0, "Paste a Google Sheets URL first."); return; }
+
+        const gs = await ensureGs();
+
+        if (!gs.__patchedForApp) {
+          const orig = gs.loadFromGoogleSheets.bind(gs);
+          gs.loadFromGoogleSheets = async function (sheetUrl) {
+            await orig(sheetUrl);
+            try {
+              const general = window.state?.data?.general ?? null;
+              const spells = window.state?.data?.spells ?? null;
+              if (typeof window.receiveIngestedData === "function") {
+                window.receiveIngestedData(general, spells);
+              }
+            } catch (err) { console.warn("post-ingest merge failed", err); }
+          };
+          gs.__patchedForApp = true;
         }
-      } catch (e) { console.error(e); }
+
+        if (typeof setProgress === 'function') setProgress(10, "Loading Google Sheets...");
+        await gs.loadFromGoogleSheets(url);
+        mergeWindowStateIfPresent();
+        render();
+        ensureCanvasSize();
+        if (window.ink && typeof window.ink.redraw === 'function') window.ink.redraw();
+        if (typeof setProgress === 'function') setProgress(100, "Done ✅");
+      } catch (e) {
+        console.error("Load GS failed", e);
+        if (typeof setProgress === 'function') setProgress(0, `Google Sheets load failed: ${e.message || e}`);
+        try { alert(`Load failed: ${e.message || e}`); } catch (err) {}
+      }
     });
+  } else {
+    console.warn("Google Sheets UI not present (#gsUrl / #loadGs).");
   }
 
   if (el.fillGs && el.gsUrl) {
@@ -443,7 +492,6 @@ window.addEventListener("DOMContentLoaded", () => {
     const inkReadyCheck = () => {
       if (window.ink) {
         enableControls();
-        // Sync ink internal mode with state
         try { if (typeof window.ink.setPenMode === 'function') window.ink.setPenMode(!!state.penOn); } catch(e){}
         setCanvasInteraction(!!state.penOn);
 
@@ -584,16 +632,10 @@ window.addEventListener("DOMContentLoaded", () => {
     }
 
     el.viewport.addEventListener("pointerdown", (e) => {
-      // If pen is active we must not start panning
       if (state.penOn) return;
-
-      // If the pointerdown started on an interactive element, don't begin pan.
       const interactive = e.target && e.target.closest && e.target.closest('input, button, label, a, textarea, select, [contenteditable]');
       if (interactive) return;
-
-      // If pointerdown started on the canvas itself, bail (canvas handles it)
       if (e.target && e.target.closest && e.target.closest('canvas#inkWorld')) return;
-
       beginPanInit(e);
       try { el.viewport.setPointerCapture?.(e.pointerId); } catch (err) {}
     });
