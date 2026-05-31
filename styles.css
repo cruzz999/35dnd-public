@@ -27,14 +27,21 @@ html, body {
 
 /* Topbar and controls */
 .topbar {
-  height: 64px;
+  position: sticky;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1100; /* must be higher than the canvas when pen is active */
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
-  padding: 8px 12px;
-  background: #f5f5f5;
-  box-shadow: 0 1px 0 rgba(0,0,0,0.06);
-  z-index: 60;
+  gap: 8px;
+  box-sizing: border-box;
+  padding: 6px 10px;
+  background: var(--topbar-bg, rgba(255,255,255,0.95));
+  backdrop-filter: blur(4px);
+  border-bottom: 1px solid rgba(0,0,0,0.06);
+  min-height: 44px;
 }
 .topbar .controls {
   display: flex;
