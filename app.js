@@ -214,10 +214,22 @@ function ensureCanvasSize() {
 }
 
 function screenToWorld(clientX, clientY) {
-  const vr = el.viewport ? el.viewport.getBoundingClientRect() : (el.world ? el.world.getBoundingClientRect() : { left: 0, top: 0 });
-  const vx = clientX - vr.left;
-  const vy = clientY - vr.top;
-  return { x: (vx - state.pan.x) / state.zoom, y: (vy - state.pan.y) / state.zoom };
+  const crect = canvas.getBoundingClientRect(); // canvas top-left in client coords
+  const dpr = window.devicePixelRatio || 1;
+
+  // client coords relative to canvas top-left (CSS pixels)
+  const cx = clientX - crect.left;
+  const cy = clientY - crect.top;
+
+  // convert to CSS pixels (remove DPR)
+  const xCss = cx / dpr;
+  const yCss = cy / dpr;
+
+  // invert world transform: world = (css - pan) / zoom
+  return {
+    x: (xCss - state.pan.x) / state.zoom,
+    y: (yCss - state.pan.y) / state.zoom
+  };
 }
   function drawStroke(stroke) {
     if (!ctx) return;
@@ -277,33 +289,32 @@ function redraw() {
 
 function pointerDown(e) {
   if (!state.penOn || !canvas) return;
-  if (e.pointerType === 'touch') return; // ignore finger if you want stylus-only
+  // optional: ignore touch if you want stylus-only
+  // if (e.pointerType === 'touch') return;
+
   drawing = true;
   activePointerId = e.pointerId;
   const p = screenToWorld(e.clientX, e.clientY);
   currentStroke = { erase: state.erasing, pts: [p] };
   getStrokesForView(state.view).push(currentStroke);
-  try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+  try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
   e.preventDefault();
   redraw();
 }
 
-  function pointerMove(e) {
-    if (!state.penOn || !drawing || !currentStroke) return;
-    if (activePointerId !== null && e.pointerId !== activePointerId) return;
-    if (e.pointerType === "touch") return;
-    currentStroke.pts.push(screenToWorld(e.clientX, e.clientY));
-    e.preventDefault();
-    redraw();
-  }
+function pointerMove(e) {
+  if (!drawing || activePointerId !== e.pointerId) return;
+  const p = screenToWorld(e.clientX, e.clientY);
+  currentStroke.pts.push(p);
+  e.preventDefault();
+  redraw();
+}
 
 function endStroke(e) {
   if (!drawing) return;
   drawing = false;
   currentStroke = null;
-  if (canvas && e && typeof canvas.releasePointerCapture === 'function') {
-    try { canvas.releasePointerCapture(e.pointerId); } catch (err) { /* ignore */ }
-  }
+  try { canvas.releasePointerCapture(e.pointerId); } catch (err) {}
   activePointerId = null;
   saveForView(state.view);
   redraw();
@@ -319,16 +330,11 @@ function endStroke(e) {
     canvas.style.touchAction = "none";
   }
 
-  function setPenMode(on) {
-    state.penOn = !!on;
-    if (el.penToggle) el.penToggle.textContent = `Pen: ${state.penOn ? "ON" : "OFF"}`;
-    if (canvas) canvas.style.pointerEvents = state.penOn ? "auto" : "none";
-    if (!state.penOn) {
-      drawing = false;
-      currentStroke = null;
-      activePointerId = null;
-    }
-  }
+function setPenMode(on) {
+  state.penOn = !!on;
+  if (el.penToggle) el.penToggle.textContent = `Pen: ${state.penOn ? "ON" : "OFF"}`;
+  if (canvas) canvas.style.pointerEvents = state.penOn ? 'auto' : 'none';
+}
 
   function setEraser(on) {
     state.erasing = !!on;
