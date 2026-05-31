@@ -326,6 +326,76 @@ body.pen-active canvas#inkWorld {
 .ability-breakdown-grid *::after {
   pointer-events: none !important;
 }
+
+/* Topbar: always visible, never cut off, buttons wrap to new row when needed */
+.topbar {
+  position: sticky;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  box-sizing: border-box;
+  padding: 6px 10px;
+  background: var(--topbar-bg, rgba(255,255,255,0.95));
+  backdrop-filter: blur(4px);
+  border-bottom: 1px solid rgba(0,0,0,0.06);
+}
+
+/* Ensure controls inside the topbar wrap instead of overflowing */
+.topbar .controls,
+.topbar .left,
+.topbar .right {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* Make sure buttons and inputs can wrap and remain accessible */
+.topbar button,
+.topbar input,
+.topbar select,
+.topbar label {
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
+/* Prevent the topbar from being clipped by overflow on ancestors */
+.topbar,
+.topbar * {
+  overflow: visible;
+}
+
+/* Canvas stacking: keep canvas behind topbar and UI panels */
+canvas#inkWorld {
+  z-index: 5 !important;
+  pointer-events: none !important; /* default inert; JS toggles when pen-active */
+}
+
+/* Top UI panels and controls should sit above the canvas */
+.panel,
+.topbar,
+.topbar * {
+  position: relative;
+  z-index: 900;
+  pointer-events: auto;
+}
+
+/* When pen mode is active, body.pen-active enables canvas pointer events */
+body.pen-active canvas#inkWorld {
+  pointer-events: auto !important;
+  z-index: 40 !important;
+}
+
+/* Small responsive tweak: ensure topbar height is not constrained */
+.topbar {
+  min-height: 44px;
+}
+
 /* Utility */
 .hidden { display: none !important; }
 .center { text-align: center; }
