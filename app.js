@@ -421,7 +421,7 @@ function endStroke(e) {
     // authoritative inline canvas style
     if (canvas) {
       canvas.style.pointerEvents = state.penOn ? 'auto' : 'none';
-      canvas.style.zIndex = state.penOn ? '40' : '5';
+      canvas.style.zIndex = state.penOn ? '950' : '5';
     }
     if (!state.penOn) { drawing = false; currentStroke = null; activePointerId = null; }
   }
@@ -810,7 +810,7 @@ window.addEventListener("DOMContentLoaded", () => {
     // authoritative inline defaults; JS will keep these in sync when toggling pen
     canvasInit.style.pointerEvents = state.penOn ? 'auto' : 'none';
     // choose a z-index that places canvas above paper content but below UI panels
-    canvasInit.style.zIndex = state.penOn ? '60' : '5';
+    canvasInit.style.zIndex = state.penOn ? '950' : '5';
   }
 
   /* ------------------ Auto-populate Google Sheets URL ------------------ */
@@ -886,7 +886,7 @@ window.addEventListener("DOMContentLoaded", () => {
       if (canvas) {
         canvas.style.pointerEvents = on ? 'auto' : 'none';
         // ensure canvas is above paper content but below UI panels; adjust if your panels use different z-index
-        canvas.style.zIndex = on ? '60' : '5';
+        canvas.style.zIndex = on ? '950' : '5';
       }
     };
 
@@ -1119,7 +1119,7 @@ el.viewport.addEventListener("pointerdown", (e) => {
 applyWorldTransform();
 // Ensure canvas inline state is authoritative at startup
 const c0 = document.getElementById('inkWorld');
-if (c0) { c0.style.pointerEvents = state.penOn ? 'auto' : 'none'; c0.style.zIndex = state.penOn ? '40' : '5'; }
+if (c0) { c0.style.pointerEvents = state.penOn ? 'auto' : 'none'; c0.style.zIndex = state.penOn ? '950' : '5'; }
 if (window.ink && typeof window.ink.ensureCanvasSize === "function") window.ink.ensureCanvasSize();
 if (window.ink && typeof window.ink.loadForView === "function") window.ink.loadForView(state.view);
 render();
