@@ -187,41 +187,32 @@ const ink = (() => {
 
 function ensureCanvasSize() {
   if (!canvas || !ctx) return;
+  // The canvas is positioned inside #viewport; measure the viewport element
+  const vp = el.viewport || el.world || el.app || document.documentElement;
+  const vr = vp.getBoundingClientRect();
 
-  // Choose the element that represents the paper area
-  const targetEl = el.world || el.viewport || el.app || document.body;
-  const targetRect = targetEl.getBoundingClientRect();
+  // CSS pixel size
+  const cssW = Math.max(Math.ceil(vr.width), 1);
+  const cssH = Math.max(Math.ceil(vr.height), 1);
 
-  // CSS pixel size to cover the entire paper area
-  const cssW = Math.max(Math.ceil(targetRect.width), 800);
-  const cssH = Math.max(Math.ceil(targetRect.height), 600);
-
-  // Position canvas to align with the target element in viewport coordinates
-  canvas.style.position = 'absolute';
-  canvas.style.left = `${Math.floor(targetRect.left)}px`;
-  canvas.style.top = `${Math.floor(targetRect.top)}px`;
-  canvas.style.width = `${cssW}px`;
-  canvas.style.height = `${cssH}px`;
+  // Ensure canvas CSS matches viewport (100% width/height in CSS already)
+  canvas.style.width = cssW + 'px';
+  canvas.style.height = cssH + 'px';
 
   // Backing store for high-DPI
   const dpr = window.devicePixelRatio || 1;
   const backingW = Math.floor(cssW * dpr);
   const backingH = Math.floor(cssH * dpr);
+
   if (canvas.width !== backingW || canvas.height !== backingH) {
     canvas.width = backingW;
     canvas.height = backingH;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
-  // Keep canvas under UI but above world for drawing
-  canvas.style.zIndex = '5';
-  if (el.world) el.world.style.zIndex = '4';
-  if (el.app) el.app.style.zIndex = '20';
-
-  // Only intercept pointer events when pen mode is active
+  // Keep canvas non-blocking unless pen is on
   canvas.style.pointerEvents = state.penOn ? 'auto' : 'none';
-  canvas.style.touchAction = 'none';
 }
+
 function screenToWorld(clientX, clientY) {
   const vr = el.viewport ? el.viewport.getBoundingClientRect() : (el.world ? el.world.getBoundingClientRect() : { left: 0, top: 0 });
   const vx = clientX - vr.left;
@@ -249,13 +240,22 @@ function screenToWorld(clientX, clientY) {
     ctx.restore();
   }
 
-  function redraw() {
-    if (!canvas || !ctx) return;
-    ensureCanvasSize();
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    const strokes = getStrokesForView(state.view);
-    for (const stroke of strokes) drawStroke(stroke);
-  }
+function redraw() {
+  if (!canvas || !ctx) return;
+  ensureCanvasSize();
+
+  // Clear device-pixel canvas
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  const dpr = window.devicePixelRatio || 1;
+  // Apply transform: scale by dpr*zoom, translate by dpr*pan
+  // This makes drawing coordinates be in "world units"
+  ctx.setTransform(dpr * state.zoom, 0, 0, dpr * state.zoom, dpr * state.pan.x, dpr * state.pan.y);
+
+  // Draw all strokes (assumes stroke points are stored in world coordinates)
+  const strokes = getStrokesForView(state.view);
+  for (const stroke of strokes) drawStroke(stroke);
+}
 
   function clear() {
     state.strokesByView[state.view] = [];
