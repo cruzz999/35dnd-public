@@ -51,7 +51,7 @@ const state = {
   // Ink storage per view
   strokesByView: {},
   // Data
-  data: { general: null, spells: { sorc: [], wiz: [], meta: null } },
+  data: { general: null, spells: { sorc: [], wiz: [], meta: null }, slots: { sorcerer: {}, wizard: {} } },
   lineWidth: 0.5, // default drawing width
   eraserWidth: 18 // default eraser width (keeps previous behavior)
 };
@@ -594,7 +594,7 @@ function findHeaderRow(grid, headerText) {
 
 /*
   ingestSpellsFromGrid(grid)
-  - expects the spells CSV (Slot Info tab exported)
+  - expects the Slot Info tab exported as CSV (gid provided)
   - extracts two slot tables: Sorcerer slots and Wizard/Evoker slots
   - stores them into state.data.slots = { sorcerer: {level: [..]}, wizard: {...} }
   - also extracts current class levels if present
@@ -606,14 +606,14 @@ function ingestSpellsFromGrid(grid) {
     // Heuristics: find "Sorcerer" header and "Evoker" or "Wizard" header
     let sorcererHeaderRow = -1;
     for (let r = 0; r < grid.length; r++) {
-      const row = grid[r].map(c => String(c || "").toLowerCase());
+      const row = (grid[r] || []).map(c => String(c || "").toLowerCase());
       if (row.some(c => c.includes("sorcerer") && c.includes("slot"))) { sorcererHeaderRow = r; break; }
       if (row.some(c => c === "sorcerer")) { sorcererHeaderRow = r; break; }
     }
 
     let wizardHeaderRow = -1;
     for (let r = 0; r < grid.length; r++) {
-      const row = grid[r].map(c => String(c || "").toLowerCase());
+      const row = (grid[r] || []).map(c => String(c || "").toLowerCase());
       if (row.some(c => c.includes("evoker") && c.includes("slot"))) { wizardHeaderRow = r; break; }
       if (row.some(c => c === "evoker") || row.some(c => c === "wizard")) { wizardHeaderRow = r; break; }
     }
@@ -630,7 +630,7 @@ function ingestSpellsFromGrid(grid) {
         for (let c = 0; c < header.length; c++) {
           let found = false;
           for (let rr = r+1; rr < Math.min(grid.length, r+8); rr++) {
-            const val = String(grid[rr][c] || "").trim();
+            const val = String((grid[rr] || [])[c] || "").trim();
             if (/^\d+$/.test(val)) { found = true; break; }
           }
           if (found) { levelCol = c; break; }
@@ -641,7 +641,7 @@ function ingestSpellsFromGrid(grid) {
       const spellCols = [];
       for (let c = levelCol + 1; c < Math.min(levelCol + 12, header.length); c++) {
         const h = String(header[c] || "").trim();
-        if (h === "" && grid[r+1] && /^\d+$/.test(String(grid[r+1][c] || "").trim())) {
+        if (h === "" && grid[r+1] && /^\d+$/.test(String((grid[r+1] || [])[c] || "").trim())) {
           spellCols.push(c);
         } else if (/^[0-9]$/.test(h)) {
           spellCols.push(c);
@@ -679,10 +679,11 @@ function ingestSpellsFromGrid(grid) {
     state.data.slots.sorcerer = sorTable;
     state.data.slots.wizard = wizTable;
 
+    // Also try to find current levels in the sheet (look for "Current Sorcerer Level" etc.)
     const curSorcRow = findRowByPrefix(grid, "current sorcerer");
     if (curSorcRow >= 0) {
-      for (let c = 0; c < grid[curSorcRow].length; c++) {
-        const cell = String(grid[curSorcRow][c] || "").trim();
+      for (let c = 0; c < (grid[curSorcRow] || []).length; c++) {
+        const cell = String((grid[curSorcRow] || [])[c] || "").trim();
         if (/^\d+$/.test(cell)) {
           state.data.currentSorcererLevel = Number(cell);
           break;
@@ -691,8 +692,8 @@ function ingestSpellsFromGrid(grid) {
     }
     const curWizRow = findRowByPrefix(grid, "current evoker");
     if (curWizRow >= 0) {
-      for (let c = 0; c < grid[curWizRow].length; c++) {
-        const cell = String(grid[curWizRow][c] || "").trim();
+      for (let c = 0; c < (grid[curWizRow] || []).length; c++) {
+        const cell = String((grid[curWizRow] || [])[c] || "").trim();
         if (/^\d+$/.test(cell)) {
           state.data.currentWizardLevel = Number(cell);
           break;
@@ -700,11 +701,12 @@ function ingestSpellsFromGrid(grid) {
       }
     }
 
+    // fallback: try other variants
     if (!state.data.currentSorcererLevel) {
       const r = findRowByPrefix(grid, "current sorcerer level");
       if (r >= 0) {
-        for (let c = 0; c < grid[r].length; c++) {
-          const cell = String(grid[r][c] || "").trim();
+        for (let c = 0; c < (grid[r] || []).length; c++) {
+          const cell = String((grid[r] || [])[c] || "").trim();
           if (/^\d+$/.test(cell)) { state.data.currentSorcererLevel = Number(cell); break; }
         }
       }
@@ -712,8 +714,8 @@ function ingestSpellsFromGrid(grid) {
     if (!state.data.currentWizardLevel) {
       const r = findRowByPrefix(grid, "current evoker level") || findRowByPrefix(grid, "current wizard level");
       if (r >= 0) {
-        for (let c = 0; c < grid[r].length; c++) {
-          const cell = String(grid[r][c] || "").trim();
+        for (let c = 0; c < (grid[r] || []).length; c++) {
+          const cell = String((grid[r] || [])[c] || "").trim();
           if (/^\d+$/.test(cell)) { state.data.currentWizardLevel = Number(cell); break; }
         }
       }
@@ -1148,16 +1150,13 @@ function renderSpellTable(rows, meta, castingMod, showPrep) {
 
 /* ---------------------- Slots UI integration (new) ---------------------- */
 /*
-  This section implements a non-invasive Slots UI that:
-  - uses SlotCalculator (slotCalculator.js must be included before app.js)
-  - renders into the Slots tab (renderSlots)
-  - Sorcerer slots: 10 rows (0..9), each row shows one box per available slot (clickable to mark used)
-  - Wizard prepared: shows prepared counts (specialist +1 applied)
-  - Persists used marks per view in localStorage
+  Renders into the Slots tab.
+  - Sorcerer slots: 10 rows (0..9), each row shows one box per available slot (individual boxes)
+  - Wizard slots: compact per-level counts and prepared counts (specialist +1 applied)
+  - Uses SlotCalculator (slotCalculator.js must be included before app.js)
 */
 
 function renderSlots() {
-  // Preserve existing content if any: build on top of it
   const container = el.app;
   if (!container) return;
   container.innerHTML = '';
@@ -1182,15 +1181,16 @@ function renderSlots() {
   // Compute slots from state (allow overrides from sheet data if present)
   const g = state.data.general || {};
   const meta = state.data.spells.meta || {};
-  // Determine effective caster levels: prefer explicit current fields, else fall back to general.classes and meta
   const effSorc = Number(state.data.currentSorcererLevel ?? meta.sorcLevels ?? (g.classes ? g.classes.sorc : 0)) || 0;
   const effWiz = Number(state.data.currentWizardLevel ?? meta.wizLevels ?? (g.classes ? g.classes.wiz : 0)) || 0;
-  // Determine ability totals
   const d = g ? computeGeneralDerived(g) : null;
   const chaTotal = d ? d.abilities.cha.total : (state.cha || 0);
   const intTotal = d ? d.abilities.int.total : (state.int || 0);
 
-  const calc = SlotCalculator.computeAllSlots(state, { overrides: { sorcererLevel: effSorc, wizardLevel: effWiz, sorCha: chaTotal, wizInt: intTotal }, applySpecialistPreparedBonus: true });
+  const calc = SlotCalculator.computeAllSlots(state, {
+    overrides: { sorcererLevel: effSorc, wizardLevel: effWiz, sorCha: chaTotal, wizInt: intTotal },
+    applySpecialistPreparedBonus: true
+  });
 
   // localStorage helpers
   const storageKey = (view) => `ink_slots_used:${view || state.view || 'General'}`;
@@ -1199,7 +1199,7 @@ function renderSlots() {
   }
   function saveUsed(view, obj) { try { localStorage.setItem(storageKey(view), JSON.stringify(obj)); } catch {} }
 
-  // Styles for the slots UI (scoped, minimal)
+  // Inline styles (scoped)
   const styleId = 'slots-ui-inline-styles';
   if (!document.getElementById(styleId)) {
     const s = document.createElement('style');
@@ -1207,7 +1207,7 @@ function renderSlots() {
     s.textContent = `
       .slots-panel { display:block; gap:12px; }
       .slots-grid { display:flex; gap:18px; flex-wrap:wrap; align-items:flex-start; }
-      .slots-column { display:flex; flex-direction:column; gap:8px; min-width:220px; }
+      .slots-column { display:flex; flex-direction:column; gap:8px; min-width:260px; }
       .slots-column h3 { margin:0 0 6px 0; }
       .sorcerer-table { border-collapse:collapse; width:100%; }
       .sorcerer-table td { padding:4px; vertical-align:middle; }
@@ -1422,6 +1422,35 @@ if (el.file) {
 }
 
 /* ---------------------- Hook Google Sheets button ---------------------- */
+async function loadFromGoogleSheets(sheetUrl) {
+  try {
+    const id = extractSpreadsheetId(sheetUrl);
+    if (!id) throw new Error("Could not extract spreadsheet ID from URL.");
+    // gids: spells (Slot Info) is 1231385124 per your earlier messages; general tab gid may vary
+    const gids = { slot: 1231385124, general: 2004670713, spells: 0 };
+    setProgress(5, "Fetching Slot Info tab…");
+    const slotCsv = await fetchCsvViaProxy(id, gids.slot);
+    setProgress(30, "Fetching General tab…");
+    const generalCsv = await fetchCsvViaProxy(id, gids.general);
+
+    const slotGrid = csvToGrid(slotCsv);
+    const generalGrid = csvToGrid(generalCsv);
+
+    ingestSpellsFromGrid(slotGrid);
+    ingestGeneralFromGrid(generalGrid);
+
+    state.loaded = true;
+    setProgress(95, "Rendering…");
+    ink.loadForView(state.view);
+    render();
+    setProgress(100, "Done ✅");
+  } catch (e) {
+    console.error(e);
+    setProgress(0, "Google Sheets load failed: " + (e?.message || e));
+    throw e;
+  }
+}
+
 window.addEventListener("DOMContentLoaded", () => {
   if (el.loadGs && el.gsUrl) {
     el.loadGs.addEventListener("click", async () => {
