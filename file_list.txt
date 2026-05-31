@@ -1,5 +1,5 @@
 app.js
 index.html
-spell_slots.json
+slotCalculator.js
 styles.css
 xlsx.full.min.js

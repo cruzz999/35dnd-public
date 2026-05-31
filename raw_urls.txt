@@ -1,5 +1,0 @@
-https://raw.githubusercontent.com/cruzz999/35dnd-public/d695e611eb7cea9204e509ba526b638f7d511eed/app.js
-https://raw.githubusercontent.com/cruzz999/35dnd-public/d695e611eb7cea9204e509ba526b638f7d511eed/index.html
-https://raw.githubusercontent.com/cruzz999/35dnd-public/d695e611eb7cea9204e509ba526b638f7d511eed/spell_slots.json
-https://raw.githubusercontent.com/cruzz999/35dnd-public/d695e611eb7cea9204e509ba526b638f7d511eed/styles.css
-https://raw.githubusercontent.com/cruzz999/35dnd-public/d695e611eb7cea9204e509ba526b638f7d511eed/xlsx.full.min.js
