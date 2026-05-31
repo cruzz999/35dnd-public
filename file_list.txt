@@ -2,8 +2,5 @@ app.js
 gs_ingest.js
 index.html
 ink.js
-src/ingest.js
-src/render.js
-src/utils.js
 styles.css
 xlsx.full.min.js
