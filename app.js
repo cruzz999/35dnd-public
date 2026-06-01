@@ -1150,22 +1150,25 @@ function renderSpells() {
       <h2>Spellcasting</h2>
       <div class="hint">Pan/zoom the paper; use Pen to write in prep boxes. Click sorcerer slot boxes to mark them used.</div>
 
-      <div class="grid">  
-         <div class="panel slot-panel">
-           <h3>Sorcerer slots (effective level ${effSorc})</h3>
-           <div class="sorc-resources-row">
-             <div class="sorc-slots-block">
-               ${renderSorcererSlotsHtml(calc, usedState)}
-             </div>
-             <div class="spellfire-side">
-               ${renderSpellfireHtml(usedState)}
-             </div>
-           </div>
-         <div class="panel slot-panel">
-           <h3>Wizard prepared (effective level ${effWiz})</h3>
-           ${renderWizardSlotsHtml(calc)}
-         </div>
-         <div class="panel">
+      <div class="grid">
+        <div class="panel slot-panel">
+          <h3>Sorcerer slots (effective level ${effSorc})</h3>
+          <div class="sorc-resources-row">
+            <div class="sorc-slots-block">
+              ${renderSorcererSlotsHtml(calc, usedState)}
+            </div>
+            <div class="spellfire-side">
+              ${renderSpellfireHtml(usedState)}
+            </div>
+          </div>
+        </div>
+
+        <div class="panel slot-panel">
+          <h3>Wizard prepared (effective level ${effWiz})</h3>
+          ${renderWizardSlotsHtml(calc)}
+        </div>
+
+        <div class="panel">
           <h3>Sorcerer / UM</h3>
           ${SpellsViewHelpers.renderSpellTable({
             rows: sorcRows,
@@ -1184,8 +1187,10 @@ function renderSpells() {
             showPrep: true
           })}
         </div>
+      </div>
+
       <div class="hint small">
-        Top-left: sorcerer slots. Top-right: wizard slots/prepared counts. Bottom row: sorcerer and wizard spell lists.
+        Top-left: sorcerer slots and Spellfire. Top-right: wizard prepared counts. Bottom row: sorcerer and wizard spell lists.
       </div>
     </div>
   `;
