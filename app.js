@@ -117,6 +117,67 @@ function fmtSign(n) {
   return (n >= 0 ? "+" : "") + n;
 }
 
+/* ------------------------- Skills persistence -------------------------- */
+
+const STORAGE_KEYS = {
+  skillsEdits: "skills.edits.v1"
+};
+
+function defaultSkillsEdits() {
+  return {
+    bySkillName: {},
+    inventoryText: ""
+  };
+}
+
+function normalizeSkillsEdits(raw) {
+  const base = defaultSkillsEdits();
+
+  if (!raw || typeof raw !== "object") return base;
+
+  const bySkillName =
+    raw.bySkillName && typeof raw.bySkillName === "object"
+      ? raw.bySkillName
+      : {};
+
+  const inventoryText =
+    typeof raw.inventoryText === "string"
+      ? raw.inventoryText
+      : "";
+
+  return {
+    bySkillName,
+    inventoryText
+  };
+}
+
+function loadSkillsEdits() {
+  if (typeof AppStorage === "undefined") {
+    state.skillsEdits = defaultSkillsEdits();
+    return;
+  }
+
+  const raw = AppStorage.readJson(STORAGE_KEYS.skillsEdits, defaultSkillsEdits());
+  state.skillsEdits = normalizeSkillsEdits(raw);
+}
+
+function saveSkillsEdits() {
+  if (typeof AppStorage === "undefined") return;
+  AppStorage.writeJson(STORAGE_KEYS.skillsEdits, state.skillsEdits);
+}
+
+let skillsNotesSaveTimer = null;
+
+function scheduleSaveSkillsEdits(delayMs = 200) {
+  if (skillsNotesSaveTimer) {
+    clearTimeout(skillsNotesSaveTimer);
+  }
+
+  skillsNotesSaveTimer = setTimeout(() => {
+    saveSkillsEdits();
+    skillsNotesSaveTimer = null;
+  }, delayMs);
+}
 
 /* -------------------- Viewport height sync (topbar wrap) --------------- */
 function syncViewportHeight() {
@@ -1161,26 +1222,36 @@ function renderSkills() {
     </div>
   `;
 
-  document.querySelectorAll('.skill-edit[data-skill][data-field]').forEach((inp) => {
-    inp.addEventListener('input', () => {
-      const skillName = inp.getAttribute('data-skill');
-      const field = inp.getAttribute('data-field');
-      const val = Number(inp.value);
 
-      state.skillsEdits.bySkillName[skillName] ||= {};
-      state.skillsEdits.bySkillName[skillName][field] = Number.isFinite(val) ? val : 0;
+document.querySelectorAll('.skill-edit[data-skill][data-field]').forEach((inp) => {
+  inp.addEventListener('input', () => {
+    const skillName = inp.getAttribute('data-skill');
+    const field = inp.getAttribute('data-field');
+    const val = Number(inp.value);
 
-      renderSkills();
-      ink.redraw();
-    });
+    state.skillsEdits.bySkillName[skillName] ||= {};
+    state.skillsEdits.bySkillName[skillName][field] = Number.isFinite(val) ? val : 0;
+
+    saveSkillsEdits();
+    renderSkills();
+    ink.redraw();
+  });
+});
+
+
+
+const notes = document.getElementById('skillsInventoryText');
+if (notes) {
+  notes.addEventListener('input', () => {
+    state.skillsEdits.inventoryText = notes.value;
+    scheduleSaveSkillsEdits(250);
   });
 
-  const notes = document.getElementById('skillsInventoryText');
-  if (notes) {
-    notes.addEventListener('input', () => {
-      state.skillsEdits.inventoryText = notes.value;
-    });
-  }
+  notes.addEventListener('blur', () => {
+    saveSkillsEdits();
+  });
+}
+
 }
 
 
@@ -1216,6 +1287,7 @@ else el.app.innerHTML = `<div class="panel"><h2>${escapeHtml(state.view)}</h2><d
 
 /* ---------------------- Hook Google Sheets button ---------------------- */
 window.addEventListener("DOMContentLoaded", () => {
+   loadSkillsEdits();
   if (el.loadGs && el.gsUrl) {
     el.loadGs.addEventListener("click", async () => {
       try {
