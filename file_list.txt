@@ -1,6 +1,7 @@
 app.js
 generalDerived.js
 index.html
+sheetLoader.js
 slotCalculator.js
 styles.css
 xlsx.full.min.js
