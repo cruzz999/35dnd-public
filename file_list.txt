@@ -4,6 +4,7 @@ generalDerived.js
 index.html
 sheetLoader.js
 sheetParsers.js
+skillsMath.js
 slotCalculator.js
 spellsViewHelpers.js
 storage.js
