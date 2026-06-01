@@ -624,82 +624,103 @@ function ensureSlotsInlineStyles() {
   const s = document.createElement('style');
   s.id = styleId;
   s.textContent = `
-    .slots-panel { display:block; gap:12px; }
-    .slots-grid { display:flex; gap:18px; flex-wrap:wrap; align-items:flex-start; }
-    .slots-column { display:flex; flex-direction:column; gap:8px; min-width:220px; }
-    .slots-column h3 { margin:0 0 6px 0; font-weight:700; color:#000; }
+  .slots-panel { display:block; gap:12px; }
+  .slots-grid { display:flex; gap:18px; flex-wrap:wrap; align-items:flex-start; }
+  .slots-column { display:flex; flex-direction:column; gap:8px; min-width:220px; }
+  .slots-column h3 { margin:0 0 6px 0; font-weight:700; color:#000; }
 
-    .sorcerer-table { border-collapse:collapse; width:100%; }
-    .sorcerer-table td,
-    .wizard-slot-table td,
-    .wizard-slot-table th {
-      padding:6px 4px;
-      vertical-align:middle;
-      text-align:left;
-    }
+  .slot-panel {
+    display: flex;
+    flex-direction: column;
+  }
 
-    .wizard-slot-table {
-      border-collapse: collapse;
-      width: 100%;
-    }
+  .slot-stack-bottom {
+    margin-top: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
 
-    .wizard-slot-table th {
-      font-weight: 700;
-      border-bottom: 1px solid #999;
-    }
+  .slot-row-inline {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
 
-    .slot-box-inline {
-      display:inline-block;
-      width:20px;
-      height:20px;
-      margin:2px;
-      border-radius:3px;
-      border:2px solid #000;
-      background:#fff;
-      box-shadow:none;
-      cursor:pointer;
-      box-sizing:border-box;
-    }
+  .slot-row-label {
+    width: 30px;
+    text-align: center;
+    color: #000;
+    font-size: 13px;
+    font-weight: 600;
+    flex: 0 0 30px;
+  }
 
-    .slot-box-inline.used {
-      background:#000;
-      border-color:#000;
-    }
+  .slot-box-inline {
+    display:inline-block;
+    width:20px;
+    height:20px;
+    margin:2px;
+    border-radius:3px;
+    border:2px solid #000;
+    background:#fff;
+    box-shadow:none;
+    cursor:pointer;
+    box-sizing:border-box;
+  }
 
-    .slot-box-inline.zero {
-      background:#fff;
-      opacity:1;
-      cursor:default;
-      border-style:dashed;
-    }
+  .slot-box-inline.used {
+    background:#000;
+    border-color:#000;
+  }
 
-    .slot-row-label {
-      width:30px;
-      text-align:center;
-      color:#000;
-      font-size:13px;
-      font-weight:600;
-    }
+  .slot-box-inline.zero {
+    background:#fff;
+    opacity:1;
+    cursor:default;
+    border-style:dashed;
+  }
 
-    .wizard-prep-row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-    .wizard-prep-box {
-      width:36px;
-      height:28px;
-      border-radius:4px;
-      border:2px solid #000;
-      background:#fff;
-      display:inline-flex;
-      align-items:center;
-      justify-content:center;
-      font-weight:700;
-      color:#000;
-      box-sizing:border-box;
-    }
+  .wizard-prepared-strip {
+    margin-top: auto;
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    align-items: flex-end;
+  }
 
-    .wizard-prep-box.empty { opacity:0.6; }
+  .wizard-prepared-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+  }
 
-    .hint.small { font-size:12px; color:#000; margin-top:8px; }
-  `;
+  .wizard-prepared-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: #000;
+  }
+
+  .wizard-prep-box {
+    width:36px;
+    height:28px;
+    border-radius:4px;
+    border:2px solid #000;
+    background:#fff;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    font-weight:700;
+    color:#000;
+    box-sizing:border-box;
+  }
+
+  .wizard-prep-box.empty { opacity:0.45; }
+
+  .hint.small { font-size:12px; color:#000; margin-top:8px; }
+`;
+
   document.head.appendChild(s);
 }
 
@@ -800,62 +821,59 @@ function renderSorcererSlotsHtml(calc, usedState) {
     return `<div class="hint">SlotCalculator not loaded.</div>`;
   }
 
-  let rows = "";
+  const rows = [];
 
   for (let lvl = 0; lvl <= 9; lvl++) {
     const count = Number(calc.sorcerer.final[lvl]) || 0;
+    if (count <= 0) continue; // hide unavailable levels entirely
 
     let boxes = "";
-    if (count <= 0) {
-      boxes = `<div class="slot-box-inline zero" title="No slots"></div>`;
-    } else {
-      for (let i = 0; i < count; i++) {
-        const key = `sorcerer:${lvl}:${i}`;
-        const used = usedState[key] ? " used" : "";
-        boxes += `<div class="slot-box-inline${used}" data-key="${key}" data-class-key="sorcerer" data-level="${lvl}"></div>`;
-      }
+    for (let i = 0; i < count; i++) {
+      const key = `sorcerer:${lvl}:${i}`;
+      const used = usedState[key] ? " used" : "";
+      boxes += `<div class="slot-box-inline${used}" data-key="${key}" data-class-key="sorcerer" data-level="${lvl}"></div>`;
     }
 
-    rows += `
-      <tr>
-        <td class="slot-row-label">${lvl}</td>
-        <td>${boxes}</td>
-      </tr>
-    `;
+    rows.push(`
+      <div class="slot-row-inline">
+        <div class="slot-row-label">${lvl}</div>
+        <div>${boxes}</div>
+      </div>
+    `);
   }
 
-  return `<table class="sorcerer-table">${rows}</table>`;
+  if (!rows.length) {
+    return `<div class="hint">No sorcerer slots available.</div>`;
+  }
+
+  return `<div class="slot-stack-bottom">${rows.join("")}</div>`;
 }
 
 function renderWizardSlotsHtml(calc) {
-  if (!calc || !calc.wizard) {
+  if (!calc || !calc.wizardPrepared) {
     return `<div class="hint">SlotCalculator not loaded.</div>`;
   }
 
-  let rows = `
-    <tr>
-      <th>Lvl</th>
-      <th>Slots</th>
-      <th>Prepared</th>
-    </tr>
-  `;
+  const items = [];
 
   for (let lvl = 0; lvl <= 9; lvl++) {
-    const slots = Number(calc.wizard.final?.[lvl]) || 0;
-    const prepared = Number(calc.wizardPrepared?.[lvl]) || 0;
+    const prepared = Number(calc.wizardPrepared[lvl]) || 0;
+    if (prepared <= 0) continue; // hide inaccessible levels
 
-    rows += `
-      <tr>
-        <td class="slot-row-label">${lvl}</td>
-        <td><div class="wizard-prep-box ${slots === 0 ? "empty" : ""}">${slots}</div></td>
-        <td><div class="wizard-prep-box ${prepared === 0 ? "empty" : ""}">${prepared}</div></td>
-      </tr>
-    `;
+    items.push(`
+      <div class="wizard-prepared-item">
+        <div class="wizard-prepared-label">${lvl}</div>
+        <div class="wizard-prep-box">${prepared}</div>
+      </div>
+    `);
   }
 
-  return `<table class="wizard-slot-table">${rows}</table>`;
-}
+  if (!items.length) {
+    return `<div class="hint">No wizard slots available.</div>`;
+  }
 
+  return `<div class="wizard-prepared-strip">${items.join("")}</div>`;
+}
 function wireCombinedSpellcastingSlotClicks() {
   document.querySelectorAll('.slot-box-inline[data-key]').forEach((box) => {
     box.addEventListener('click', () => {
@@ -1053,28 +1071,14 @@ function renderSpells() {
           <h3>Wizard slots / prepared (effective level ${effWiz})</h3>
           ${renderWizardSlotsHtml(calc)}
         </div>
-
-        <div class="panel">
-          <h3>Sorcerer / UM</h3>
-          ${SpellsViewHelpers.renderSpellTable({
-            rows: sorcRows,
-            meta,
-            castingMod: chaMod,
-            showPrep: false
-          })}
-        </div>
-
-        <div class="panel">
-          <h3>Wizard</h3>
-          ${SpellsViewHelpers.renderSpellTable({
-            rows: wizRows,
-            meta,
-            castingMod: intMod,
-            showPrep: true
-          })}
-        </div>
-      </div>
-
+         <div class="panel slot-panel">
+           <h3>Sorcerer slots (effective level ${effSorc})</h3>
+           ${renderSorcererSlotsHtml(calc, usedState)}
+         </div>
+         <div class="panel slot-panel">
+           <h3>Wizard prepared (effective level ${effWiz})</h3>
+           ${renderWizardSlotsHtml(calc)}
+         </div>
       <div class="hint small">
         Top-left: sorcerer slots. Top-right: wizard slots/prepared counts. Bottom row: sorcerer and wizard spell lists.
       </div>
