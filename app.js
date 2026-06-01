@@ -61,6 +61,10 @@ if (typeof SheetParsers === "undefined") {
   console.warn("SheetParsers not loaded. Did you include sheetParsers.js before app.js?");
 }
 
+if (typeof AppStorage === "undefined") {
+  console.warn("AppStorage not loaded. Did you include storage.js before app.js?");
+}
+
 
 /* ------------------------------ App state ------------------------------ */
 const state = {
@@ -993,22 +997,27 @@ window.addEventListener("DOMContentLoaded", () => {
     num = document.getElementById('lineWidthNumber');
   }
 
-  // Load saved preference if present
-  try {
-    const saved = Number(localStorage.getItem('ink.lineWidth'));
-    if (saved && !Number.isNaN(saved)) {
-      state.lineWidth = saved;
-      if (range) range.value = saved;
-      if (num) num.value = saved;
-    }
-  } catch (e) {}
 
+// Load saved preference if present
+const saved = (typeof AppStorage !== "undefined")
+  ? AppStorage.readNumber("ink.lineWidth", state.lineWidth)
+  : state.lineWidth;
+
+if (Number.isFinite(saved) && saved >= 0.5 && saved <= 24) {
+  state.lineWidth = saved;
+  if (range) range.value = saved;
+  if (num) num.value = saved;
+}
   function applyWidth(v) {
     const val = Math.max(0.5, Math.min(24, Number(v) || 2));
     state.lineWidth = val;
     if (range) range.value = val;
     if (num) num.value = val;
-    try { localStorage.setItem('ink.lineWidth', String(val)); } catch (e) {}
+    
+if (typeof AppStorage !== "undefined") {
+  AppStorage.writeNumber("ink.lineWidth", val);
+}
+
   }
 
   if (range) {
