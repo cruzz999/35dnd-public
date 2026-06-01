@@ -33,14 +33,12 @@
   box-shadow:0 1px 0 rgba(0,0,0,0.03);
   cursor:pointer;
 }
-
 /* Used (ticked) state */
 .slot-box-inline.used {
-  background: linear-gradient(180deg, var(--slot-used-bg-start), var(--slot-used-bg-end));
-  opacity:0.6;
-  text-decoration:line-through;
-  /* optionally change border color when used */
-  border-color: #b6c2d6;
+  background: #000;
+  border-color: #000;
+  opacity: 1;
+  text-decoration: none;
 }
 
 /* Zero / empty state */
