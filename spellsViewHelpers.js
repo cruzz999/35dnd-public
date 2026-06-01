@@ -77,7 +77,8 @@
 
             const spellCell = s.url
               ? `<a href="${String(s.url).replace(/"/g, "&quot;")}" target="_blank" rel="noopener noreferrer">${escapeHtml(s.name)}</a>`
-              : escapeHtml(s.name);
+            : escapeHtml(s.name);
+
 
             const anchorId = `${s.mode}:${s.name}:prep`
               .toLowerCase()
