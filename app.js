@@ -44,6 +44,10 @@ function assertEl(name) {
 }
 ["viewport", "world", "app", "ink", "status", "progressBar"].forEach(assertEl);
 
+if (typeof GeneralDerived === "undefined") {
+  console.warn("GeneralDerived not loaded. Did you include generalDerived.js before app.js?");
+}
+
 /* ------------------------------ App state ------------------------------ */
 const state = {
   loaded: false,                 // becomes true after XLSX or Google load
@@ -88,29 +92,7 @@ function fmtSign(n) {
   n = Number(n) || 0;
   return (n >= 0 ? "+" : "") + n;
 }
-function abilityMod(score) {
-  return Math.floor((Number(score) - 10) / 2);
-}
-function babPoor(level) {
-  level = Number(level) || 0;
-  return Math.floor(level / 2);
-}
-function saveGood(level) {
-  level = Number(level) || 0;
-  return 2 + Math.floor(level / 2);
-}
-function savePoor(level) {
-  level = Number(level) || 0;
-  return Math.floor(level / 3);
-}
-function totalLevel(classes) {
-  return (Number(classes.sorc) || 0) + (Number(classes.wiz) || 0) + (Number(classes.um) || 0);
-}
-function hpAverageD4(totalLvl) {
-  totalLvl = Number(totalLvl) || 0;
-  if (totalLvl <= 0) return 0;
-  return 4 + (totalLvl - 1) * 3;
-}
+
 
 /* -------------------- Viewport height sync (topbar wrap) --------------- */
 function syncViewportHeight() {
@@ -431,56 +413,7 @@ if (stroke.erase) {
   return { redraw, loadForView, setPenMode, setEraser };
 })();
 
-/* ----------------- Derived computations (General view) ----------------- */
-function computeGeneralDerived(g) {
-  const cls = g.classes;
 
-  const abilities = {};
-  for (const k of ["str","dex","con","int","wis","cha"]) {
-    const a = g.abilities[k];
-    const base = (Number(a.pointBuy)||0) + (Number(a.asi)||0);
-    const total = base + (Number(a.items)||0) + (Number(a.buffs)||0);
-    abilities[k] = { total, mod: abilityMod(total) };
-  }
-
-  const lvl = totalLevel(cls);
-  const hpBase = hpAverageD4(lvl);
-  const hpMax = hpBase + abilities.con.mod * lvl;
-
-  const ac = g.ac;
-  const armorItem = Number(ac.armor)||0;
-  const shieldItem = Number(ac.shield)||0;
-  const mageArmorBonus = Number(g.buffs?.mageArmor)||0;
-  const shieldSpellBonus = Number(g.buffs?.shieldSpell)||0;
-  const armorUsed = Math.max(armorItem, mageArmorBonus);
-  const shieldUsed = Math.max(shieldItem, shieldSpellBonus);
-
-  const acTotal =
-    10 + armorUsed + shieldUsed + abilities.dex.mod +
-    (Number(ac.size)||0) + (Number(ac.natural)||0) +
-    (Number(ac.deflect)||0) + (Number(ac.misc)||0);
-
-  const touch = 10 + abilities.dex.mod + (Number(ac.size)||0) + (Number(ac.deflect)||0) + (Number(ac.miscTouch)||0);
-  const flat  = 10 + armorUsed + shieldUsed + (Number(ac.size)||0) + (Number(ac.natural)||0) + (Number(ac.deflect)||0) + (Number(ac.misc)||0);
-
-  const bab = babPoor(cls.sorc) + babPoor(cls.wiz) + babPoor(cls.um);
-
-  const fortBase = savePoor(cls.sorc) + savePoor(cls.wiz) + savePoor(cls.um);
-  const refBase  = savePoor(cls.sorc) + savePoor(cls.wiz) + savePoor(cls.um);
-  const willBase = saveGood(cls.sorc) + saveGood(cls.wiz) + saveGood(cls.um);
-
-  const saves = {
-    fort: fortBase + abilities.con.mod + (Number(g.saves.fortMisc)||0),
-    ref:  refBase  + abilities.dex.mod + (Number(g.saves.refMisc)||0),
-    will: willBase + abilities.wis.mod + (Number(g.saves.willMisc)||0)
-  };
-
-  const init = abilities.dex.mod + (Number(g.initMisc)||0);
-  const melee = bab + abilities.str.mod + (Number(g.attacks.meleeMisc)||0);
-  const ranged = bab + abilities.dex.mod + (Number(g.attacks.rangedMisc)||0);
-
-  return { lvl, abilities, hpMax, acTotal, touch, flat, bab, saves, init, melee, ranged };
-}
 
 /* ---------------------- Google Sheets ingest (CSV) ---------------------- */
 /* Uses your NAS proxy endpoint: /gs/csv?id=...&gid=... */
@@ -863,7 +796,7 @@ function renderGeneral() {
   g.attacks = g.attacks || { meleeMisc: 0, rangedMisc: 0, grappleMisc: 0 };
   g.initMisc = g.initMisc || 0;
 
-  const d = computeGeneralDerived(g);
+  const d = GeneralDerived.compute(g);
   const A = d.abilities;
 
   // Helper to render one ability row with breakdown
@@ -1017,7 +950,7 @@ function renderSlots() {
   const baseWiz  = Number(state.data.currentWizardLevel  ?? meta.wizLevels  ?? (g.classes ? g.classes.wiz  : 0)) || 0;
   const umLevels  = Number(state.data.currentUmLevel ?? meta.umLevels ?? (g.classes ? g.classes.um : 0)) || 0;
 
-  const d = g ? computeGeneralDerived(g) : null;
+  const d = g ? GeneralDerived.compute(g) : null;
   const chaTotal = d ? d.abilities.cha.total : (state.cha || 0);
   const intTotal = d ? d.abilities.int.total : (state.int || 0);
 
@@ -1267,7 +1200,7 @@ function renderSpellTable(rows, meta, castingMod, showPrep) {
 function renderSpells() {
   const g = state.data.general;
   const meta = state.data.spells.meta || { sorcLevels:1, wizLevels:5, umLevels:2, arcaneSpellpower:1 };
-  const d = g ? computeGeneralDerived(g) : null;
+  const d = g ? GeneralDerived.compute(g) : null;
   const intMod = d ? d.abilities.int.mod : 0;
   const chaMod = d ? d.abilities.cha.mod : 0;
 
