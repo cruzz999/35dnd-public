@@ -43,29 +43,24 @@ function assertEl(name) {
   if (!el[name]) console.warn(`Missing element #${name}`);
 }
 ["viewport", "world", "app", "ink", "status", "progressBar"].forEach(assertEl);
-
-
 if (typeof GeneralDerived === "undefined") {
   console.warn("GeneralDerived not loaded. Did you include generalDerived.js before app.js?");
 }
-
 if (typeof SheetLoader === "undefined") {
   console.warn("SheetLoader not loaded. Did you include sheetLoader.js before app.js?");
 }
-
 if (typeof ArcaneMath === "undefined") {
   console.warn("ArcaneMath not loaded. Did you include arcaneMath.js before app.js?");
 }
-
 if (typeof SheetParsers === "undefined") {
   console.warn("SheetParsers not loaded. Did you include sheetParsers.js before app.js?");
 }
-
 if (typeof AppStorage === "undefined") {
   console.warn("AppStorage not loaded. Did you include storage.js before app.js?");
 }
-
-
+if (typeof SpellsViewHelpers === "undefined") {
+  console.warn("SpellsViewHelpers not loaded. Did you include spellsViewHelpers.js before app.js?");
+}
 /* ------------------------------ App state ------------------------------ */
 const state = {
   loaded: false,                 // becomes true after XLSX or Google load
@@ -840,65 +835,6 @@ s.textContent = `
   container.appendChild(note);
 }
 
-
-
-function renderSpellTable(rows, meta, castingMod, showPrep) {
-  if (!rows || !rows.length) return `<div class="hint">No spells loaded.</div>`;
-
-  return `
-    <table class="table">
-      <thead>
-        <tr>
-          <th>Spell</th><th>SL</th><th>CL</th><th>DC</th>
-          ${showPrep ? "<th>Prep</th>" : ""}
-          <th>Type</th><th>F</th><th>E</th>
-          <th>Range</th><th>Area</th><th>Damage</th><th>Duration</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${rows.map(s => {
-          
-const cl = ArcaneMath.computeLegacySpellCasterLevel(s, meta);
-const dc = ArcaneMath.computeSpellDC(s.sl, castingMod);
-
-
-          // Spell name (CSV mode has no URL; XLSX mode may have s.url)
-          const spellCell = s.url
-            ? `<a href="${String(s.url).replace(/"/g, "&quot;")}" target="_blank" rel="noopener noreferrer">${escapeHtml(s.name)}</a>`
-            : escapeHtml(s.name);
-
-          // Prep box is intentionally empty for pen scribbles
-          const anchorId = `${s.mode}:${s.name}:prep`
-            .toLowerCase()
-            .replace(/\s+/g, "_")
-            .replace(/[^a-z0-9:_-]/g, "");
-
-          const prepCell = showPrep
-            ? `<td><span class="prep-box" data-ink-anchor="${anchorId}"></span></td>`
-            : "";
-
-          return `
-            <tr>
-              <td>${spellCell}</td>
-              <td>${Number(s.sl) || 0}</td>
-              <td>${cl}</td>
-              <td>${dc}</td>
-              ${prepCell}
-              <td>${escapeHtml(s.type || "")}</td>
-              <td>${s.fire ? "✓" : ""}</td>
-              <td>${s.evo ? "✓" : ""}</td>
-              <td>${escapeHtml(s.range || "")}</td>
-              <td>${escapeHtml(s.area || "")}</td>
-              <td>${escapeHtml(s.damage || "")}</td>
-              <td>${escapeHtml(s.duration || "")}</td>
-            </tr>
-          `;
-        }).join("")}
-      </tbody>
-    </table>
-  `;
-}
-
 function renderSpells() {
   const g = state.data.general;
   const meta = state.data.spells.meta || { sorcLevels:1, wizLevels:5, umLevels:2, arcaneSpellpower:1 };
@@ -917,17 +853,28 @@ function renderSpells() {
       <div class="grid">
         <div class="panel">
           <h3>Sorcerer / UM</h3>
-          ${renderSpellTable(sorcRows, meta, chaMod, false)}
+          ${SpellsViewHelpers.renderSpellTable({
+            rows: sorcRows,
+            meta,
+            castingMod: chaMod,
+            showPrep: false
+          })}
         </div>
 
         <div class="panel">
           <h3>Wizard</h3>
-          ${renderSpellTable(wizRows, meta, intMod, true)}
+          ${SpellsViewHelpers.renderSpellTable({
+            rows: wizRows,
+            meta,
+            castingMod: intMod,
+            showPrep: true
+          })}
         </div>
       </div>
     </div>
   `;
 }
+
 
 function render() {
   if (!el.app) return;
