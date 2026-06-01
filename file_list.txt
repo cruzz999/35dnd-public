@@ -1,4 +1,5 @@
 app.js
+arcaneMath.js
 generalDerived.js
 index.html
 sheetLoader.js
