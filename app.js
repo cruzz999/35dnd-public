@@ -57,6 +57,10 @@ if (typeof ArcaneMath === "undefined") {
   console.warn("ArcaneMath not loaded. Did you include arcaneMath.js before app.js?");
 }
 
+if (typeof SheetParsers === "undefined") {
+  console.warn("SheetParsers not loaded. Did you include sheetParsers.js before app.js?");
+}
+
 
 /* ------------------------------ App state ------------------------------ */
 const state = {
@@ -451,13 +455,17 @@ const generalGrid = SheetLoader.csvToGrid(
   await SheetLoader.fetchCsvViaProxy(id, gids.general)
 );
 
-    // Parse first; don't mark loaded until parsing succeeds
-    ingestSpellsFromGrid(spellsGrid);
-    ingestGeneralFromGrid(generalGrid);
+// Parse first; don't mark loaded until parsing succeeds
+const parsedSpells = SheetParsers.parseSpellsGrid(spellsGrid);
+const parsedGeneral = SheetParsers.parseGeneralGrid(generalGrid);
 
-    // Only now mark loaded
-    state.loaded = true;
+state.data.general = parsedGeneral;
+state.data.spells.sorc = parsedSpells.sorc;
+state.data.spells.wiz = parsedSpells.wiz;
+state.data.spells.meta = parsedSpells.meta;
 
+// Only now mark loaded
+state.loaded = true;
     setProgress(95, "Rendering…");
     render();
     setProgress(100, "Done ✅");
@@ -468,295 +476,6 @@ const generalGrid = SheetLoader.csvToGrid(
     state.loaded = false;
   }
 }
-
-function ingestGeneralFromGrid(grid) {
-  const cell = (r, c) => (grid[r] && grid[r][c] != null) ? String(grid[r][c]) : "";
-const num = (v, fb = 0) => {
-  const s = String(v ?? "").trim().replace(",", ".");
-  const m = s.match(/-?\d+(\.\d+)?/);   // grab first number anywhere in the string
-  if (!m) return fb;
-  const n = Number(m[0]);
-  return Number.isFinite(n) ? n : fb;
-};
-  // Normalize header strings: lowercase, remove spaces and punctuation
-  const norm = (s) =>
-    String(s ?? "")
-      .toLowerCase()
-      .replace(/\s+/g, "")
-      .replace(/[^\p{L}\p{N}]/gu, ""); // keep letters/numbers only (unicode-safe)
-
-  const findHeaderRow = () => {
-    // Find a row containing "Ability" and at least one of the known headers
-    // This is more robust than relying on exact positions.
-    for (let r = 0; r < grid.length; r++) {
-      const row = grid[r] || [];
-      const nset = new Set(row.map(norm));
-      if (nset.has("ability") && (
-          nset.has("score") ||
-          nset.has("pointbuyarray") ||
-          nset.has("asi") ||
-          nset.has("items") ||
-          nset.has("penaltiesbuffs") ||
-          nset.has("penaltiesbuff") ||
-          nset.has("penaltiesbuffs") ||
-          nset.has("penaltiesbuffs") // harmless redundancy
-      )) {
-        return r;
-      }
-    }
-    return -1;
-  };
-
-  const findCol = (rowIdx, targetNorm) => {
-    const row = grid[rowIdx] || [];
-    for (let c = 0; c < row.length; c++) {
-      if (norm(row[c]) === targetNorm) return c;
-    }
-    return -1;
-  };
-
-  const findColIncludes = (rowIdx, targetNormFragment) => {
-    const row = grid[rowIdx] || [];
-    for (let c = 0; c < row.length; c++) {
-      const n = norm(row[c]);
-      if (n.includes(targetNormFragment)) return c;
-    }
-    return -1;
-  };
-
-  // ---- Base general object (identity tends to survive CSV well) ----
-  const general = {
-    characterName: cell(0, 0),
-    playerName: cell(0, 1),
-    alignment: cell(0, 2),
-    xp: num(cell(0, 4), 0),
-
-    classLine: cell(3, 0),
-    race: cell(3, 3),
-
-    size: cell(6, 1),
-    age: num(cell(6, 2), 0),
-    gender: cell(6, 3),
-
-    classes: { sorc: 1, wiz: 5, um: 2 },
-
-    abilities: {
-      str: { pointBuy: 0, asi: 0, items: 0, buffs: 0 },
-      dex: { pointBuy: 0, asi: 0, items: 0, buffs: 0 },
-      con: { pointBuy: 0, asi: 0, items: 0, buffs: 0 },
-      int: { pointBuy: 0, asi: 0, items: 0, buffs: 0 },
-      wis: { pointBuy: 0, asi: 0, items: 0, buffs: 0 },
-      cha: { pointBuy: 0, asi: 0, items: 0, buffs: 0 }
-    },
-
-    ac: { armor: 0, shield: 0, size: 0, natural: 0, deflect: 0, misc: 0, miscTouch: 0 },
-
-    saves: { fortMisc: 0, refMisc: 0, willMisc: 0 },
-    attacks: { meleeMisc: 0, rangedMisc: 0, grappleMisc: 0 },
-    initMisc: 0,
-
-    buffs: { mageArmor: 0, shieldSpell: 0 },
-
-    feats: [],
-    languages: []
-  };
-
-  // ---- Ability table: locate header row and columns ----
-  const hdr = findHeaderRow();
-  if (hdr !== -1) {
-    const colAbility = findCol(hdr, "ability");
-
-    // These are the column titles you gave (and match your sheet intent) [1](https://help.boox.com/hc/en-us)
-    const colScore = findCol(hdr, "score");
-    const colPB    = findColIncludes(hdr, "pointbuy");      // matches "Point buy array"
-    const colASI   = findCol(hdr, "asi");
-    const colItems = findCol(hdr, "items");
-    const colBuffs = findColIncludes(hdr, "penalties") >= 0
-      ? findColIncludes(hdr, "penalties")                   // matches "Penalties/buffs"
-      : findColIncludes(hdr, "buffs");
-
-    const mapKey = (label) => {
-      const x = String(label).trim().toLowerCase();
-      if (x === "str") return "str";
-      if (x === "dex") return "dex";
-      if (x === "con") return "con";
-      if (x === "int") return "int";
-      if (x === "wis") return "wis";
-      if (x === "cha") return "cha";
-      return null;
-    };
-
-    for (let r = hdr + 1; r < Math.min(hdr + 30, grid.length); r++) {
-      const label = cell(r, colAbility >= 0 ? colAbility : 0).trim();
-      const key = mapKey(label);
-      if (!key) continue;
-
-// Read raw values
-const score = colScore >= 0 ? num(cell(r, colScore), 0) : 0;
-let pb  = colPB    >= 0 ? num(cell(r, colPB), 0)    : 0;
-let asi = colASI   >= 0 ? num(cell(r, colASI), 0)   : 0;
-const items = colItems >= 0 ? num(cell(r, colItems), 0) : 0;
-const buffs = colBuffs >= 0 ? num(cell(r, colBuffs), 0) : 0;
-
-// If PB is missing but Score and ASI exist, PB = Score - ASI
-if (pb === 0 && score !== 0 && asi !== 0) {
-  pb = score - asi;
-}
-
-// If ASI is missing but Score and PB exist, ASI = Score - PB
-if (asi === 0 && score !== 0 && pb !== 0) {
-  asi = score - pb;
-}
-
-// If both are missing but Score exists, treat Score as PB (fallback)
-if (pb === 0 && asi === 0 && score !== 0) {
-  pb = score;
-}
-
-general.abilities[key] = { pointBuy: pb, asi, items, buffs };
-
-    }
-  }
-
-  // ---- Feats (CSV gives text; links are not preserved) ---- [1](https://help.boox.com/hc/en-us)
-  // Find the row containing exact label and read downward in the same column (usually col 0)
-  let featsRow = -1;
-  for (let r = 0; r < grid.length; r++) {
-    if ((grid[r] || []).some(v => String(v).trim() === "Feats & Special Abilities")) { featsRow = r; break; }
-  }
-  if (featsRow !== -1) {
-    for (let r = featsRow + 1; r < Math.min(featsRow + 60, grid.length); r++) {
-      const t = cell(r, 0).trim();
-      if (!t) break;
-      general.feats.push({ label: t, url: "" });
-    }
-  }
-
-  // ---- Languages ---- [1](https://help.boox.com/hc/en-us)
-  // Find "Languages:" anywhere and read downward in the same column
-  let langPos = null;
-  for (let r = 0; r < grid.length && !langPos; r++) {
-    const row = grid[r] || [];
-    for (let c = 0; c < row.length; c++) {
-      if (String(row[c]).trim() === "Languages:") { langPos = { r, c }; break; }
-    }
-  }
-  if (langPos) {
-    for (let r = langPos.r + 1; r < Math.min(langPos.r + 40, grid.length); r++) {
-      const t = cell(r, langPos.c).trim();
-      if (!t) break;
-      general.languages.push(t);
-    }
-  }
-
-  state.data.general = general;
-}
-
-function ingestSpellsFromGrid(grid) {
-  const cell = (r, c) => (grid[r] && grid[r][c] != null) ? String(grid[r][c]) : "";
-  const num = (s, fb = 0) => {
-    const n = Number(String(s).replace(",", "."));
-    return Number.isFinite(n) ? n : fb;
-  };
-
-  const findRowContaining = (text) =>
-    grid.findIndex(row => (row || []).some(v => String(v).trim() === text));
-
-  const sorcHeader = findRowContaining("Spell slots (S)");
-  const wizHeader  = findRowContaining("Spell slots (W)");
-
-  function headerMap(rowIdx) {
-    const row = grid[rowIdx] || [];
-    const map = {};
-    for (let c = 0; c < row.length; c++) {
-      const key = String(row[c] ?? "").trim();
-      if (key) map[key] = c;
-    }
-    return map;
-  }
-
-  function findSpellColByScanning(headerRow, preferredCol) {
-    // If preferredCol exists, verify it actually contains spell names in next rows.
-    // Otherwise scan the row for first column with non-empty values for several rows.
-    const candidates = [];
-    if (preferredCol != null) candidates.push(preferredCol, preferredCol - 1, preferredCol + 1);
-
-    // Add all columns as fallback candidates (left->right)
-    const header = grid[headerRow] || [];
-    for (let c = 0; c < header.length; c++) candidates.push(c);
-
-    const seen = new Set();
-    for (const c of candidates) {
-      if (c == null || c < 0) continue;
-      if (seen.has(c)) continue;
-      seen.add(c);
-
-      // Look at next few rows; if 2+ are non-empty and not numeric-only, accept
-      let hits = 0;
-      for (let r = headerRow + 1; r < Math.min(headerRow + 15, grid.length); r++) {
-        const t = cell(r, c).trim();
-        if (!t) continue;
-        // Ignore obvious numeric columns
-        if (/^[0-9.]+$/.test(t)) continue;
-        hits++;
-      }
-      if (hits >= 2) return c;
-    }
-    return preferredCol ?? 0;
-  }
-
-  function readBlock(headerRow, mode) {
-    if (headerRow < 0) return [];
-    const h = headerMap(headerRow);
-
-    const colSL = h["SL"];
-    const colType = h["Type"];
-    const colEvo = h["Evo?"];
-    const colFire = h["Fire?"];
-    const colRange = h["Range"];
-    const colArea = h["Area"];
-    const colDamage = h["Damage"];
-    const colDuration = h["Duration"];
-    const colNotes = h["Notes"];
-    const colPrep = h["Preparations"];
-
-    // Spell column label differs between blocks. Grab whichever exists, but validate by scanning.
-    const preferredSpellCol =
-      h["Sorcerer"] ?? h["Wizard"] ?? h["  Wizard"] ?? h["Spell"] ?? null;
-
-    const colSpell = findSpellColByScanning(headerRow, preferredSpellCol);
-
-    const rows = [];
-    for (let r = headerRow + 1; r < grid.length; r++) {
-      const name = cell(r, colSpell).trim();
-      if (!name) break;
-
-      rows.push({
-        mode,
-        name,
-        url: "", // CSV won't preserve hyperlink targets reliably
-        sl: num(cell(r, colSL), 0),
-        type: cell(r, colType),
-        evo: num(cell(r, colEvo), 0) === 1,
-        fire: num(cell(r, colFire), 0) === 1,
-        range: cell(r, colRange),
-        area: cell(r, colArea),
-        damage: cell(r, colDamage),
-        duration: cell(r, colDuration),
-        notes: cell(r, colNotes),
-        prep: mode === "wiz" ? cell(r, colPrep) : ""
-      });
-    }
-    return rows;
-  }
-
-  state.data.spells.sorc = readBlock(sorcHeader, "sorc");
-  state.data.spells.wiz  = readBlock(wizHeader, "wiz");
-
-  // Meta: keep your current baseline; we can pull levels from sheet later if desired
-  state.data.spells.meta = { sorcLevels: 1, wizLevels: 5, umLevels: 2, arcaneSpellpower: 1 };
-}
-
 /* ------------------------------ Rendering ------------------------------ */
 function renderGeneral() {
   const g = state.data.general;
