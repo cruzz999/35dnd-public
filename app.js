@@ -53,6 +53,10 @@ if (typeof SheetLoader === "undefined") {
   console.warn("SheetLoader not loaded. Did you include sheetLoader.js before app.js?");
 }
 
+if (typeof ArcaneMath === "undefined") {
+  console.warn("ArcaneMath not loaded. Did you include arcaneMath.js before app.js?");
+}
+
 
 /* ------------------------------ App state ------------------------------ */
 const state = {
@@ -754,17 +758,6 @@ function ingestSpellsFromGrid(grid) {
 }
 
 /* ------------------------------ Rendering ------------------------------ */
-function computeSpellDC(sl, castingMod) {
-  return 10 + (Number(sl)||0) + (Number(castingMod)||0);
-}
-
-// Preserve your sheet-style CL approximation for now
-function computeSpellCL(spell, meta) {
-  const bonusFireEvo = (spell.evo && spell.fire) ? 2 : 0;
-  if (spell.mode === "wiz") return (meta.wizLevels||0) + (meta.umLevels||0) + bonusFireEvo;
-  return (meta.sorcLevels||0) + (meta.umLevels||0) + (meta.arcaneSpellpower||0) + bonusFireEvo;
-}
-
 function renderGeneral() {
   const g = state.data.general;
 
@@ -947,26 +940,17 @@ function renderSlots() {
   const chaTotal = d ? d.abilities.cha.total : (state.cha || 0);
   const intTotal = d ? d.abilities.int.total : (state.int || 0);
 
-  function computeEffectiveCasterLevels(sBase, wBase, um) {
-    let s = Number(sBase) || 0;
-    let w = Number(wBase) || 0;
-    const special = new Set([1, 4, 7]);
-    for (let i = 1; i <= (Number(um) || 0); i++) {
-      if (special.has(i)) {
-        if (s < w) s++;
-        else if (w < s) w++;
-        else w++; // tie -> add to wizard
-      } else {
-        s++;
-        w++;
-      }
-    }
-    return { sorc: s, wiz: w };
-  }
 
-  const eff = computeEffectiveCasterLevels(baseSorc, baseWiz, umLevels);
-  const effSorc = eff.sorc;
-  const effWiz = eff.wiz;
+const progression = ArcaneMath.computeProgressionLevels({
+  sorcBase: baseSorc,
+  wizBase: baseWiz,
+  umLevels,
+  tieBreaker: "wiz"
+});
+
+const effSorc = progression.sorc;
+const effWiz = progression.wiz;
+
 
   const calc = SlotCalculator.computeAllSlots(state, {
     overrides: { sorcererLevel: effSorc, wizardLevel: effWiz, sorCha: chaTotal, wizInt: intTotal },
@@ -1150,8 +1134,10 @@ function renderSpellTable(rows, meta, castingMod, showPrep) {
       </thead>
       <tbody>
         ${rows.map(s => {
-          const cl = computeSpellCL(s, meta);
-          const dc = computeSpellDC(s.sl, castingMod);
+          
+const cl = ArcaneMath.computeLegacySpellCasterLevel(s, meta);
+const dc = ArcaneMath.computeSpellDC(s.sl, castingMod);
+
 
           // Spell name (CSV mode has no URL; XLSX mode may have s.url)
           const spellCell = s.url
