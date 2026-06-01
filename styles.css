@@ -187,11 +187,7 @@ html, body {
   gap: 10px;
 }
 
-@media (max-width: 900px) {
-  .grid {
-    grid-template-columns: 1fr;
-  }
-}
+
 
 /* ---------------- Tables ---------------- */
 .table {
@@ -503,10 +499,22 @@ label > input[type="checkbox"]#buff_shield:checked { background: linear-gradient
 /* ---------------- Skills view ---------------- */
 
 .skills-layout {
-  display: grid;
-  grid-template-columns: minmax(700px, 1.5fr) minmax(280px, 1fr);
+  display: flex;
   gap: 10px;
-  align-items: start;
+  align-items: stretch;
+  flex-wrap: nowrap;
+}
+
+.skills-table-panel {
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+.skills-notes-panel {
+  flex: 0 0 520px;
+  display: flex;
+  flex-direction: column;
+  min-width: 520px;
 }
 
 .skills-table input.skill-edit {
@@ -523,7 +531,7 @@ label > input[type="checkbox"]#buff_shield:checked { background: linear-gradient
 
 .skills-notes {
   width: 100%;
-  min-height: 700px;
+  min-height: 1100px;
   box-sizing: border-box;
   padding: 10px;
   font-size: 15px;
@@ -534,15 +542,6 @@ label > input[type="checkbox"]#buff_shield:checked { background: linear-gradient
   color: #000;
   resize: vertical;
   font-family: inherit;
+  flex: 1 1 auto;
 }
-
-@media (max-width: 1200px) {
-  .skills-layout {
-    grid-template-columns: 1fr;
-  }
-
-  .skills-notes {
-    min-height: 320px;
-  }
-}
-
+``
