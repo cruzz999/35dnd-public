@@ -44,9 +44,15 @@ function assertEl(name) {
 }
 ["viewport", "world", "app", "ink", "status", "progressBar"].forEach(assertEl);
 
+
 if (typeof GeneralDerived === "undefined") {
   console.warn("GeneralDerived not loaded. Did you include generalDerived.js before app.js?");
 }
+
+if (typeof SheetLoader === "undefined") {
+  console.warn("SheetLoader not loaded. Did you include sheetLoader.js before app.js?");
+}
+
 
 /* ------------------------------ App state ------------------------------ */
 const state = {
@@ -418,41 +424,28 @@ if (stroke.erase) {
 /* ---------------------- Google Sheets ingest (CSV) ---------------------- */
 /* Uses your NAS proxy endpoint: /gs/csv?id=...&gid=... */
 
-function extractSpreadsheetId(url) {
-  const m = String(url).match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
-  return m ? m[1] : null;
-}
-
-async function fetchCsvViaProxy(sheetId, gid) {
-  const url = `/gs/csv?id=${encodeURIComponent(sheetId)}&gid=${encodeURIComponent(gid)}`;
-  const res = await fetch(url, { cache: "no-store" });
-  if (!res.ok) throw new Error(`CSV proxy failed ${res.status}`);
-  return await res.text();
-}
-
-function csvToGrid(csvText) {
-  const wb = XLSX.read(csvText, { type: "string" });
-  const ws = wb.Sheets[wb.SheetNames[0]];
-  return XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
-}
 
 async function loadFromGoogleSheets(sheetUrl) {
   try {
-    const id = extractSpreadsheetId(sheetUrl);
-    if (!id) throw new Error("Could not extract spreadsheet ID from URL.");
+const id = SheetLoader.extractSpreadsheetId(sheetUrl);
+if (!id) throw new Error("Could not extract spreadsheet ID from URL.");
 
-    const gids = {
-      spells: 0,
-      general: 2004670713,
-      slot: 1231385124,
-      skills: 2140364605
-    };
+const gids = {
+  spells: 0,
+  general: 2004670713,
+  slot: 1231385124,
+  skills: 2140364605
+};
 
-    setProgress(5, "Fetching Spells…");
-    const spellsGrid = csvToGrid(await fetchCsvViaProxy(id, gids.spells));
+setProgress(5, "Fetching Spells…");
+const spellsGrid = SheetLoader.csvToGrid(
+  await SheetLoader.fetchCsvViaProxy(id, gids.spells)
+);
 
-    setProgress(30, "Fetching General…");
-    const generalGrid = csvToGrid(await fetchCsvViaProxy(id, gids.general));
+setProgress(30, "Fetching General…");
+const generalGrid = SheetLoader.csvToGrid(
+  await SheetLoader.fetchCsvViaProxy(id, gids.general)
+);
 
     // Parse first; don't mark loaded until parsing succeeds
     ingestSpellsFromGrid(spellsGrid);
