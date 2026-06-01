@@ -61,6 +61,10 @@ if (typeof AppStorage === "undefined") {
 if (typeof SpellsViewHelpers === "undefined") {
   console.warn("SpellsViewHelpers not loaded. Did you include spellsViewHelpers.js before app.js?");
 }
+if (typeof SkillsMath === "undefined") {
+  console.warn("SkillsMath not loaded. Did you include skillsMath.js before app.js?");
+}
+
 /* ------------------------------ App state ------------------------------ */
 const state = {
   loaded: false,                 // becomes true after XLSX or Google load
@@ -81,7 +85,14 @@ const state = {
   data: {
     general: null,
     spells: { sorc: [], wiz: [], meta: null },
+   skills: { rows: [], inventoryLines: [] },
   },
+   
+skillsEdits: {
+  bySkillName: {},
+  inventoryText: ""
+},
+
   lineWidth: 0.5,      // default drawing width
   eraserWidth: 18    // default eraser width (keeps previous behavior)
 };
@@ -453,15 +464,31 @@ setProgress(30, "Fetching General…");
 const generalGrid = SheetLoader.csvToGrid(
   await SheetLoader.fetchCsvViaProxy(id, gids.general)
 );
+     
+setProgress(55, "Fetching Skills…");
+const skillsGrid = SheetLoader.csvToGrid(
+  await SheetLoader.fetchCsvViaProxy(id, gids.skills)
+);
 
-// Parse first; don't mark loaded until parsing succeeds
+
+
 const parsedSpells = SheetParsers.parseSpellsGrid(spellsGrid);
 const parsedGeneral = SheetParsers.parseGeneralGrid(generalGrid);
+const parsedSkills = SheetParsers.parseSkillsGrid(skillsGrid);
 
 state.data.general = parsedGeneral;
 state.data.spells.sorc = parsedSpells.sorc;
 state.data.spells.wiz = parsedSpells.wiz;
 state.data.spells.meta = parsedSpells.meta;
+
+state.data.skills.rows = parsedSkills.rows;
+state.data.skills.inventoryLines = parsedSkills.inventoryLines;
+
+// Seed the writable inventory area only if it is still empty
+if (!state.skillsEdits.inventoryText) {
+  state.skillsEdits.inventoryText = parsedSkills.inventoryLines.join("\n");
+}
+
 
 // Only now mark loaded
 state.loaded = true;
@@ -1050,6 +1077,113 @@ function renderSpells() {
 
   wireCombinedSpellcastingSlotClicks();
 }
+function renderSkills() {
+  const g = state.data.general;
+  const skillsData = state.data.skills || { rows: [], inventoryLines: [] };
+
+  if (!g || !skillsData.rows || !skillsData.rows.length) {
+    el.app.innerHTML = `
+      <div class="panel">
+        <h2>Skills</h2>
+        <div class="hint">No skills data loaded.</div>
+      </div>
+    `;
+    return;
+  }
+
+  const computedRows = SkillsMath.computeSkillRows(
+    skillsData.rows,
+    g,
+    state.skillsEdits.bySkillName,
+    { baseAcp: 0 } // safe current default
+  );
+
+  el.app.innerHTML = `
+    <div class="panel">
+      <h2>Skills</h2>
+      <div class="hint">Rank and Misc are editable. Ability modifier, ACP, and racial bonus are computed automatically.</div>
+
+      <div class="skills-layout">
+        <div class="panel">
+          <table class="table skills-table">
+            <thead>
+              <tr>
+                <th>Skill</th>
+                <th>Ab</th>
+                <th>Total</th>
+                <th>Ab mod</th>
+                <th>Rank</th>
+                <th>Misc</th>
+                <th>ACP</th>
+                <th>Race</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${computedRows.map((row) => `
+                <tr>
+                  <td>${escapeHtml(row.name)}</td>
+                  <td>${escapeHtml(row.ability)}</td>
+                  <td><strong>${fmtSign(row.total)}</strong></td>
+                  <td>${fmtSign(row.abilityMod)}</td>
+                  <td>
+                    <input
+                      class="skill-edit"
+                      type="number"
+                      inputmode="numeric"
+                      data-skill="${escapeHtml(row.name)}"
+                      data-field="rank"
+                      value="${Number(row.rank) || 0}"
+                    >
+                  </td>
+                  <td>
+                    <input
+                      class="skill-edit"
+                      type="number"
+                      inputmode="numeric"
+                      data-skill="${escapeHtml(row.name)}"
+                      data-field="misc"
+                      value="${Number(row.misc) || 0}"
+                    >
+                  </td>
+                  <td>${fmtSign(row.acp)}</td>
+                  <td>${fmtSign(row.raceBonus)}</td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+        </div>
+
+        <div class="panel">
+          <h3>Inventory / Notes</h3>
+          <textarea id="skillsInventoryText" class="skills-notes">${escapeHtml(state.skillsEdits.inventoryText || "")}</textarea>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.querySelectorAll('.skill-edit[data-skill][data-field]').forEach((inp) => {
+    inp.addEventListener('input', () => {
+      const skillName = inp.getAttribute('data-skill');
+      const field = inp.getAttribute('data-field');
+      const val = Number(inp.value);
+
+      state.skillsEdits.bySkillName[skillName] ||= {};
+      state.skillsEdits.bySkillName[skillName][field] = Number.isFinite(val) ? val : 0;
+
+      renderSkills();
+      ink.redraw();
+    });
+  });
+
+  const notes = document.getElementById('skillsInventoryText');
+  if (notes) {
+    notes.addEventListener('input', () => {
+      state.skillsEdits.inventoryText = notes.value;
+    });
+  }
+}
+
+
 function render() {
   if (!el.app) return;
 
@@ -1068,8 +1202,10 @@ function render() {
   }
 
  
+
 if (state.view === "General") renderGeneral();
 else if (state.view === "Spells" || state.view === "Slots") renderSpells();
+else if (state.view === "Skills") renderSkills();
 else el.app.innerHTML = `<div class="panel"><h2>${escapeHtml(state.view)}</h2><div class="hint">Not implemented yet.</div></div>`;
 
 
