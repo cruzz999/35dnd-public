@@ -3,6 +3,7 @@ arcaneMath.js
 generalDerived.js
 index.html
 sheetLoader.js
+sheetParsers.js
 slotCalculator.js
 styles.css
 xlsx.full.min.js
