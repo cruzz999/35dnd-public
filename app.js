@@ -5,7 +5,7 @@
    - Load data from:
         A) XLSX upload (SheetJS)
         B) Google Sheets via NAS proxy endpoint: /gs/csv?id=...&gid=...
-   - Implemented views: General, Spells
+   - Implemented views: General, Spells, Skills
    ========================================================================== */
 
 /* ----------------------------- DOM helpers ------------------------------ */
@@ -43,6 +43,7 @@ function assertEl(name) {
   if (!el[name]) console.warn(`Missing element #${name}`);
 }
 ["viewport", "world", "app", "ink", "status", "progressBar"].forEach(assertEl);
+
 if (typeof GeneralDerived === "undefined") {
   console.warn("GeneralDerived not loaded. Did you include generalDerived.js before app.js?");
 }
@@ -65,9 +66,34 @@ if (typeof SkillsMath === "undefined") {
   console.warn("SkillsMath not loaded. Did you include skillsMath.js before app.js?");
 }
 
+/* ---------------------------- Edit defaults ----------------------------- */
+function defaultGeneralEdits() {
+  return {
+    abilities: {
+      str: { asi: 0, items: 0, buffs: 0 },
+      dex: { asi: 0, items: 0, buffs: 0 },
+      con: { asi: 0, items: 0, buffs: 0 },
+      int: { asi: 0, items: 0, buffs: 0 },
+      wis: { asi: 0, items: 0, buffs: 0 },
+      cha: { asi: 0, items: 0, buffs: 0 }
+    },
+    buffs: {
+      mageArmor: 0,
+      shieldSpell: 0
+    }
+  };
+}
+
+function defaultSkillsEdits() {
+  return {
+    bySkillName: {},
+    inventoryText: ""
+  };
+}
+
 /* ------------------------------ App state ------------------------------ */
 const state = {
-  loaded: false,                 // becomes true after XLSX or Google load
+  loaded: false,
   view: "General",
 
   // Paper transform
@@ -81,20 +107,19 @@ const state = {
   // Ink storage per view
   strokesByView: {},
 
-  // Data
+  // Data loaded from sheet
   data: {
     general: null,
     spells: { sorc: [], wiz: [], meta: null },
-   skills: { rows: [], inventoryLines: [] },
+    skills: { rows: [], inventoryLines: [] },
   },
-   
-skillsEdits: {
-  bySkillName: {},
-  inventoryText: ""
-},
 
-  lineWidth: 0.5,      // default drawing width
-  eraserWidth: 18    // default eraser width (keeps previous behavior)
+  // Persisted editable overlays
+  generalEdits: defaultGeneralEdits(),
+  skillsEdits: defaultSkillsEdits(),
+
+  lineWidth: 0.5,
+  eraserWidth: 18
 };
 
 /* ------------------------------ Progress ------------------------------- */
@@ -102,6 +127,7 @@ function setProgress(pct, text) {
   if (el.progressBar) el.progressBar.style.width = `${pct}%`;
   if (el.status) el.status.textContent = text;
 }
+
 function nextFrame() {
   return new Promise((resolve) => requestAnimationFrame(resolve));
 }
@@ -109,30 +135,56 @@ function nextFrame() {
 /* ---------------------------- Utilities -------------------------------- */
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (m) => ({
-    "&": "&", "<": "<", ">": ">", "\"": "&quot;", "'": "&#039;"
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#039;"
   }[m]));
 }
+
 function fmtSign(n) {
   n = Number(n) || 0;
   return (n >= 0 ? "+" : "") + n;
 }
 
-/* ------------------------- Skills persistence -------------------------- */
-
+/* -------------------- Editable state persistence ----------------------- */
 const STORAGE_KEYS = {
+  generalEdits: "general.edits.v1",
   skillsEdits: "skills.edits.v1"
 };
 
-function defaultSkillsEdits() {
-  return {
-    bySkillName: {},
-    inventoryText: ""
+function normalizeGeneralEdits(raw) {
+  const base = defaultGeneralEdits();
+  if (!raw || typeof raw !== "object") return base;
+
+  const abilities = raw.abilities && typeof raw.abilities === "object"
+    ? raw.abilities
+    : {};
+
+  const buffs = raw.buffs && typeof raw.buffs === "object"
+    ? raw.buffs
+    : {};
+
+  for (const key of ["str", "dex", "con", "int", "wis", "cha"]) {
+    const src = abilities[key] || {};
+    base.abilities[key] = {
+      asi: Number.isFinite(Number(src.asi)) ? Number(src.asi) : 0,
+      items: Number.isFinite(Number(src.items)) ? Number(src.items) : 0,
+      buffs: Number.isFinite(Number(src.buffs)) ? Number(src.buffs) : 0
+    };
+  }
+
+  base.buffs = {
+    mageArmor: Number.isFinite(Number(buffs.mageArmor)) ? Number(buffs.mageArmor) : 0,
+    shieldSpell: Number.isFinite(Number(buffs.shieldSpell)) ? Number(buffs.shieldSpell) : 0
   };
+
+  return base;
 }
 
 function normalizeSkillsEdits(raw) {
   const base = defaultSkillsEdits();
-
   if (!raw || typeof raw !== "object") return base;
 
   const bySkillName =
@@ -151,14 +203,25 @@ function normalizeSkillsEdits(raw) {
   };
 }
 
-function loadSkillsEdits() {
+function loadEditableState() {
   if (typeof AppStorage === "undefined") {
+    state.generalEdits = defaultGeneralEdits();
     state.skillsEdits = defaultSkillsEdits();
     return;
   }
 
-  const raw = AppStorage.readJson(STORAGE_KEYS.skillsEdits, defaultSkillsEdits());
-  state.skillsEdits = normalizeSkillsEdits(raw);
+  state.generalEdits = normalizeGeneralEdits(
+    AppStorage.readJson(STORAGE_KEYS.generalEdits, defaultGeneralEdits())
+  );
+
+  state.skillsEdits = normalizeSkillsEdits(
+    AppStorage.readJson(STORAGE_KEYS.skillsEdits, defaultSkillsEdits())
+  );
+}
+
+function saveGeneralEdits() {
+  if (typeof AppStorage === "undefined") return;
+  AppStorage.writeJson(STORAGE_KEYS.generalEdits, state.generalEdits);
 }
 
 function saveSkillsEdits() {
@@ -169,14 +232,61 @@ function saveSkillsEdits() {
 let skillsNotesSaveTimer = null;
 
 function scheduleSaveSkillsEdits(delayMs = 200) {
-  if (skillsNotesSaveTimer) {
-    clearTimeout(skillsNotesSaveTimer);
-  }
+  if (skillsNotesSaveTimer) clearTimeout(skillsNotesSaveTimer);
 
   skillsNotesSaveTimer = setTimeout(() => {
     saveSkillsEdits();
     skillsNotesSaveTimer = null;
   }, delayMs);
+}
+
+function applyGeneralEditsToGeneral(general, edits = state.generalEdits) {
+  if (!general) return general;
+
+  general.abilities ||= {};
+  for (const key of ["str", "dex", "con", "int", "wis", "cha"]) {
+    general.abilities[key] ||= { pointBuy: 0, asi: 0, items: 0, buffs: 0 };
+
+    const src = edits?.abilities?.[key];
+    if (!src) continue;
+
+    if (Number.isFinite(Number(src.asi))) general.abilities[key].asi = Number(src.asi);
+    if (Number.isFinite(Number(src.items))) general.abilities[key].items = Number(src.items);
+    if (Number.isFinite(Number(src.buffs))) general.abilities[key].buffs = Number(src.buffs);
+  }
+
+  general.buffs ||= { mageArmor: 0, shieldSpell: 0 };
+
+  if (Number.isFinite(Number(edits?.buffs?.mageArmor))) {
+    general.buffs.mageArmor = Number(edits.buffs.mageArmor);
+  }
+  if (Number.isFinite(Number(edits?.buffs?.shieldSpell))) {
+    general.buffs.shieldSpell = Number(edits.buffs.shieldSpell);
+  }
+
+  return general;
+}
+
+function syncGeneralEditsFromGeneral(general) {
+  if (!general) return;
+
+  state.generalEdits ||= defaultGeneralEdits();
+
+  for (const key of ["str", "dex", "con", "int", "wis", "cha"]) {
+    const src = general.abilities?.[key] || {};
+    state.generalEdits.abilities[key] = {
+      asi: Number(src.asi) || 0,
+      items: Number(src.items) || 0,
+      buffs: Number(src.buffs) || 0
+    };
+  }
+
+  state.generalEdits.buffs = {
+    mageArmor: Number(general.buffs?.mageArmor) || 0,
+    shieldSpell: Number(general.buffs?.shieldSpell) || 0
+  };
+
+  saveGeneralEdits();
 }
 
 /* -------------------- Viewport height sync (topbar wrap) --------------- */
@@ -185,11 +295,13 @@ function syncViewportHeight() {
   const h = topbar ? topbar.getBoundingClientRect().height : 64;
   if (el.viewport) el.viewport.style.height = `calc(100vh - ${h}px)`;
 }
+
 window.addEventListener("resize", () => {
   syncViewportHeight();
   applyWorldTransform();
   ink.redraw();
 });
+
 syncViewportHeight();
 
 /* -------------------- Paper transform (pan/zoom) ----------------------- */
@@ -208,7 +320,6 @@ function setZoom(newZoom, anchorClientX = null, anchorClientY = null) {
   newZoom = clampZoom(newZoom);
   if (newZoom === oldZoom) return;
 
-  // Zoom around a point in viewport coordinates
   if (anchorClientX != null && anchorClientY != null && el.viewport) {
     const vr = el.viewport.getBoundingClientRect();
     const vx = anchorClientX - vr.left;
@@ -246,9 +357,9 @@ function setView(viewName) {
     setProgress(0, `Render error: ${e?.message || e}`);
   }
 }
+
 if (el.viewGeneral) el.viewGeneral.onclick = () => setView("General");
 if (el.viewSpells)  el.viewSpells.onclick  = () => setView("Spells");
-// Safe alias for now: Slots button opens the combined spellcasting page too.
 if (el.viewSlots)   el.viewSlots.onclick   = () => setView("Spells");
 if (el.viewSkills)  el.viewSkills.onclick  = () => setView("Skills");
 
@@ -257,7 +368,6 @@ if (el.zoomOut)   el.zoomOut.onclick = () => setZoom(state.zoom / 1.15);
 if (el.zoomIn)    el.zoomIn.onclick  = () => setZoom(state.zoom * 1.15);
 if (el.zoomReset) el.zoomReset.onclick = () => resetView();
 
-// ctrl+wheel zoom inside viewport (desktop convenience)
 if (el.viewport) {
   el.viewport.addEventListener("wheel", (e) => {
     if (!e.ctrlKey) return;
@@ -267,10 +377,7 @@ if (el.viewport) {
   }, { passive: false });
 }
 
-/* ----------------------------- Pan mode --------------------------------
-   - When pen is OFF: drag to pan paper
-   - When pen is ON: ink handles strokes
-------------------------------------------------------------------------- */
+/* ----------------------------- Pan mode -------------------------------- */
 let panDrag = { active: false, startX: 0, startY: 0, basePanX: 0, basePanY: 0 };
 
 function beginPan(e) {
@@ -280,6 +387,7 @@ function beginPan(e) {
   panDrag.basePanX = state.pan.x;
   panDrag.basePanY = state.pan.y;
 }
+
 function movePan(e) {
   if (!panDrag.active) return;
   const dx = e.clientX - panDrag.startX;
@@ -289,7 +397,10 @@ function movePan(e) {
   applyWorldTransform();
   ink.redraw();
 }
-function endPan() { panDrag.active = false; }
+
+function endPan() {
+  panDrag.active = false;
+}
 
 if (el.viewport) {
   el.viewport.addEventListener("pointerdown", (e) => {
@@ -297,7 +408,7 @@ if (el.viewport) {
     beginPan(e);
     el.viewport.setPointerCapture?.(e.pointerId);
   });
-  el.viewport.addEventListener("pointermove", (e) => movePan(e));
+  el.viewport.addEventListener("pointermove", movePan);
   el.viewport.addEventListener("pointerup", endPan);
   el.viewport.addEventListener("pointercancel", endPan);
 }
@@ -345,8 +456,6 @@ const ink = (() => {
     canvas.height = Math.floor(h * dpr);
 
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
-    // critical on Android
     canvas.style.touchAction = "none";
   }
 
@@ -367,16 +476,15 @@ const ink = (() => {
     if (pts.length < 2) return;
 
     ctx.save();
-if (stroke.erase) {
-  ctx.globalCompositeOperation = "destination-out";
-  ctx.lineWidth = state.eraserWidth || 18;
-  ctx.strokeStyle = "rgba(0,0,0,1)";
-} else {
-  ctx.globalCompositeOperation = "source-over";
-  // Use stroke-specific width if stroke saved with width, otherwise current state
-  ctx.lineWidth = (stroke.width && Number(stroke.width)) ? Number(stroke.width) : (state.lineWidth || 2);
-  ctx.strokeStyle = "#000";
-}
+    if (stroke.erase) {
+      ctx.globalCompositeOperation = "destination-out";
+      ctx.lineWidth = state.eraserWidth || 18;
+      ctx.strokeStyle = "rgba(0,0,0,1)";
+    } else {
+      ctx.globalCompositeOperation = "source-over";
+      ctx.lineWidth = (stroke.width && Number(stroke.width)) ? Number(stroke.width) : (state.lineWidth || 2);
+      ctx.strokeStyle = "#000";
+    }
 
     ctx.beginPath();
     ctx.moveTo(pts[0].x, pts[0].y);
@@ -406,22 +514,23 @@ if (stroke.erase) {
     saveForView(state.view);
   }
 
-  // Stylus-safe pointer handling
   let drawing = false;
   let currentStroke = null;
   let activePointerId = null;
 
   function pointerDown(e) {
     if (!state.penOn || !canvas) return;
-
-    // ignore finger/palm touches in pen mode
     if (e.pointerType === "touch") return;
 
     drawing = true;
     activePointerId = e.pointerId;
 
     const p = screenToWorld(e.clientX, e.clientY);
-    currentStroke = { erase: state.erasing, pts: [p], width: state.erasing ? state.eraserWidth : state.lineWidth };
+    currentStroke = {
+      erase: state.erasing,
+      pts: [p],
+      width: state.erasing ? state.eraserWidth : state.lineWidth
+    };
     getStrokesForView(state.view).push(currentStroke);
 
     try { canvas.setPointerCapture(e.pointerId); } catch {}
@@ -485,8 +594,8 @@ if (stroke.erase) {
 
   if (el.penToggle) el.penToggle.onclick = () => setPenMode(!state.penOn);
   if (el.eraser) el.eraser.onclick = () => setEraser(!state.erasing);
-  if (el.undo) el.undo.onclick = () => undo();
-  if (el.clearInk) el.clearInk.onclick = () => clear();
+  if (el.undo) el.undo.onclick = undo;
+  if (el.clearInk) el.clearInk.onclick = clear;
 
   window.addEventListener("resize", () => {
     ensureCanvasSize();
@@ -498,71 +607,64 @@ if (stroke.erase) {
   return { redraw, loadForView, setPenMode, setEraser };
 })();
 
-
-
 /* ---------------------- Google Sheets ingest (CSV) ---------------------- */
-/* Uses your NAS proxy endpoint: /gs/csv?id=...&gid=... */
-
-
 async function loadFromGoogleSheets(sheetUrl) {
   try {
-const id = SheetLoader.extractSpreadsheetId(sheetUrl);
-if (!id) throw new Error("Could not extract spreadsheet ID from URL.");
+    const id = SheetLoader.extractSpreadsheetId(sheetUrl);
+    if (!id) throw new Error("Could not extract spreadsheet ID from URL.");
 
-const gids = {
-  spells: 0,
-  general: 2004670713,
-  slot: 1231385124,
-  skills: 2140364605
-};
+    const gids = {
+      spells: 0,
+      general: 2004670713,
+      slot: 1231385124,
+      skills: 2140364605
+    };
 
-setProgress(5, "Fetching Spells…");
-const spellsGrid = SheetLoader.csvToGrid(
-  await SheetLoader.fetchCsvViaProxy(id, gids.spells)
-);
+    setProgress(5, "Fetching Spells…");
+    const spellsGrid = SheetLoader.csvToGrid(
+      await SheetLoader.fetchCsvViaProxy(id, gids.spells)
+    );
 
-setProgress(30, "Fetching General…");
-const generalGrid = SheetLoader.csvToGrid(
-  await SheetLoader.fetchCsvViaProxy(id, gids.general)
-);
-     
-setProgress(55, "Fetching Skills…");
-const skillsGrid = SheetLoader.csvToGrid(
-  await SheetLoader.fetchCsvViaProxy(id, gids.skills)
-);
+    setProgress(30, "Fetching General…");
+    const generalGrid = SheetLoader.csvToGrid(
+      await SheetLoader.fetchCsvViaProxy(id, gids.general)
+    );
 
+    setProgress(55, "Fetching Skills…");
+    const skillsGrid = SheetLoader.csvToGrid(
+      await SheetLoader.fetchCsvViaProxy(id, gids.skills)
+    );
 
+    const parsedSpells = SheetParsers.parseSpellsGrid(spellsGrid);
+    const parsedGeneral = SheetParsers.parseGeneralGrid(generalGrid);
+    const parsedSkills = SheetParsers.parseSkillsGrid(skillsGrid);
 
-const parsedSpells = SheetParsers.parseSpellsGrid(spellsGrid);
-const parsedGeneral = SheetParsers.parseGeneralGrid(generalGrid);
-const parsedSkills = SheetParsers.parseSkillsGrid(skillsGrid);
+    applyGeneralEditsToGeneral(parsedGeneral, state.generalEdits);
 
-state.data.general = parsedGeneral;
-state.data.spells.sorc = parsedSpells.sorc;
-state.data.spells.wiz = parsedSpells.wiz;
-state.data.spells.meta = parsedSpells.meta;
+    state.data.general = parsedGeneral;
+    state.data.spells.sorc = parsedSpells.sorc;
+    state.data.spells.wiz = parsedSpells.wiz;
+    state.data.spells.meta = parsedSpells.meta;
 
-state.data.skills.rows = parsedSkills.rows;
-state.data.skills.inventoryLines = parsedSkills.inventoryLines;
+    state.data.skills.rows = parsedSkills.rows;
+    state.data.skills.inventoryLines = parsedSkills.inventoryLines;
 
-// Seed the writable inventory area only if it is still empty
-if (!state.skillsEdits.inventoryText) {
-  state.skillsEdits.inventoryText = parsedSkills.inventoryLines.join("\n");
-}
+    if (!state.skillsEdits.inventoryText) {
+      state.skillsEdits.inventoryText = parsedSkills.inventoryLines.join("\n");
+    }
 
+    state.loaded = true;
 
-// Only now mark loaded
-state.loaded = true;
     setProgress(95, "Rendering…");
     render();
     setProgress(100, "Done ✅");
   } catch (e) {
     console.error(e);
     setProgress(0, "Load failed: " + (e?.message || e));
-    // Keep the app alive even after failure
     state.loaded = false;
   }
 }
+
 /* ------------------------------ Rendering ------------------------------ */
 function renderGeneral() {
   const g = state.data.general;
@@ -572,12 +674,11 @@ function renderGeneral() {
     return;
   }
 
-  // Defensive defaults so missing fields never crash rendering
   g.feats = Array.isArray(g.feats) ? g.feats : [];
   g.languages = Array.isArray(g.languages) ? g.languages : [];
 
   g.abilities = g.abilities || {};
-  for (const k of ["str","dex","con","int","wis","cha"]) {
+  for (const k of ["str", "dex", "con", "int", "wis", "cha"]) {
     g.abilities[k] = g.abilities[k] || { pointBuy: 0, asi: 0, items: 0, buffs: 0 };
   }
 
@@ -591,32 +692,31 @@ function renderGeneral() {
   const d = GeneralDerived.compute(g);
   const A = d.abilities;
 
-  // Helper to render one ability row with breakdown
-const abilityRow = (label, key) => `
-  <div><strong>${label}</strong></div>
-  <div class="val">${g.abilities[key].pointBuy ?? 0}</div>
+  const abilityRow = (label, key) => `
+    <div><strong>${label}</strong></div>
+    <div class="val">${g.abilities[key].pointBuy ?? 0}</div>
 
-<div class="val">
-  <input type="number" inputmode="numeric"
-    data-ab="${key}" data-field="asi"
-    value="${Number(g.abilities[key].asi ?? 0)}">
-</div>
+    <div class="val">
+      <input type="number" inputmode="numeric"
+        data-ab="${key}" data-field="asi"
+        value="${Number(g.abilities[key].asi ?? 0)}">
+    </div>
 
-  <div class="val">
-    <input type="number" inputmode="numeric"
-      data-ab="${key}" data-field="items"
-      value="${Number(g.abilities[key].items ?? 0)}">
-  </div>
+    <div class="val">
+      <input type="number" inputmode="numeric"
+        data-ab="${key}" data-field="items"
+        value="${Number(g.abilities[key].items ?? 0)}">
+    </div>
 
-  <div class="val">
-    <input type="number" inputmode="numeric"
-      data-ab="${key}" data-field="buffs"
-      value="${Number(g.abilities[key].buffs ?? 0)}">
-  </div>
+    <div class="val">
+      <input type="number" inputmode="numeric"
+        data-ab="${key}" data-field="buffs"
+        value="${Number(g.abilities[key].buffs ?? 0)}">
+    </div>
 
-  <div class="val"><strong>${A[key].total}</strong></div>
-  <div class="val"><strong>${fmtSign(A[key].mod)}</strong></div>
-`;
+    <div class="val"><strong>${A[key].total}</strong></div>
+    <div class="val"><strong>${fmtSign(A[key].mod)}</strong></div>
+  `;
 
   el.app.innerHTML = `
     <div class="panel">
@@ -642,15 +742,15 @@ const abilityRow = (label, key) => `
 
           <div style="margin-top:8px;">
             <h4>Active Buffs (AC)</h4>
-            <label><input id="buff_mage" type="checkbox" ${g.buffs.mageArmor ? "checked":""}> Mage Armor (+4)</label><br>
-            <label><input id="buff_shield" type="checkbox" ${g.buffs.shieldSpell ? "checked":""}> Shield (+4)</label>
+            <label><input id="buff_mage" type="checkbox" ${g.buffs.mageArmor ? "checked" : ""}> Mage Armor (+4)</label><br>
+            <label><input id="buff_shield" type="checkbox" ${g.buffs.shieldSpell ? "checked" : ""}> Shield (+4)</label>
           </div>
         </div>
       </div>
 
       <div class="panel">
         <h3>Abilities (breakdown)</h3>
-        <div class="hint">Point buy array / ASI / Items / Penalties-buffs → Total → Mod [1](https://help.boox.com/hc/en-us)</div>
+        <div class="hint">Point buy array / ASI / Items / Penalties-buffs → Total → Mod</div>
 
         <div class="ability-breakdown-grid">
           <div></div>
@@ -661,12 +761,12 @@ const abilityRow = (label, key) => `
           <div class="hdr">Total</div>
           <div class="hdr">Mod</div>
 
-          ${abilityRow("STR","str")}
-          ${abilityRow("DEX","dex")}
-          ${abilityRow("CON","con")}
-          ${abilityRow("INT","int")}
-          ${abilityRow("WIS","wis")}
-          ${abilityRow("CHA","cha")}
+          ${abilityRow("STR", "str")}
+          ${abilityRow("DEX", "dex")}
+          ${abilityRow("CON", "con")}
+          ${abilityRow("INT", "int")}
+          ${abilityRow("WIS", "wis")}
+          ${abilityRow("CHA", "cha")}
         </div>
       </div>
 
@@ -674,7 +774,7 @@ const abilityRow = (label, key) => `
         <div class="panel">
           <h3>Feats</h3>
           <ul>${g.feats.length ? g.feats.map(f => `<li>${escapeHtml(f.label ?? f)}</li>`).join("") : "<li>(none found)</li>"}</ul>
-          <div class="hint">CSV export doesn’t preserve hyperlinks; feats are text-only in Google mode. [1](https://help.boox.com/hc/en-us)</div>
+          <div class="hint">CSV export doesn’t preserve hyperlinks; feats are text-only in Google mode.</div>
         </div>
 
         <div class="panel">
@@ -685,31 +785,40 @@ const abilityRow = (label, key) => `
     </div>
   `;
 
-  // Buff wiring
   const mage = $("buff_mage");
   const shield = $("buff_shield");
-  if (mage) mage.onchange = () => { g.buffs.mageArmor = mage.checked ? 4 : 0; renderGeneral(); ink.redraw(); };
-  if (shield) shield.onchange = () => { g.buffs.shieldSpell = shield.checked ? 4 : 0; renderGeneral(); ink.redraw(); };
-// Hook ability inputs (Items + Buffs)
-document.querySelectorAll('.ability-breakdown-grid input[data-ab][data-field]').forEach(inp => {
-  inp.addEventListener('input', () => {
-    const ab = inp.getAttribute('data-ab');
-    const field = inp.getAttribute('data-field');
-    const val = Number(inp.value);
-    g.abilities[ab][field] = Number.isFinite(val) ? val : 0;
-    // Re-render so totals/mods update
+
+  if (mage) mage.onchange = () => {
+    g.buffs.mageArmor = mage.checked ? 4 : 0;
+    syncGeneralEditsFromGeneral(g);
     renderGeneral();
     ink.redraw();
-  });
-});
-``
+  };
 
+  if (shield) shield.onchange = () => {
+    g.buffs.shieldSpell = shield.checked ? 4 : 0;
+    syncGeneralEditsFromGeneral(g);
+    renderGeneral();
+    ink.redraw();
+  };
+
+  document.querySelectorAll('.ability-breakdown-grid input[data-ab][data-field]').forEach((inp) => {
+    inp.addEventListener('input', () => {
+      const ab = inp.getAttribute('data-ab');
+      const field = inp.getAttribute('data-field');
+      const val = Number(inp.value);
+
+      g.abilities[ab][field] = Number.isFinite(val) ? val : 0;
+      syncGeneralEditsFromGeneral(g);
+      renderGeneral();
+      ink.redraw();
+    });
+  });
 }
 
 function ensureSlotsInlineStyles() {
   // Styles moved to styles.css
 }
-
 
 function loadUsedSlotMarks(viewName = state.view) {
   const key = `ink_slots_used:${viewName || 'Spells'}`;
@@ -738,24 +847,16 @@ function saveUsedSlotMarks(viewName = state.view, obj = {}) {
     localStorage.setItem(key, JSON.stringify(obj));
   } catch {}
 }
+
 function getSpellfireCapacity() {
   const g = state.data.general;
   if (!g) return 0;
 
   const d = GeneralDerived.compute(g);
   const conScore = Number(d?.abilities?.con?.total) || 0;
-  const conMod = Number(d?.abilities?.con?.mod) || 0;
-
-  // Official Spellfire rule:
-  // storage cap = Constitution score
-  const officialCapacity = conScore;
-
-  // If you want to use your current remembered / house-rule version instead,
-  // replace the return line with:
-  // return Math.max(0, 10 + conMod);
-
-  return Math.max(0, officialCapacity);
+  return Math.max(0, conScore);
 }
+
 function getSpellcastingData() {
   const g = state.data.general || {};
   const meta = state.data.spells.meta || {};
@@ -829,7 +930,7 @@ function renderSorcererSlotsHtml(calc, usedState) {
 
   for (let lvl = 0; lvl <= 9; lvl++) {
     const count = Number(calc.sorcerer.final[lvl]) || 0;
-    if (count <= 0) continue; // hide unavailable levels entirely
+    if (count <= 0) continue;
 
     let boxes = "";
     for (let i = 0; i < count; i++) {
@@ -852,6 +953,7 @@ function renderSorcererSlotsHtml(calc, usedState) {
 
   return `<div class="slot-stack-bottom">${rows.join("")}</div>`;
 }
+
 function renderSpellfireHtml(usedState) {
   const capacity = getSpellfireCapacity();
 
@@ -888,7 +990,7 @@ function renderWizardSlotsHtml(calc) {
 
   for (let lvl = 0; lvl <= 9; lvl++) {
     const prepared = Number(calc.wizardPrepared[lvl]) || 0;
-    if (prepared <= 0) continue; // hide inaccessible levels
+    if (prepared <= 0) continue;
 
     items.push(`
       <div class="wizard-prepared-item">
@@ -904,6 +1006,7 @@ function renderWizardSlotsHtml(calc) {
 
   return `<div class="wizard-prepared-strip">${items.join("")}</div>`;
 }
+
 function wireCombinedSpellcastingSlotClicks() {
   document.querySelectorAll('.slot-box-inline[data-key]').forEach((box) => {
     box.addEventListener('click', () => {
@@ -923,16 +1026,7 @@ function wireCombinedSpellcastingSlotClicks() {
   });
 }
 
-/* ---------------------- Slots UI integration (new) ---------------------- */
-/*
-  This section implements a non-invasive Slots UI that:
-  - uses SlotCalculator (slotCalculator.js must be included before app.js)
-  - renders into the Slots tab (renderSlots)
-  - Sorcerer slots: 10 rows (0..9), each row shows one box per available slot (clickable to mark used)
-  - Wizard prepared: shows prepared counts (specialist +1 applied)
-  - Persists used marks per view in localStorage
-*/
-
+/* ---------------------- Slots UI fallback (legacy) --------------------- */
 function renderSlots() {
   const container = el.app;
   if (!container) return;
@@ -957,43 +1051,53 @@ function renderSlots() {
   const meta = state.data.spells.meta || {};
 
   const baseSorc = Number(state.data.currentSorcererLevel ?? meta.sorcLevels ?? (g.classes ? g.classes.sorc : 0)) || 0;
-  const baseWiz  = Number(state.data.currentWizardLevel  ?? meta.wizLevels  ?? (g.classes ? g.classes.wiz  : 0)) || 0;
-  const umLevels  = Number(state.data.currentUmLevel ?? meta.umLevels ?? (g.classes ? g.classes.um : 0)) || 0;
+  const baseWiz = Number(state.data.currentWizardLevel ?? meta.wizLevels ?? (g.classes ? g.classes.wiz : 0)) || 0;
+  const umLevels = Number(state.data.currentUmLevel ?? meta.umLevels ?? (g.classes ? g.classes.um : 0)) || 0;
 
   const d = g ? GeneralDerived.compute(g) : null;
   const chaTotal = d ? d.abilities.cha.total : (state.cha || 0);
   const intTotal = d ? d.abilities.int.total : (state.int || 0);
 
+  const progression = ArcaneMath.computeProgressionLevels({
+    sorcBase: baseSorc,
+    wizBase: baseWiz,
+    umLevels,
+    tieBreaker: 'wiz'
+  });
 
-const progression = ArcaneMath.computeProgressionLevels({
-  sorcBase: baseSorc,
-  wizBase: baseWiz,
-  umLevels,
-  tieBreaker: "wiz"
-});
-
-const effSorc = progression.sorc;
-const effWiz = progression.wiz;
-
+  const effSorc = progression.sorc;
+  const effWiz = progression.wiz;
 
   const calc = SlotCalculator.computeAllSlots(state, {
-    overrides: { sorcererLevel: effSorc, wizardLevel: effWiz, sorCha: chaTotal, wizInt: intTotal },
+    overrides: {
+      sorcererLevel: effSorc,
+      wizardLevel: effWiz,
+      sorCha: chaTotal,
+      wizInt: intTotal
+    },
     applySpecialistPreparedBonus: true
   });
 
-  // localStorage helpers
   const storageKey = (view) => `ink_slots_used:${view || state.view || 'General'}`;
   function loadUsed(view) {
-    try { const raw = localStorage.getItem(storageKey(view)); return raw ? JSON.parse(raw) : {}; } catch { return {}; }
+    try {
+      const raw = localStorage.getItem(storageKey(view));
+      return raw ? JSON.parse(raw) : {};
+    } catch {
+      return {};
+    }
   }
-  function saveUsed(view, obj) { try { localStorage.setItem(storageKey(view), JSON.stringify(obj)); } catch {} }
+  function saveUsed(view, obj) {
+    try {
+      localStorage.setItem(storageKey(view), JSON.stringify(obj));
+    } catch {}
+  }
 
-   ensureSlotsInlineStyles();
+  ensureSlotsInlineStyles();
 
   const panel = document.createElement('div');
   panel.className = 'panel slots-panel';
 
-  // Sorcerer column
   const sorCol = document.createElement('div');
   sorCol.className = 'slots-column';
   const sorTitle = document.createElement('h3');
@@ -1029,8 +1133,13 @@ const effWiz = progression.wiz;
         box.dataset.level = String(lvl);
         box.addEventListener('click', () => {
           const cur = loadUsed(state.view);
-          if (cur[key]) { delete cur[key]; box.classList.remove('used'); }
-          else { cur[key] = true; box.classList.add('used'); }
+          if (cur[key]) {
+            delete cur[key];
+            box.classList.remove('used');
+          } else {
+            cur[key] = true;
+            box.classList.add('used');
+          }
           saveUsed(state.view, cur);
         });
         tdBoxes.appendChild(box);
@@ -1042,7 +1151,6 @@ const effWiz = progression.wiz;
   sorCol.appendChild(sorTable);
   panel.appendChild(sorCol);
 
-  // Wizard prepared (specialty) only
   const wizCol = document.createElement('div');
   wizCol.className = 'slots-column';
   const wizTitle = document.createElement('h3');
@@ -1059,7 +1167,6 @@ const effWiz = progression.wiz;
     prepWrap.appendChild(pBox);
   }
   wizCol.appendChild(prepWrap);
-
   panel.appendChild(wizCol);
 
   container.appendChild(panel);
@@ -1138,6 +1245,7 @@ function renderSpells() {
 
   wireCombinedSpellcastingSlotClicks();
 }
+
 function renderSkills() {
   const g = state.data.general;
   const skillsData = state.data.skills || { rows: [], inventoryLines: [] };
@@ -1156,7 +1264,7 @@ function renderSkills() {
     skillsData.rows,
     g,
     state.skillsEdits.bySkillName,
-    { baseAcp: 0 } // safe current default
+    { baseAcp: 0 }
   );
 
   el.app.innerHTML = `
@@ -1222,38 +1330,33 @@ function renderSkills() {
     </div>
   `;
 
+  document.querySelectorAll('.skill-edit[data-skill][data-field]').forEach((inp) => {
+    inp.addEventListener('input', () => {
+      const skillName = inp.getAttribute('data-skill');
+      const field = inp.getAttribute('data-field');
+      const val = Number(inp.value);
 
-document.querySelectorAll('.skill-edit[data-skill][data-field]').forEach((inp) => {
-  inp.addEventListener('input', () => {
-    const skillName = inp.getAttribute('data-skill');
-    const field = inp.getAttribute('data-field');
-    const val = Number(inp.value);
+      state.skillsEdits.bySkillName[skillName] ||= {};
+      state.skillsEdits.bySkillName[skillName][field] = Number.isFinite(val) ? val : 0;
 
-    state.skillsEdits.bySkillName[skillName] ||= {};
-    state.skillsEdits.bySkillName[skillName][field] = Number.isFinite(val) ? val : 0;
-
-    saveSkillsEdits();
-    renderSkills();
-    ink.redraw();
-  });
-});
-
-
-
-const notes = document.getElementById('skillsInventoryText');
-if (notes) {
-  notes.addEventListener('input', () => {
-    state.skillsEdits.inventoryText = notes.value;
-    scheduleSaveSkillsEdits(250);
+      saveSkillsEdits();
+      renderSkills();
+      ink.redraw();
+    });
   });
 
-  notes.addEventListener('blur', () => {
-    saveSkillsEdits();
-  });
+  const notes = document.getElementById('skillsInventoryText');
+  if (notes) {
+    notes.addEventListener('input', () => {
+      state.skillsEdits.inventoryText = notes.value;
+      scheduleSaveSkillsEdits(250);
+    });
+
+    notes.addEventListener('blur', () => {
+      saveSkillsEdits();
+    });
+  }
 }
-
-}
-
 
 function render() {
   if (!el.app) return;
@@ -1272,22 +1375,19 @@ function render() {
     return;
   }
 
- 
-
-if (state.view === "General") renderGeneral();
-else if (state.view === "Spells" || state.view === "Slots") renderSpells();
-else if (state.view === "Skills") renderSkills();
-else el.app.innerHTML = `<div class="panel"><h2>${escapeHtml(state.view)}</h2><div class="hint">Not implemented yet.</div></div>`;
-
+  if (state.view === "General") renderGeneral();
+  else if (state.view === "Spells" || state.view === "Slots") renderSpells();
+  else if (state.view === "Skills") renderSkills();
+  else el.app.innerHTML = `<div class="panel"><h2>${escapeHtml(state.view)}</h2><div class="hint">Not implemented yet.</div></div>`;
 
   applyWorldTransform();
   ink.redraw();
 }
 
-
 /* ---------------------- Hook Google Sheets button ---------------------- */
 window.addEventListener("DOMContentLoaded", () => {
-   loadSkillsEdits();
+  loadEditableState();
+
   if (el.loadGs && el.gsUrl) {
     el.loadGs.addEventListener("click", async () => {
       try {
@@ -1306,60 +1406,54 @@ window.addEventListener("DOMContentLoaded", () => {
     console.warn("Google Sheets UI not present (#gsUrl / #loadGs).");
   }
 
-   // Ensure these elements exist in the DOM; if not, create them dynamically
-(function wireLineWidthControls() {
-  // Try to find existing controls in DOM
-  let range = document.getElementById('lineWidthRange');
-  let num = document.getElementById('lineWidthNumber');
+  (function wireLineWidthControls() {
+    let range = document.getElementById('lineWidthRange');
+    let num = document.getElementById('lineWidthNumber');
 
-  // If not present (e.g., topbar built in JS), create and append to .topbar
-  const topbar = document.querySelector('.topbar') || document.body;
-  if (!range || !num) {
-    const wrapper = document.createElement('div');
-    wrapper.className = 'line-width';
-    wrapper.innerHTML = `
-      <label for="lineWidthRange">Line</label>
-      <input id="lineWidthRange" type="range" min="0.5" max="24" step="0.5" value="${state.lineWidth}" />
-      <input id="lineWidthNumber" type="number" min="0.5" max="24" step="0.5" value="${state.lineWidth}" />
-    `;
-    topbar.appendChild(wrapper);
-    range = document.getElementById('lineWidthRange');
-    num = document.getElementById('lineWidthNumber');
-  }
+    const topbar = document.querySelector('.topbar') || document.body;
+    if (!range || !num) {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'line-width';
+      wrapper.innerHTML = `
+        <label for="lineWidthRange">Line</label>
+        <input id="lineWidthRange" type="range" min="0.5" max="24" step="0.5" value="${state.lineWidth}" />
+        <input id="lineWidthNumber" type="number" min="0.5" max="24" step="0.5" value="${state.lineWidth}" />
+      `;
+      topbar.appendChild(wrapper);
+      range = document.getElementById('lineWidthRange');
+      num = document.getElementById('lineWidthNumber');
+    }
 
+    const saved = (typeof AppStorage !== "undefined")
+      ? AppStorage.readNumber("ink.lineWidth", state.lineWidth)
+      : state.lineWidth;
 
-// Load saved preference if present
-const saved = (typeof AppStorage !== "undefined")
-  ? AppStorage.readNumber("ink.lineWidth", state.lineWidth)
-  : state.lineWidth;
+    if (Number.isFinite(saved) && saved >= 0.5 && saved <= 24) {
+      state.lineWidth = saved;
+      if (range) range.value = saved;
+      if (num) num.value = saved;
+    }
 
-if (Number.isFinite(saved) && saved >= 0.5 && saved <= 24) {
-  state.lineWidth = saved;
-  if (range) range.value = saved;
-  if (num) num.value = saved;
-}
-  function applyWidth(v) {
-    const val = Math.max(0.5, Math.min(24, Number(v) || 2));
-    state.lineWidth = val;
-    if (range) range.value = val;
-    if (num) num.value = val;
-    
-if (typeof AppStorage !== "undefined") {
-  AppStorage.writeNumber("ink.lineWidth", val);
-}
+    function applyWidth(v) {
+      const val = Math.max(0.5, Math.min(24, Number(v) || 2));
+      state.lineWidth = val;
+      if (range) range.value = val;
+      if (num) num.value = val;
 
-  }
+      if (typeof AppStorage !== "undefined") {
+        AppStorage.writeNumber("ink.lineWidth", val);
+      }
+    }
 
-  if (range) {
-    range.addEventListener('input', (e) => applyWidth(e.target.value));
-    range.addEventListener('change', (e) => applyWidth(e.target.value));
-  }
-  if (num) {
-    num.addEventListener('input', (e) => applyWidth(e.target.value));
-    num.addEventListener('change', (e) => applyWidth(e.target.value));
-  }
-})();
-
+    if (range) {
+      range.addEventListener('input', (e) => applyWidth(e.target.value));
+      range.addEventListener('change', (e) => applyWidth(e.target.value));
+    }
+    if (num) {
+      num.addEventListener('input', (e) => applyWidth(e.target.value));
+      num.addEventListener('change', (e) => applyWidth(e.target.value));
+    }
+  })();
 });
 
 // Initial setup
