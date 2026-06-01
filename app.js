@@ -1104,7 +1104,7 @@ function renderSkills() {
       <div class="hint">Rank and Misc are editable. Ability modifier, ACP, and racial bonus are computed automatically.</div>
 
       <div class="skills-layout">
-        <div class="panel">
+        <div class="panel skills-table-panel">
           <table class="table skills-table">
             <thead>
               <tr>
@@ -1153,7 +1153,7 @@ function renderSkills() {
           </table>
         </div>
 
-        <div class="panel">
+        <div class="panel skills-notes-panel">
           <h3>Inventory / Notes</h3>
           <textarea id="skillsInventoryText" class="skills-notes">${escapeHtml(state.skillsEdits.inventoryText || "")}</textarea>
         </div>
