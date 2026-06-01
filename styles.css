@@ -233,7 +233,7 @@ html, body {
   gap: 8px;
   align-items: center;
   max-width: 100%;
-}}
+}
 
 .ability-breakdown-grid .hdr {
   font-weight: 700;
@@ -278,7 +278,7 @@ html, body {
 
 .ability-breakdown-grid input[type="number"]{
   width: 100%;
-  box-sizing: border-box /* CRITICAL: border+padding included in width */
+  box-sizing: border-box; /* CRITICAL: border+padding included in width */
   padding: 2px 4px;
   font-size: 16px;
   line-height: 1.1;
@@ -404,4 +404,100 @@ label > input[type="checkbox"]#buff_shield:checked { background: linear-gradient
   border: 1px solid #cfcfcf;
   background: #fff;
   font-size: 0.9rem;
+}
+
+/* ---------------- Combined spellcasting layout ---------------- */
+
+.slot-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.slot-stack-bottom {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.slot-row-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.slot-row-label {
+  width: 30px;
+  text-align: center;
+  color: #000;
+  font-size: 13px;
+  font-weight: 600;
+  flex: 0 0 30px;
+}
+
+.wizard-prepared-strip {
+  margin-top: auto;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+
+.wizard-prepared-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.wizard-prepared-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #000;
+}
+
+.sorc-resources-row {
+  margin-top: auto;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+
+.sorc-slots-block {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+.spellfire-side {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  min-width: 180px;
+}
+
+.spellfire-section {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid #bbb;
+}
+
+.spellfire-note {
+  margin-top: 6px;
+  max-width: 42ch;
+}
+
+.spellfire-side .spellfire-section {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
+.spellfire-side .spellfire-note {
+  max-width: 28ch;
 }
