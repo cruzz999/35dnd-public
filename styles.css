@@ -499,3 +499,50 @@ label > input[type="checkbox"]#buff_shield:checked { background: linear-gradient
 .spellfire-side .spellfire-note {
   max-width: 28ch;
 }
+
+/* ---------------- Skills view ---------------- */
+
+.skills-layout {
+  display: grid;
+  grid-template-columns: minmax(700px, 1.5fr) minmax(280px, 1fr);
+  gap: 10px;
+  align-items: start;
+}
+
+.skills-table input.skill-edit {
+  width: 72px;
+  box-sizing: border-box;
+  padding: 4px 6px;
+  font-size: 15px;
+  border: 2px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--fg);
+  text-align: right;
+}
+
+.skills-notes {
+  width: 100%;
+  min-height: 700px;
+  box-sizing: border-box;
+  padding: 10px;
+  font-size: 15px;
+  line-height: 1.4;
+  border: 2px solid var(--border);
+  border-radius: 4px;
+  background: #fff;
+  color: #000;
+  resize: vertical;
+  font-family: inherit;
+}
+
+@media (max-width: 1200px) {
+  .skills-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .skills-notes {
+    min-height: 320px;
+  }
+}
+
