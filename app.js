@@ -645,6 +645,41 @@ function ensureSlotsInlineStyles() {
   max-width: 42ch;
 }
 
+.sorc-resources-row {
+  margin-top: auto;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+
+.sorc-slots-block {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+.spellfire-side {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  min-width: 180px;
+}
+
+.spellfire-side .spellfire-section {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
+.spellfire-side .spellfire-note {
+  max-width: 28ch;
+}
+
   .slot-stack-bottom {
     margin-top: auto;
     display: flex;
@@ -1115,12 +1150,17 @@ function renderSpells() {
       <h2>Spellcasting</h2>
       <div class="hint">Pan/zoom the paper; use Pen to write in prep boxes. Click sorcerer slot boxes to mark them used.</div>
 
-      <div class="grid">
+      <div class="grid">  
          <div class="panel slot-panel">
            <h3>Sorcerer slots (effective level ${effSorc})</h3>
-           ${renderSorcererSlotsHtml(calc, usedState)}
-           ${renderSpellfireHtml(usedState)}
-         </div>
+           <div class="sorc-resources-row">
+             <div class="sorc-slots-block">
+               ${renderSorcererSlotsHtml(calc, usedState)}
+             </div>
+             <div class="spellfire-side">
+               ${renderSpellfireHtml(usedState)}
+             </div>
+           </div>
          <div class="panel slot-panel">
            <h3>Wizard prepared (effective level ${effWiz})</h3>
            ${renderWizardSlotsHtml(calc)}
