@@ -5,6 +5,7 @@ index.html
 sheetLoader.js
 sheetParsers.js
 slotCalculator.js
+spellViewHelpers.js
 storage.js
 styles.css
 xlsx.full.min.js
