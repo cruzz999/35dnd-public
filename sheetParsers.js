@@ -318,8 +318,72 @@
     return { sorc, wiz, meta };
   }
 
-  /* ------------------------------- Public API ------------------------------- */
+  /* ---------------------------- Skills grid parser --------------------------- */
 
+  function findSkillsHeaderRow(grid) {
+    for (let r = 0; r < grid.length; r++) {
+      const row = grid[r] || [];
+      const first = String(row[0] ?? "").trim().toLowerCase();
+      const second = String(row[1] ?? "").trim().toLowerCase();
+
+      if (first === "skills" && second === "ability") {
+        return r;
+      }
+    }
+    return -1;
+  }
+
+  function parseSkillsGrid(grid) {
+    const headerRow = findSkillsHeaderRow(grid);
+
+    const result = {
+      rows: [],
+      inventoryLines: []
+    };
+
+    if (headerRow === -1) {
+      return result;
+    }
+
+    // Expected columns from your sheet:
+    // A Skills, B Ability, C Skill mod, D Ab mod, E Rank, F Misc, G ACP, H Race bonus
+    for (let r = headerRow + 1; r < grid.length; r++) {
+      const name = cell(grid, r, 0).trim();
+
+      // Stop at first blank skill row after parsing has started
+      if (!name) break;
+
+      result.rows.push({
+        name,
+        ability: cell(grid, r, 1).trim(),
+        sheetTotal: numStrict(cell(grid, r, 2), 0),
+        sheetAbilityMod: numStrict(cell(grid, r, 3), 0),
+        rank: numStrict(cell(grid, r, 4), 0),
+        misc: numStrict(cell(grid, r, 5), 0),
+        sheetAcp: numStrict(cell(grid, r, 6), 0),
+        sheetRaceBonus: numStrict(cell(grid, r, 7), 0)
+      });
+    }
+
+    // Inventory / notes area:
+    // collect non-empty row text from columns J-M (indexes 9..12)
+    for (let r = 0; r < grid.length; r++) {
+      const parts = [];
+      for (let c = 9; c <= 12; c++) {
+        const text = cell(grid, r, c).trim();
+        if (text) parts.push(text);
+      }
+      if (parts.length) {
+        result.inventoryLines.push(parts.join(" "));
+      }
+    }
+
+    return result;
+  }
+
+
+  /* ------------------------------- Public API ------------------------------- */
+  SheetParsers.parseSkillsGrid = parseSkillsGrid;
   SheetParsers.parseGeneralGrid = parseGeneralGrid;
   SheetParsers.parseSpellsGrid = parseSpellsGrid;
 
