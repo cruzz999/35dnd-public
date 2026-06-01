@@ -1,4 +1,5 @@
 app.js
+generalDerived.js
 index.html
 slotCalculator.js
 styles.css
