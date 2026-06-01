@@ -634,6 +634,17 @@ function ensureSlotsInlineStyles() {
     flex-direction: column;
   }
 
+.spellfire-section {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid #bbb;
+}
+
+.spellfire-note {
+  margin-top: 6px;
+  max-width: 42ch;
+}
+
   .slot-stack-bottom {
     margin-top: auto;
     display: flex;
@@ -751,7 +762,24 @@ function saveUsedSlotMarks(viewName = state.view, obj = {}) {
     localStorage.setItem(key, JSON.stringify(obj));
   } catch {}
 }
+function getSpellfireCapacity() {
+  const g = state.data.general;
+  if (!g) return 0;
 
+  const d = GeneralDerived.compute(g);
+  const conScore = Number(d?.abilities?.con?.total) || 0;
+  const conMod = Number(d?.abilities?.con?.mod) || 0;
+
+  // Official Spellfire rule:
+  // storage cap = Constitution score
+  const officialCapacity = conScore;
+
+  // If you want to use your current remembered / house-rule version instead,
+  // replace the return line with:
+  // return Math.max(0, 10 + conMod);
+
+  return Math.max(0, officialCapacity);
+}
 function getSpellcastingData() {
   const g = state.data.general || {};
   const meta = state.data.spells.meta || {};
@@ -847,6 +875,32 @@ function renderSorcererSlotsHtml(calc, usedState) {
   }
 
   return `<div class="slot-stack-bottom">${rows.join("")}</div>`;
+}
+function renderSpellfireHtml(usedState) {
+  const capacity = getSpellfireCapacity();
+
+  if (capacity <= 0) {
+    return `<div class="hint">No Spellfire capacity available.</div>`;
+  }
+
+  let boxes = "";
+  for (let i = 0; i < capacity; i++) {
+    const key = `spellfire:${i}`;
+    const used = usedState[key] ? " used" : "";
+    boxes += `<div class="slot-box-inline${used}" data-key="${key}" data-kind="spellfire"></div>`;
+  }
+
+  return `
+    <div class="spellfire-section">
+      <div class="slot-row-inline">
+        <div class="slot-row-label">SF</div>
+        <div>${boxes}</div>
+      </div>
+      <div class="hint small spellfire-note">
+        Absorb targeted spells to gain charges; spend charges for 1d6 damage each as a ranged touch attack (400 ft, Reflex half DC 20), or heal 2 HP per charge by touch.
+      </div>
+    </div>
+  `;
 }
 
 function renderWizardSlotsHtml(calc) {
@@ -1065,6 +1119,7 @@ function renderSpells() {
          <div class="panel slot-panel">
            <h3>Sorcerer slots (effective level ${effSorc})</h3>
            ${renderSorcererSlotsHtml(calc, usedState)}
+           ${renderSpellfireHtml(usedState)}
          </div>
          <div class="panel slot-panel">
            <h3>Wizard prepared (effective level ${effWiz})</h3>
