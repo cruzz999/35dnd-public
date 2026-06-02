@@ -31,7 +31,7 @@
 
   function totalLevel(classes) {
     classes = classes || {};
-    return num(classes.sorc) + num(classes.wiz) + num(classes.um);
+    return num(classes.sorc) + num(classes.wiz) + num(classes.um) +num(classes.inc);
   }
 
   function hpAverageD4(totalLvl) {
