@@ -41,7 +41,7 @@
       return `<a href="${href}" target="_blank" rel="noopener noreferrer">${name}</a>`;
     }
 
-    // Fallback: normal Google search (no "I'm Feeling Lucky" redirect page)
+    // Fallback: normal Google search
     const searchUrl = buildSpellSearchUrl(spell?.name || "");
     return `<a href="${searchUrl}" target="_blank" rel="noopener noreferrer">${name}</a>`;
   }
@@ -116,28 +116,29 @@
         <tbody>
           ${rows.map((s) => {
             const cl = computeSpellCL(s, {
- ,  meta,
-  arcaneSpellPower
-});
-const dc = computeSpellDC(s.sl, castingMod);
+              meta,
+              progression,
+              arcaneSpellPower
+            });
 
-const scaled = (global.SpellScaling &&
-  typeof global.SpellScaling.computeDisplayFields === "function")
-  ? global.SpellScaling.computeDisplayFields(s, cl, {
-      // In the future you can pass proxy-fetched full spell page text here:
-      // sourceText: s.sourceText || ""
-      sourceText: s.sourceText || ""
-    })
-  : {
-      rangeText: s.range || "",
-      areaText: s.area || "",
-      damageText: s.damage || "",
-      durationText: s.duration || "",
-      targetsText: s.targets || ""
-    };
+            const dc = computeSpellDC(s.sl, castingMod);
 
-const spellCell = renderSpellNameCell(s);
+            const scaled = (
+              global.SpellScaling &&
+              typeof global.SpellScaling.computeDisplayFields === "function"
+            )
+              ? global.SpellScaling.computeDisplayFields(s, cl, {
+                  sourceText: s.sourceText || ""
+                })
+              : {
+                  rangeText: s.range || "",
+                  areaText: s.area || "",
+                  damageText: s.damage || "",
+                  durationText: s.duration || "",
+                  targetsText: s.targets || ""
+                };
 
+            const spellCell = renderSpellNameCell(s);
 
             const anchorId = `${s.mode}:${s.name}:prep`
               .toLowerCase()
@@ -158,12 +159,10 @@ const spellCell = renderSpellNameCell(s);
                 <td>${escapeHtml(s.type || "")}</td>
                 <td>${s.fire ? "✓" : ""}</td>
                 <td>${s.evo ? "✓" : ""}</td>
-                
-<td>${escapeHtml(scaled.rangeText || "")}</td>
-<td>${escapeHtml(scaled.areaText || "")}</td>
-<td>${escapeHtml(scaled.damageText || "")}</td>
-<td>${escapeHtml(scaled.durationText || "")}</t
-
+                <td>${escapeHtml(scaled.rangeText || "")}</td>
+                <td>${escapeHtml(scaled.areaText || "")}</td>
+                <td>${escapeHtml(scaled.damageText || "")}</td>
+                <td>${escapeHtml(scaled.durationText || "")}</td>
               </tr>
             `;
           }).join("")}
