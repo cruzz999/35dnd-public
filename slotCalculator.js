@@ -174,6 +174,7 @@
   // abilityScore: integer (Cha for sorc, Int for wiz)
   // returns { base:[], bonus:[], final:[] } arrays length 10
 // Drop-in replacement for computeFinalSlotsFor
+
 function computeFinalSlotsFor(classKey, casterLevel, abilityScore) {
   const result = { base: zeroVec(), bonus: zeroVec(), final: zeroVec() };
   if (!classKey || !baseSlots[classKey]) return result;
@@ -181,10 +182,14 @@ function computeFinalSlotsFor(classKey, casterLevel, abilityScore) {
   casterLevel = Number(casterLevel) || 0;
   abilityScore = Number(abilityScore) || 0;
 
-  // base: lookup exact level; clamp to 1..20
-  const lvlKey = String(Math.max(1, Math.min(20, casterLevel)));
+  // Important:
+  // level 0 should NOT silently become level 1.
+  if (casterLevel <= 0) return result;
+
+  const lvlKey = String(Math.min(20, casterLevel));
   const base = baseSlots[classKey][lvlKey] ? cloneVec(baseSlots[classKey][lvlKey]) : zeroVec();
   result.base = base;
+
 
   // compute bonus vector for the ability score
   const bonusVec = bonusVectorForScore(abilityScore);
