@@ -157,7 +157,41 @@ function fmtSign(n) {
   n = Number(n) || 0;
   return (n >= 0 ? "+" : "") + n;
 }
+function parseClassesFromText(classLine) {
+  const text = String(classLine || "");
 
+  const out = { sorc: 0, wiz: 0, um: 0, inc: 0 };
+
+  const patterns = [
+    { re: /sorcerer\s+(\d+)/i, key: "sorc" },
+    { re: /wizard\s+(\d+)/i, key: "wiz" },
+    { re: /ultimate\s+magus\s+(\d+)/i, key: "um" },
+    { re: /incantatrix\s+(\d+)/i, key: "inc" }
+  ];
+
+  for (const p of patterns) {
+    const m = text.match(p.re);
+    if (m) out[p.key] = Number(m[1]) || 0;
+  }
+
+  return out;
+}
+
+function pickLevel(...values) {
+  // Prefer any positive numeric value
+  for (const v of values) {
+    const n = Number(v);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+
+  // If there are no positive values, allow explicit zero
+  for (const v of values) {
+    const n = Number(v);
+    if (Number.isFinite(n) && n === 0) return 0;
+  }
+
+  return 0;
+}
 /* -------------------- Editable state persistence ----------------------- */
 const STORAGE_KEYS = {
   generalEdits: "general.edits.v1",
@@ -893,35 +927,47 @@ async function loadFromGoogleSheets(sheetUrl) {
       await SheetLoader.fetchCsvViaProxy(id, gids.skills)
     );
 
-    const parsedSpells = SheetParsers.parseSpellsGrid(spellsGrid);
-    const parsedGeneral = SheetParsers.parseGeneralGrid(generalGrid);
-    const parsedSkills = SheetParsers.parseSkillsGrid(skillsGrid);
 
-    // Normalize class levels once.
-    // Prefer structured levels from the Spells sheet, fall back to classLine parsing from General.
+const parsedSpells = SheetParsers.parseSpellsGrid(spellsGrid);
+const parsedGeneral = SheetParsers.parseGeneralGrid(generalGrid);
+const parsedSkills = SheetParsers.parseSkillsGrid(skillsGrid);
 
+// Emergency-safe fallback: parse class levels directly from the already-ingested classLine text.
+const classLineLevels = parseClassesFromText(parsedGeneral.classLine);
+
+// Normalize class levels once.
+// Prefer any positive structured value from the Spells sheet,
+// then any positive parsed value from General,
+// then the direct classLine fallback.
 const normalizedClasses = {
-  sorc: parsedSpells.classLevels?.sorc ?? parsedGeneral.classes?.sorc ?? 0,
-  wiz:  parsedSpells.classLevels?.wiz  ?? parsedGeneral.classes?.wiz  ?? 0,
-  um:   parsedSpells.classLevels?.um   ?? parsedGeneral.classes?.um   ?? 0,
-  inc:  parsedSpells.classLevels?.inc  ?? parsedGeneral.classes?.inc  ?? 0
+  sorc: pickLevel(parsedSpells.classLevels?.sorc, parsedGeneral.classes?.sorc, classLineLevels.sorc),
+  wiz:  pickLevel(parsedSpells.classLevels?.wiz,  parsedGeneral.classes?.wiz,  classLineLevels.wiz),
+  um:   pickLevel(parsedSpells.classLevels?.um,   parsedGeneral.classes?.um,   classLineLevels.um),
+  inc:  pickLevel(parsedSpells.classLevels?.inc,  parsedGeneral.classes?.inc,  classLineLevels.inc)
 };
 
+console.log("Class level normalization", {
+  spellsClassLevels: parsedSpells.classLevels,
+  generalClasses: parsedGeneral.classes,
+  classLine: parsedGeneral.classLine,
+  classLineLevels,
+  normalizedClasses
+});
 
-    parsedGeneral.classes = normalizedClasses;
+parsedGeneral.classes = normalizedClasses;
 
-    // Keep spell meta in sync with normalized class levels
-    parsedSpells.meta = {
-      ...(parsedSpells.meta || {}),
-      sorcLevels: normalizedClasses.sorc,
-      wizLevels: normalizedClasses.wiz,
-      umLevels: normalizedClasses.um,
-      arcaneSpellpower:
-        normalizedClasses.um >= 10 ? 4 :
-        normalizedClasses.um >= 7 ? 3 :
-        normalizedClasses.um >= 4 ? 2 :
-        normalizedClasses.um >= 1 ? 1 : 0
-    };
+parsedSpells.meta = {
+  ...(parsedSpells.meta || {}),
+  sorcLevels: normalizedClasses.sorc,
+  wizLevels: normalizedClasses.wiz,
+  umLevels: normalizedClasses.um,
+  arcaneSpellpower:
+    normalizedClasses.um >= 10 ? 4 :
+    normalizedClasses.um >= 7 ? 3 :
+    normalizedClasses.um >= 4 ? 2 :
+    normalizedClasses.um >= 1 ? 1 : 0
+};
+
 
     applyGeneralEditsToGeneral(parsedGeneral, state.generalEdits);
 
