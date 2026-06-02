@@ -37,6 +37,11 @@ const el = {
 
   gsUrl: $("gsUrl"),
   loadGs: $("loadGs"),
+   
+ exportData: $("exportData"),
+  importData: $("importData"),
+  importFile: $("importFile"),
+
 };
 
 function assertEl(name) {
@@ -228,7 +233,181 @@ function saveSkillsEdits() {
   if (typeof AppStorage === "undefined") return;
   AppStorage.writeJson(STORAGE_KEYS.skillsEdits, state.skillsEdits);
 }
+/* --------------------------- Export / Import --------------------------- */
 
+const EXPORT_FORMAT = {
+  app: "dnd35-ink-sheet",
+  version: 1
+};
+
+function readSlotMarksForExport() {
+  const views = ["General", "Spells", "Skills", "Slots"];
+  const out = {};
+
+  for (const viewName of views) {
+    out[viewName] = loadUsedSlotMarks(viewName);
+  }
+
+  return out;
+}
+
+function buildExportPayload() {
+  return {
+    app: EXPORT_FORMAT.app,
+    version: EXPORT_FORMAT.version,
+    exportedAt: new Date().toISOString(),
+
+    state: {
+      loaded: !!state.loaded,
+      view: state.view,
+
+      data: {
+        general: state.data.general,
+        spells: state.data.spells,
+        skills: state.data.skills
+      },
+
+      generalEdits: state.generalEdits,
+      skillsEdits: state.skillsEdits,
+
+      strokesByView: state.strokesByView,
+      lineWidth: state.lineWidth
+    },
+
+    storage: {
+      slotMarks: readSlotMarksForExport()
+    }
+  };
+}
+
+function downloadTextFile(filename, text, mimeType = "application/json") {
+  const blob = new Blob([text], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function exportAppSnapshot() {
+  try {
+    const payload = buildExportPayload();
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const filename = `dnd35-sheet-save-${stamp}.json`;
+
+    downloadTextFile(filename, JSON.stringify(payload, null, 2));
+    setProgress(100, "Exported save file ✅");
+  } catch (e) {
+    console.error(e);
+    setProgress(0, "Export failed: " + (e?.message || e));
+  }
+}
+
+function normalizeImportedPayload(raw) {
+  if (!raw || typeof raw !== "object") {
+    throw new Error("Import file is not a valid object.");
+  }
+
+  if (raw.app !== EXPORT_FORMAT.app) {
+    throw new Error("This file does not appear to be a DnD 3.5 Ink Sheet save.");
+  }
+
+  if (raw.version !== 1) {
+    throw new Error(`Unsupported save version: ${raw.version}`);
+  }
+
+  const importedState = raw.state || {};
+  const importedData = importedState.data || {};
+  const importedStorage = raw.storage || {};
+
+  return {
+    loaded: !!importedState.loaded,
+    view: typeof importedState.view === "string" ? importedState.view : "General",
+
+    data: {
+      general: importedData.general ?? null,
+      spells: importedData.spells ?? { sorc: [], wiz: [], meta: null },
+      skills: importedData.skills ?? { rows: [], inventoryLines: [] }
+    },
+
+    generalEdits: normalizeGeneralEdits(importedState.generalEdits),
+    skillsEdits: normalizeSkillsEdits(importedState.skillsEdits),
+
+    strokesByView:
+      importedState.strokesByView && typeof importedState.strokesByView === "object"
+        ? importedState.strokesByView
+        : {},
+
+    lineWidth: Number.isFinite(Number(importedState.lineWidth))
+      ? Math.max(0.5, Math.min(24, Number(importedState.lineWidth)))
+      : state.lineWidth,
+
+    slotMarks:
+      importedStorage.slotMarks && typeof importedStorage.slotMarks === "object"
+        ? importedStorage.slotMarks
+        : {}
+  };
+}
+
+function applyImportedPayload(payload) {
+  const imported = normalizeImportedPayload(payload);
+
+  state.loaded = imported.loaded;
+  state.view = imported.view;
+
+  state.data.general = imported.data.general;
+  state.data.spells = imported.data.spells;
+  state.data.skills = imported.data.skills;
+
+  state.generalEdits = imported.generalEdits;
+  state.skillsEdits = imported.skillsEdits;
+
+  state.strokesByView = imported.strokesByView;
+  state.lineWidth = imported.lineWidth;
+
+  // Persist editable overlays immediately
+  saveGeneralEdits();
+  saveSkillsEdits();
+
+  // Persist line width preference
+  if (typeof AppStorage !== "undefined") {
+    AppStorage.writeNumber("ink.lineWidth", state.lineWidth);
+  }
+
+  // Persist slot/Spellfire marks
+  for (const [viewName, marks] of Object.entries(imported.slotMarks || {})) {
+    saveUsedSlotMarks(viewName, marks || {});
+  }
+
+  // Update visible line width controls if present
+  const range = document.getElementById("lineWidthRange");
+  const num = document.getElementById("lineWidthNumber");
+  if (range) range.value = state.lineWidth;
+  if (num) num.value = state.lineWidth;
+
+  render();
+  ink.loadForView(state.view);
+
+  setProgress(100, "Imported save file ✅");
+}
+
+async function importAppSnapshotFromFile(file) {
+  if (!file) return;
+
+  try {
+    const text = await file.text();
+    const payload = JSON.parse(text);
+    applyImportedPayload(payload);
+  } catch (e) {
+    console.error(e);
+    setProgress(0, "Import failed: " + (e?.message || e));
+  }
+}
 let skillsNotesSaveTimer = null;
 
 function scheduleSaveSkillsEdits(delayMs = 200) {
@@ -1387,7 +1566,31 @@ function render() {
 /* ---------------------- Hook Google Sheets button ---------------------- */
 window.addEventListener("DOMContentLoaded", () => {
   loadEditableState();
+  if (el.exportData) {
+    el.exportData.addEventListener("click", () => {
+      exportAppSnapshot();
+    });
+  } else {
+    console.warn("Export button not present (#exportData).");
+  }
 
+  if (el.importData && el.importFile) {
+    el.importData.addEventListener("click", () => {
+      el.importFile.click();
+    });
+
+    el.importFile.addEventListener("change", async (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+
+      await importAppSnapshotFromFile(file);
+
+      // allow re-importing the same file later
+      e.target.value = "";
+    });
+  } else {
+    console.warn("Import UI not present (#importData / #importFile).");
+  }
   if (el.loadGs && el.gsUrl) {
     el.loadGs.addEventListener("click", async () => {
       try {
