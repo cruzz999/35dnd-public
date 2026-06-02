@@ -233,6 +233,28 @@ function saveSkillsEdits() {
   if (typeof AppStorage === "undefined") return;
   AppStorage.writeJson(STORAGE_KEYS.skillsEdits, state.skillsEdits);
 }
+function readInkForExport() {
+  const views = ["General", "Spells", "Skills", "Slots"];
+  const out = {};
+
+  for (const viewName of views) {
+    // Prefer in-memory strokes if present
+    if (Array.isArray(state.strokesByView?.[viewName])) {
+      out[viewName] = state.strokesByView[viewName];
+      continue;
+    }
+
+    // Fallback to localStorage
+    try {
+      const raw = localStorage.getItem(`ink:${viewName}`);
+      out[viewName] = raw ? JSON.parse(raw) : [];
+    } catch {
+      out[viewName] = [];
+    }
+  }
+
+  return out;
+}
 /* --------------------------- Export / Import --------------------------- */
 
 const EXPORT_FORMAT = {
@@ -270,7 +292,7 @@ function buildExportPayload() {
       generalEdits: state.generalEdits,
       skillsEdits: state.skillsEdits,
 
-      strokesByView: state.strokesByView,
+      strokesByView: readInkForExport(),
       lineWidth: state.lineWidth
     },
 
@@ -368,6 +390,15 @@ function applyImportedPayload(payload) {
   state.skillsEdits = imported.skillsEdits;
 
   state.strokesByView = imported.strokesByView;
+   
+  // Persist imported ink back into localStorage so ink.loadForView()
+  // continues to work correctly.
+  for (const [viewName, strokes] of Object.entries(imported.strokesByView || {})) {
+    try {
+      localStorage.setItem(`ink:${viewName}`, JSON.stringify(Array.isArray(strokes) ? strokes : []));
+    } catch {}
+  }
+
   state.lineWidth = imported.lineWidth;
 
   // Persist editable overlays immediately
