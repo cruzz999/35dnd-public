@@ -90,6 +90,9 @@ function parseClassesFromClassLine(classLine) {
     if (m) out[p.key] = Number(m[1]) || 0;
   }
 
+  return out;
+}
+
   /* --------------------------- General grid parser -------------------------- */
 
   function findGeneralHeaderRow(grid) {
