@@ -9,4 +9,5 @@ slotCalculator.js
 spellsViewHelpers.js
 storage.js
 styles.css
+touchGestures.js
 xlsx.full.min.js
