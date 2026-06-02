@@ -90,6 +90,12 @@ function defaultGeneralEdits() {
     buffs: {
       mageArmor: 0,
       shieldSpell: 0
+    },
+    classes: {
+      sorc: 0,
+      wiz: 0,
+      um: 0,
+      inc: 0
     }
   };
 }
@@ -192,6 +198,18 @@ function pickLevel(...values) {
 
   return 0;
 }
+function formatClassLineFromClasses(classes) {
+  const c = classes || {};
+  const parts = [];
+
+  if ((Number(c.sorc) || 0) > 0) parts.push(`Sorcerer ${Number(c.sorc) || 0}`);
+  if ((Number(c.wiz) || 0) > 0) parts.push(`Wizard ${Number(c.wiz) || 0}`);
+  if ((Number(c.um) || 0) > 0) parts.push(`Ultimate Magus ${Number(c.um) || 0}`);
+  if ((Number(c.inc) || 0) > 0) parts.push(`Incantatrix ${Number(c.inc) || 0}`);
+
+  return parts.join(" ");
+}
+
 /* -------------------- Editable state persistence ----------------------- */
 const STORAGE_KEYS = {
   generalEdits: "general.edits.v1",
@@ -206,9 +224,15 @@ function normalizeGeneralEdits(raw) {
     ? raw.abilities
     : {};
 
-  const buffs = raw.buffs && typeof raw.buffs === "object"
-    ? raw.buffs
-    : {};
+
+const buffs = raw.buffs && typeof raw.buffs === "object"
+  ? raw.buffs
+  : {};
+
+const classes = raw.classes && typeof raw.classes === "object"
+  ? raw.classes
+  : {};
+
 
   for (const key of ["str", "dex", "con", "int", "wis", "cha"]) {
     const src = abilities[key] || {};
@@ -223,6 +247,13 @@ function normalizeGeneralEdits(raw) {
     mageArmor: Number.isFinite(Number(buffs.mageArmor)) ? Number(buffs.mageArmor) : 0,
     shieldSpell: Number.isFinite(Number(buffs.shieldSpell)) ? Number(buffs.shieldSpell) : 0
   };
+
+base.classes = {
+  sorc: Number.isFinite(Number(classes.sorc)) ? Number(classes.sorc) : 0,
+  wiz: Number.isFinite(Number(classes.wiz)) ? Number(classes.wiz) : 0,
+  um: Number.isFinite(Number(classes.um)) ? Number(classes.um) : 0,
+  inc: Number.isFinite(Number(classes.inc)) ? Number(classes.inc) : 0
+};
 
   return base;
 }
@@ -512,7 +543,20 @@ function applyGeneralEditsToGeneral(general, edits = state.generalEdits) {
   if (Number.isFinite(Number(edits?.buffs?.shieldSpell))) {
     general.buffs.shieldSpell = Number(edits.buffs.shieldSpell);
   }
+general.classes ||= { sorc: 0, wiz: 0, um: 0, inc: 0 };
 
+if (Number.isFinite(Number(edits?.classes?.sorc))) {
+  general.classes.sorc = Number(edits.classes.sorc);
+}
+if (Number.isFinite(Number(edits?.classes?.wiz))) {
+  general.classes.wiz = Number(edits.classes.wiz);
+}
+if (Number.isFinite(Number(edits?.classes?.um))) {
+  general.classes.um = Number(edits.classes.um);
+}
+if (Number.isFinite(Number(edits?.classes?.inc))) {
+  general.classes.inc = Number(edits.classes.inc);
+}
   return general;
 }
 
@@ -534,6 +578,13 @@ function syncGeneralEditsFromGeneral(general) {
     mageArmor: Number(general.buffs?.mageArmor) || 0,
     shieldSpell: Number(general.buffs?.shieldSpell) || 0
   };
+   
+state.generalEdits.classes = {
+  sorc: Number(general.classes?.sorc) || 0,
+  wiz: Number(general.classes?.wiz) || 0,
+  um: Number(general.classes?.um) || 0,
+  inc: Number(general.classes?.inc) || 0
+};
 
   saveGeneralEdits();
 }
@@ -1059,6 +1110,28 @@ function renderGeneral() {
           <div>Player: ${escapeHtml(g.playerName || "")}</div>
           <div>Race: ${escapeHtml(g.race || "")}</div>
           <div>Class: ${escapeHtml(g.classLine || "")}</div>
+
+<div style="margin-top:8px;">
+  <h4>Class levels</h4>
+  <div class="class-level-grid">
+    <label>
+      Sorc
+      <input type="number" inputmode="numeric" min="0" step="1" data-class-key="sorc" value="${Number(g.classes?.sorc) || 0}">
+    </label>
+    <label>
+      Wiz
+      <input type="number" inputmode="numeric" min="0" step="1" data-class-key="wiz" value="${Number(g.classes?.wiz) || 0}">
+    </label>
+    <label>
+      UM
+      <input type="number" inputmode="numeric" min="0" step="1" data-class-key="um" value="${Number(g.classes?.um) || 0}">
+    </label>
+    <label>
+      Inc
+      <input type="number" inputmode="numeric" min="0" step="1" data-class-key="inc" value="${Number(g.classes?.inc) || 0}">
+    </label>
+  </div>
+</div>
           <div>Level: <strong>${d.lvl}</strong></div>
         </div>
 
@@ -1144,6 +1217,22 @@ function renderGeneral() {
       ink.redraw();
     });
   });
+   document.querySelectorAll('input[data-class-key]').forEach((inp) => {
+  inp.addEventListener('input', () => {
+    const key = inp.getAttribute('data-class-key');
+    const val = Number(inp.value);
+
+    g.classes ||= { sorc: 0, wiz: 0, um: 0, inc: 0 };
+    g.classes[key] = Number.isFinite(val) ? Math.max(0, Math.floor(val)) : 0;
+
+    // Keep the human-readable class line in sync
+    g.classLine = formatClassLineFromClasses(g.classes);
+
+    syncGeneralEditsFromGeneral(g);
+    renderGeneral();
+    ink.redraw();
+  });
+});
 }
 
 function ensureSlotsInlineStyles() {
