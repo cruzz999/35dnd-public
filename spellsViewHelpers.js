@@ -35,13 +35,11 @@
   function renderSpellNameCell(spell) {
     const name = escapeHtml(spell?.name || "");
 
-    // Prefer a real URL if one exists
     if (spell?.url) {
       const href = String(spell.url).replace(/"/g, "&quot;");
       return `<a href="${href}" target="_blank" rel="noopener noreferrer">${name}</a>`;
     }
 
-    // Fallback: normal Google search
     const searchUrl = buildSpellSearchUrl(spell?.name || "");
     return `<a href="${searchUrl}" target="_blank" rel="noopener noreferrer">${name}</a>`;
   }
@@ -91,6 +89,52 @@
     );
   }
 
+  function cleanText(s) {
+    return String(s || "")
+      .replace(/\u2013|\u2014/g, "-")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function extractSavingThrowText(spell) {
+    // First, if the row ever gets a direct field later, prefer it.
+    if (spell?.savingThrow) {
+      return cleanText(spell.savingThrow);
+    }
+
+    const sourceText = cleanText(spell?.sourceText || "");
+    if (!sourceText) return "";
+
+    const m = sourceText.match(
+      /Saving Throw:\s*(.+?)(?=\s+(?:Spell Resistance:|Description:|You\b|Comments\b|Complete list\b))/i
+    );
+
+    return m ? cleanText(m[1]) : "";
+  }
+
+  function abbreviateSaveType(saveText) {
+    const t = cleanText(saveText).toLowerCase();
+
+    if (!t) return "";
+    if (t.startsWith("reflex")) return "Ref";
+    if (t.startsWith("will")) return "Will";
+    if (t.startsWith("fortitude")) return "Fort";
+    if (t.startsWith("none")) return "None";
+
+    return saveText;
+  }
+
+  function renderDcCell(spell, dc) {
+    const saveText = extractSavingThrowText(spell);
+    const saveAbbr = abbreviateSaveType(saveText);
+
+    if (!saveAbbr || saveAbbr === "None") {
+      return "—";
+    }
+
+    return `${escapeHtml(saveAbbr)} ${dc}`;
+  }
+
   function renderSpellTable(options = {}) {
     const rows = options.rows || [];
     const meta = options.meta || {};
@@ -106,14 +150,21 @@
     return `
       <table class="table">
         <thead>
-          
-<tr>
-  <th>Spell</th><th>SL</th><th>CL</th><th>DC</th><th>Casting Time</th>
-  ${showPrep ? "<th>Prep</th>" : ""}
-  <th>Type</th><th>F</th><th>E</th>
-  <th>Range</th><th>Area</th><th>Damage</th><th>Duration</th>
-</tr>
-
+          <tr>
+            ${showPrep ? "<th>Prep</th>" : ""}
+            <th>Spell</th>
+            <th>SL</th>
+            <th>CL</th>
+            <th>DC</th>
+            <th>Type</th>
+            <th>F</th>
+            <th>E</th>
+            <th>Range</th>
+            <th>Area</th>
+            <th>Damage</th>
+            <th>Duration</th>
+            <th>Casting Time</th>
+          </tr>
         </thead>
         <tbody>
           ${rows.map((s) => {
@@ -133,13 +184,13 @@
                   sourceText: s.sourceText || ""
                 })
               : {
-    castingTimeText: s.castingTime || "Standard Action",
-    rangeText: s.range || "",
-    areaText: s.area || "",
-    damageText: s.damage || "",
-    durationText: s.duration || "",
-    targetsText: s.targets || ""
-  };
+                  castingTimeText: s.castingTime || "Standard Action",
+                  rangeText: s.range || "",
+                  areaText: s.area || "",
+                  damageText: s.damage || "",
+                  durationText: s.duration || "",
+                  targetsText: s.targets || ""
+                };
 
             const spellCell = renderSpellNameCell(s);
 
@@ -153,13 +204,12 @@
               : "";
 
             return `
-             <tr>
+              <tr>
+                ${prepCell}
                 <td>${spellCell}</td>
                 <td>${Number(s.sl) || 0}</td>
                 <td>${cl}</td>
-                <td>${dc}</td>
-                <td>${escapeHtml(scaled.castingTimeText || "Standard Action")}</td>
-                ${prepCell}
+                <td>${renderDcCell(s, dc)}</td>
                 <td>${escapeHtml(s.type || "")}</td>
                 <td>${s.fire ? "✓" : ""}</td>
                 <td>${s.evo ? "✓" : ""}</td>
@@ -167,6 +217,7 @@
                 <td>${escapeHtml(scaled.areaText || "")}</td>
                 <td>${escapeHtml(scaled.damageText || "")}</td>
                 <td>${escapeHtml(scaled.durationText || "")}</td>
+                <td>${escapeHtml(scaled.castingTimeText || "Standard Action")}</td>
               </tr>
             `;
           }).join("")}
