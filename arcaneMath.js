@@ -41,7 +41,7 @@
     return { sorc, wiz };
   }
 
-  function computeProgressionFromBuild = {}, options = {}) {
+  function computeProgressionFromBuildPlan(plan, counts = {}, options = {}) {
     plan = Array.isArray(plan) ? plan : [];
     const tieBreaker = options.tieBreaker === "sorc" ? "sorc" : "wiz";
 
@@ -197,7 +197,7 @@
   }
 
   ArcaneMath.computeProgressionLevels = computeProgressionLevels;
-    ArcaneMath.computeProgressionFrom computeProgressionFromBuildPlan;
+  ArcaneMath.computeProgressionFromBuildPlan = computeProgressionFromBuildPlan;
   ArcaneMath.computeArcaneSpellPower = computeArcaneSpellPower;
   ArcaneMath.computeSpellCasterLevel = computeSpellCasterLevel;
   ArcaneMath.computeLegacySpellCasterLevel = computeLegacySpellCasterLevel;
