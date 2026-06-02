@@ -84,7 +84,7 @@ if (typeof TouchGestures === "undefined") {
   console.warn("TouchGestures not loaded. Did you include touchGestures.js before app.js?");
 }
 if (typeof SpellScaling === "undefined") {
- Scaling not loaded. Did you include spellScaling.js before app.js?");
+ console.warn("Scaling not loaded. Did you include spellScaling.js before app.js?");
 }
 
 
