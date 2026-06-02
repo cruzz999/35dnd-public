@@ -16,6 +16,17 @@
     return Math.max(min, Math.min(max, n));
   }
 
+function computeCastingTimeText(spell, cl, options = {}) {
+  const raw = cleanText(spell?.castingTime || "");
+
+  // Default for your current spell list
+  if (!raw) {
+    return "Standard Action";
+  }
+
+  return raw;
+}
+
   function cleanText(s) {
     return String(s || "")
       .replace(/\u2013|\u2014/g, "-")
@@ -431,16 +442,19 @@ function computeRangeText(spell, cl, options = {}) {
      PUBLIC COMPOSER
      ---------------------------------------------------------------------- */
 
-  function computeDisplayFields(spell, cl, options = {}) {
-    return {
-      cl: num(cl, 0),
-      rangeText: computeRangeText(spell, cl, options),
-      areaText: computeAreaText(spell, cl, options),
-      damageText: computeDamageText(spell, cl, options),
-      durationText: computeDurationText(spell, cl, options),
-      targetsText: computeTargetsText(spell, cl, options)
-    };
-  }
+
+function computeDisplayFields(spell, cl, options = {}) {
+  return {
+    cl: num(cl, 0),
+    castingTimeText: computeCastingTimeText(spell, cl, options),
+    rangeText: computeRangeText(spell, cl, options),
+    areaText: computeAreaText(spell, cl, options),
+    damageText: computeDamageText(spell, cl, options),
+    durationText: computeDurationText(spell, cl, options),
+    targetsText: computeTargetsText(spell, cl, options)
+  };
+}
+
 
   SpellScaling.computeDisplayFields = computeDisplayFields;
 
