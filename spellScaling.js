@@ -30,8 +30,6 @@
   }
 
   function getSourceText(spell, options = {}) {
-    // Use everything already present on the spell row.
-    // If later you add proxy-fetched page text, pass it in as options.sourceText.
     const parts = [
       spell?.range,
       spell?.area,
@@ -76,7 +74,6 @@
   function parseRangeRule(rangeText, sourceText) {
     const text = cleanText(`${rangeText || ""} | ${sourceText || ""}`);
 
-    // Standard named ranges
     const stdMatch = text.match(/\b(Close|Medium|Long)\b/i);
     if (stdMatch) {
       return {
@@ -85,9 +82,6 @@
       };
     }
 
-    // Explicit numeric formulas:
-    // e.g. 400 ft. + 40 ft./level
-    // e.g. 25 ft. + 5 ft./2 levels
     const m = text.match(/(\d+)\s*ft\.?\s*\+\s*(\d+)\s*ft\.?\/\s*(level|caster level|2 levels)/i);
     if (m) {
       return {
@@ -131,12 +125,20 @@
      Supports:
      - XdY per caster level (maximum ZdY)
      - XdY per level (maximum ZdY)
+     - multiplier-based projectile counts in damage box:
+       - Scorching Ray => 1*4d6 / 2*4d6 / 3*4d6
+       - Magic Missile => 1*1d4+1 ... 5*1d4+1
      ---------------------------------------------------------------------- */
+
+  function stripLeadingMultiplier(rawDamage) {
+    return cleanText(String(rawDamage || "").replace(/^\s*\d+\s*\*\s*/, ""));
+  }
 
   function parseDamageRule(damageText, sourceText) {
     const text = cleanText(`${damageText || ""} | ${sourceText || ""}`);
+    const rawDamage = cleanText(damageText || "");
 
-    // Example:
+    // Fireball-style:
     // 1d6 points of fire damage per caster level (maximum 10d6)
     let m = text.match(/(\d+)d(\d+)[^|]*?per\s+(?:caster\s+)?level[^|]*?maximum\s+(\d+)d(\d+)/i);
     if (m) {
@@ -149,7 +151,7 @@
       };
     }
 
-    // Slightly looser version:
+    // Looser version:
     // 1d6/level (max 10d6)
     m = text.match(/(\d+)d(\d+)\s*\/\s*level[^|]*?max(?:imum)?\s*\(?\s*(\d+)d(\d+)/i);
     if (m) {
@@ -162,7 +164,44 @@
       };
     }
 
+    // Scorching Ray:
+    // one ray, plus one additional ray for every four levels beyond 3rd
+    // (to a maximum of three rays at 11th level)
+    if (/additional ray/i.test(text) && /maximum of three rays at 11th level/i.test(text)) {
+      return {
+        kind: "multishotDamage",
+        shotType: "scorchingRay",
+        baseDamage: stripLeadingMultiplier(rawDamage) || "4d6"
+      };
+    }
+
+    // Magic Missile:
+    // additional missile ... maximum of five missiles at 9th level or higher
+    if (/additional missile/i.test(text) && /maximum of five missiles at 9th level/i.test(text)) {
+      return {
+        kind: "multishotDamage",
+        shotType: "magicMissile",
+        baseDamage: stripLeadingMultiplier(rawDamage) || "1d4+1"
+      };
+    }
+
     return null;
+  }
+
+  function scorchingRayCount(cl) {
+    cl = Math.max(0, num(cl, 0));
+    if (cl >= 11) return 3;
+    if (cl >= 7) return 2;
+    return 1;
+  }
+
+  function magicMissileCount(cl) {
+    cl = Math.max(0, num(cl, 0));
+    if (cl >= 9) return 5;
+    if (cl >= 7) return 4;
+    if (cl >= 5) return 3;
+    if (cl >= 3) return 2;
+    return 1;
   }
 
   function computeDamageText(spell, cl, options = {}) {
@@ -179,20 +218,29 @@
       return `${totalDice}d${rule.dieSize}`;
     }
 
+    if (rule.kind === "multishotDamage") {
+      let count = 1;
+
+      if (rule.shotType === "scorchingRay") {
+        count = scorchingRayCount(cl);
+      } else if (rule.shotType === "magicMissile") {
+        count = magicMissileCount(cl);
+      }
+
+      return `${count}*${rule.baseDamage}`;
+    }
+
     return raw;
   }
 
   /* ----------------------------------------------------------------------
-     MAGIC MISSILE / TARGET-COUNT STYLE SCALING
-     Supports:
-     - "For every two caster levels beyond 1st, you gain an additional missile"
-     - maximum of five missiles at 9th level or higher
+     TARGET / COUNT TEXT
+     First pass still available, but not required for your current UI.
      ---------------------------------------------------------------------- */
 
   function parseTargetsRule(targetsText, sourceText) {
     const text = cleanText(`${targetsText || ""} | ${sourceText || ""}`);
 
-    // Magic Missile-style breakpoints
     if (/additional missile/i.test(text) && /maximum of five missiles/i.test(text)) {
       return {
         kind: "magicMissileStyle"
@@ -212,13 +260,7 @@
     }
 
     if (rule.kind === "magicMissileStyle") {
-      // 1 missile at CL1, +1 missile every 2 caster levels beyond 1st,
-      // max 5 at CL9+
-      let missiles = 1;
-      if (cl >= 3) missiles = 2;
-      if (cl >= 5) missiles = 3;
-      if (cl >= 7) missiles = 4;
-      if (cl >= 9) missiles = 5;
+      const missiles = magicMissileCount(cl);
       return `${missiles} missile${missiles === 1 ? "" : "s"}`;
     }
 
@@ -243,7 +285,7 @@
       return { kind: "fixed", value: "Instantaneous" };
     }
 
-    let m = text.match(/(\d+)\s*(round|rounds|min\.?|minute|minutes|hour|hours)\s*\/\s*(?:caster\s+)?level/i);
+    const m = text.match(/(\d+)\s*(round|rounds|min\.?|minute|minutes|hour|hours)\s*\/\s*(?:caster\s+)?level/i);
     if (m) {
       return {
         kind: "durationPerLevel",
@@ -300,8 +342,6 @@
   function parseAreaRule(areaText, sourceText) {
     const text = cleanText(`${areaText || ""} | ${sourceText || ""}`);
 
-    // Example of a simple linear diameter/radius pattern if you ever encounter it:
-    // "10-ft.-radius spread/level" or similar (rare, but safe to support)
     const m = text.match(/(\d+)\s*ft\.?-radius[^|]*?\/\s*(?:caster\s+)?level/i);
     if (m) {
       return {
