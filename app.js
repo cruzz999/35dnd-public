@@ -44,6 +44,15 @@ const el = {
 
 };
 
+const BUILD_PLAN = [
+  "sorc",
+  "wiz", "wiz", "wiz", "wiz", "wiz",
+  "um", "um", "um", "um", "um",
+  "inc", "inc",
+  "um", "um", "um", "um", "um",
+  "inc", "inc"
+];
+
 function assertEl(name) {
   if (!el[name]) console.warn(`Missing element #${name}`);
 }
@@ -1319,18 +1328,19 @@ const incLevels = Number(
   0
 ) || 0;
 
-const progression = ArcaneMath.computeProgressionLevels({
-  sorcBase: baseSorc,
-  wizBase: baseWiz,
-  umLevels,
-  tieBreaker: "wiz"
-});
 
-// Incantatrix house/app rule:
-// +1 effective sorcerer level per Incantatrix level
-progression.sorc += incLevels;
-
-
+const progression = ArcaneMath.computeProgressionFromBuildPlan(
+  BUILD_PLAN,
+  {
+    sorc: baseSorc,
+    wiz: baseWiz,
+    um: umLevels,
+    inc: incLevels
+  },
+  {
+    tieBreaker: "wiz"
+  }
+);
   const calc = (typeof SlotCalculator !== "undefined")
     ? SlotCalculator.computeAllSlots(state, {
         overrides: {
