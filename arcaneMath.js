@@ -41,6 +41,95 @@
     return { sorc, wiz };
   }
 
+  function computeProgressionFromBuild = {}, options = {}) {
+    plan = Array.isArray(plan) ? plan : [];
+    const tieBreaker = options.tieBreaker === "sorc" ? "sorc" : "wiz";
+
+    const target = {
+      sorc: num(counts.sorc),
+      wiz: num(counts.wiz),
+      um: num(counts.um),
+      inc: num(counts.inc)
+    };
+
+    const taken = {
+      sorc: 0,
+      wiz: 0,
+      um: 0,
+      inc: 0
+    };
+
+    const effective = {
+      sorc: 0,
+      wiz: 0
+    };
+
+    const specialUmRanks = new Set([1, 4, 7]);
+
+    function applyOneLevel(levelKey) {
+      switch (levelKey) {
+        case "sorc":
+          taken.sorc++;
+          effective.sorc++;
+          break;
+
+        case "wiz":
+          taken.wiz++;
+          effective.wiz++;
+          break;
+
+        case "inc":
+          taken.inc++;
+          // App rule: each Incantatrix level adds +1 effective sorcerer level
+          effective.sorc++;
+          break;
+
+        case "um": {
+          taken.um++;
+          const umRank = taken.um;
+
+          if (specialUmRanks.has(umRank)) {
+            if (effective.sorc < effective.wiz) {
+              effective.sorc++;
+            } else if (effective.wiz < effective.sorc) {
+              effective.wiz++;
+            } else {
+              if (tieBreaker === "sorc") effective.sorc++;
+              else effective.wiz++;
+            }
+          } else {
+            effective.sorc++;
+            effective.wiz++;
+          }
+          break;
+        }
+
+        default:
+          break;
+      }
+    }
+
+    // Walk the build plan in order and consume only the levels that exist in the current build
+    for (const step of plan) {
+      if (step === "sorc" && taken.sorc < target.sorc) applyOneLevel("sorc");
+      else if (step === "wiz" && taken.wiz < target.wiz) applyOneLevel("wiz");
+      else if (step === "um" && taken.um < target.um) applyOneLevel("um");
+      else if (step === "inc" && taken.inc < target.inc) applyOneLevel("inc");
+    }
+
+    // Fallback: if current counts exceed the declared build plan, apply leftovers safely
+    while (taken.sorc < target.sorc) applyOneLevel("sorc");
+    while (taken.wiz < target.wiz) applyOneLevel("wiz");
+    while (taken.inc < target.inc) applyOneLevel("inc");
+    while (taken.um < target.um) applyOneLevel("um");
+
+    return {
+      sorc: effective.sorc,
+      wiz: effective.wiz,
+      taken,
+      target
+    };
+  }
   // Arcane Spell Power:
   // +1 at UM 1, +2 at UM 4, +3 at UM 7, +4 at UM 10
   function computeArcaneSpellPower(umLevels, explicitValue = null) {
@@ -108,6 +197,7 @@
   }
 
   ArcaneMath.computeProgressionLevels = computeProgressionLevels;
+    ArcaneMath.computeProgressionFrom computeProgressionFromBuildPlan;
   ArcaneMath.computeArcaneSpellPower = computeArcaneSpellPower;
   ArcaneMath.computeSpellCasterLevel = computeSpellCasterLevel;
   ArcaneMath.computeLegacySpellCasterLevel = computeLegacySpellCasterLevel;
