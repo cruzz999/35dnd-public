@@ -35,7 +35,6 @@
       return global.ArcaneMath.computeLegacySpellCasterLevel(spell, meta || {});
     }
 
-    // Safe compatibility fallback if ArcaneMath is not available.
     const bonusFireEvo = (spell.evo && spell.fire) ? 2 : 0;
 
     if (spell.mode === "wiz") {
@@ -48,6 +47,24 @@
       (Number(meta?.arcaneSpellpower) || 0) +
       bonusFireEvo
     );
+  }
+
+  function buildLuckySpellSearchUrl(spellName) {
+    const query = `site:dnd.arkalseif.info ${String(spellName || "").trim()}`;
+    return `https://www.google.com/search?q=${encodeURIComponent(query)}&btnI=I`;
+  }
+
+  function renderSpellNameCell(spell) {
+    const name = escapeHtml(spell?.name || "");
+
+    // Prefer a real URL if one exists
+    if (spell?.url) {
+      return `<a href="${String(spell.url).replace(/"/g, "&quot;")}" target="_blank" rel="noopener noreferrer">${name}</a>`;
+    }
+
+    // Fallback: Google "I'm Feeling Lucky" search
+    const luckyUrl = buildLuckySpellSearchUrl(spell?.name || "");
+    return `<a href="${luckyUrl}" target="_blank" rel="noopener noreferrer">${name}</a>`;
   }
 
   function renderSpellTable(options = {}) {
@@ -75,10 +92,7 @@
             const cl = computeSpellCL(s, meta);
             const dc = computeSpellDC(s.sl, castingMod);
 
-            const spellCell = s.url
-              ? `<a href="${String(s.url).replace(/"/g, "&quot;")}" target="_blank" rel="noopener noreferrer">${escapeHtml(s.name)}</a>`
-            : escapeHtml(s.name);
-
+            const spellCell = renderSpellNameCell(s);
 
             const anchorId = `${s.mode}:${s.name}:prep`
               .toLowerCase()
