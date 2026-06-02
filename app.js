@@ -1626,19 +1626,17 @@ function renderSlots() {
 function renderSpells() {
   ensureSlotsInlineStyles();
 
-
-const {
-  meta,
-  chaMod,
-  intMod,
-  sorcRows,
-  wizRows,
-  calc,
-  progression,
-  effSorc,
-  effWiz
-} = getSpellcastingData();
-
+  const {
+    meta,
+    chaMod,
+    intMod,
+    sorcRows,
+    wizRows,
+    calc,
+    progression,
+    effSorc,
+    effWiz
+  } = getSpellcastingData();
 
   const usedState = loadUsedSlotMarks("Spells");
 
@@ -1667,27 +1665,27 @@ const {
 
         <div class="panel">
           <h3>Sorcerer / UM</h3>
-${SpellsViewHelpers.renderSpellTable({
-  rows: sorcRows,
-  meta,
-  progression,
-  arcaneSpellPower: meta.arcaneSpellpower,
-  castingMod: chaMod,
-  showPrep: false
-})}
-</div>
+          ${SpellsViewHelpers.renderSpellTable({
+            rows: sorcRows,
+            meta,
+            progression,
+            arcaneSpellPower: meta.arcaneSpellpower,
+            castingMod: chaMod,
+            showPrep: false
+          })}
+        </div>
 
         <div class="panel">
           <h3>Wizard</h3>
-${SpellsViewHelpers.renderSpellTable({
-  rows: wizRows,
-  meta,
-  progression,
-  arcaneSpellPower: meta.arcaneSpellpower,
-  castingMod: intMod,
-  showPrep: true
-})}
-</div>
+          ${SpellsViewHelpers.renderSpellTable({
+            rows: wizRows,
+            meta,
+            progression,
+            arcaneSpellPower: meta.arcaneSpellpower,
+            castingMod: intMod,
+            showPrep: true
+          })}
+        </div>
       </div>
 
       <div class="hint small">
@@ -1698,7 +1696,6 @@ ${SpellsViewHelpers.renderSpellTable({
 
   wireCombinedSpellcastingSlotClicks();
 }
-
 function renderSkills() {
   const g = state.data.general;
   const skillsData = state.data.skills || { rows: [], inventoryLines: [] };
