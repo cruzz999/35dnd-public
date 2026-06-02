@@ -899,12 +899,14 @@ async function loadFromGoogleSheets(sheetUrl) {
 
     // Normalize class levels once.
     // Prefer structured levels from the Spells sheet, fall back to classLine parsing from General.
-    const normalizedClasses = {
-      sorc: parsedSpells.classLevels?.sorc ?? parsedGeneral.classes?.sorc ?? 0,
-      wiz:  parsedSpells.classLevels?.wiz  ?? parsedGeneral.classes?.wiz  ?? 0,
-      um:   parsedSpells.classLevels?.um   ?? parsedGeneral.classes?.um   ?? 0,
-      inc:  parsedSpells.classLevels?.inc  ?? parsedGeneral.classes?.inc  ?? 0
-    };
+
+const normalizedClasses = {
+  sorc: parsedSpells.classLevels?.sorc ?? parsedGeneral.classes?.sorc ?? 0,
+  wiz:  parsedSpells.classLevels?.wiz  ?? parsedGeneral.classes?.wiz  ?? 0,
+  um:   parsedSpells.classLevels?.um   ?? parsedGeneral.classes?.um   ?? 0,
+  inc:  parsedSpells.classLevels?.inc  ?? parsedGeneral.classes?.inc  ?? 0
+};
+
 
     parsedGeneral.classes = normalizedClasses;
 
