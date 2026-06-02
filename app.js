@@ -614,13 +614,167 @@ function endPan() {
 
 if (el.viewport) {
   el.viewport.addEventListener("pointerdown", (e) => {
+    // Touch navigation is handled by the two-finger gesture layer below.
+    if (e.pointerType === "touch") return;
+
+    // Preserve existing behavior:
+    // - pen OFF => mouse/stylus can pan
+    // - pen ON  => stylus should not pan here
     if (state.penOn) return;
+
     beginPan(e);
     el.viewport.setPointerCapture?.(e.pointerId);
   });
+
   el.viewport.addEventListener("pointermove", movePan);
   el.viewport.addEventListener("pointerup", endPan);
   el.viewport.addEventListener("pointercancel", endPan);
+}
+/* ---------------------- Two-finger touch gestures -----------------------
+   Goal:
+   - two-finger pan and pinch-to-zoom
+   - allowed even when pen mode is ON
+   - does NOT interfere with stylus drawing
+   - touch only; pen and mouse continue using existing logic
+------------------------------------------------------------------------- */
+
+const ENABLE_TOUCH_GESTURES = true;
+
+const touchGesture = {
+  pointers: new Map(),   // pointerId -> { clientX, clientY }
+  active: false,
+  startDistance: 0,
+  startZoom: 1,
+  anchorWorld: { x: 0, y: 0 }
+};
+
+function getViewportLocalPoint(clientX, clientY) {
+  if (!el.viewport) return { x: 0, y: 0 };
+  const vr = el.viewport.getBoundingClientRect();
+  return {
+    x: clientX - vr.left,
+    y: clientY - vr.top
+  };
+}
+
+function getTouchPointsArray() {
+  return Array.from(touchGesture.pointers.values());
+}
+
+function getDistance(p1, p2) {
+  const dx = p2.clientX - p1.clientX;
+  const dy = p2.clientY - p1.clientY;
+  return Math.hypot(dx, dy);
+}
+
+function getMidpointLocal(p1, p2) {
+  const midClientX = (p1.clientX + p2.clientX) / 2;
+  const midClientY = (p1.clientY + p2.clientY) / 2;
+  return getViewportLocalPoint(midClientX, midClientY);
+}
+
+function beginTouchGesture() {
+  const pts = getTouchPointsArray();
+  if (pts.length < 2) return;
+
+  const p1 = pts[0];
+  const p2 = pts[1];
+
+  const mid = getMidpointLocal(p1, p2);
+  const dist = getDistance(p1, p2);
+
+  if (!Number.isFinite(dist) || dist <= 0) return;
+
+  touchGesture.active = true;
+  touchGesture.startDistance = dist;
+  touchGesture.startZoom = state.zoom;
+
+  // World-space anchor under the midpoint at gesture start.
+  // Keeping this fixed while scaling lets pinch and two-finger pan work together.
+  touchGesture.anchorWorld = {
+    x: (mid.x - state.pan.x) / state.zoom,
+    y: (mid.y - state.pan.y) / state.zoom
+  };
+}
+
+function updateTouchGesture() {
+  if (!touchGesture.active) return;
+
+  const pts = getTouchPointsArray();
+  if (pts.length < 2) return;
+
+  const p1 = pts[0];
+  const p2 = pts[1];
+
+  const mid = getMidpointLocal(p1, p2);
+  const dist = getDistance(p1, p2);
+
+  if (!Number.isFinite(dist) || dist <= 0 || !Number.isFinite(touchGesture.startDistance) || touchGesture.startDistance <= 0) {
+    return;
+  }
+
+  const scale = dist / touchGesture.startDistance;
+  const newZoom = clampZoom(touchGesture.startZoom * scale);
+
+  state.zoom = newZoom;
+  state.pan.x = mid.x - touchGesture.anchorWorld.x * newZoom;
+  state.pan.y = mid.y - touchGesture.anchorWorld.y * newZoom;
+
+  applyWorldTransform();
+  ink.redraw();
+}
+
+function endTouchGestureIfNeeded() {
+  if (touchGesture.pointers.size < 2) {
+    touchGesture.active = false;
+    touchGesture.startDistance = 0;
+  }
+}
+
+if (ENABLE_TOUCH_GESTURES && el.viewport) {
+  el.viewport.addEventListener("pointerdown", (e) => {
+    if (e.pointerType !== "touch") return;
+
+    touchGesture.pointers.set(e.pointerId, {
+      clientX: e.clientX,
+      clientY: e.clientY
+    });
+
+    try { el.viewport.setPointerCapture?.(e.pointerId); } catch {}
+
+    if (touchGesture.pointers.size === 2) {
+      beginTouchGesture();
+    }
+  }, { passive: false });
+
+  el.viewport.addEventListener("pointermove", (e) => {
+    if (e.pointerType !== "touch") return;
+    if (!touchGesture.pointers.has(e.pointerId)) return;
+
+    touchGesture.pointers.set(e.pointerId, {
+      clientX: e.clientX,
+      clientY: e.clientY
+    });
+
+    if (touchGesture.pointers.size >= 2) {
+      if (!touchGesture.active) beginTouchGesture();
+      updateTouchGesture();
+      e.preventDefault();
+    }
+  }, { passive: false });
+
+  function finishTouchPointer(e) {
+    if (e.pointerType !== "touch") return;
+
+    touchGesture.pointers.delete(e.pointerId);
+
+    try { el.viewport.releasePointerCapture?.(e.pointerId); } catch {}
+
+    endTouchGestureIfNeeded();
+  }
+
+  el.viewport.addEventListener("pointerup", finishTouchPointer);
+  el.viewport.addEventListener("pointercancel", finishTouchPointer);
 }
 
 /* ------------------------------ Ink layer ------------------------------ */
