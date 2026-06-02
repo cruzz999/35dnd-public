@@ -906,6 +906,19 @@ async function loadFromGoogleSheets(sheetUrl) {
 
     state.data.skills.rows = parsedSkills.rows;
     state.data.skills.inventoryLines = parsedSkills.inventoryLines;
+      
+const normalizedClasses = {
+  sorc: parsedSpells.classLevels?.sorc ?? parsedGeneral.classes?.sorc ?? 0,
+  wiz:  parsedSpells.classLevels?.wiz  ?? parsedGeneral.classes?.wiz  ?? 0,
+  um:   parsedSpells.classLevels?.um   ?? parsedGeneral.classes?.um   ?? 0,
+  inc:  parsedSpells.classLevels?.inc  ?? parsedGeneral.classes?.inc  ?? 0
+};
+
+parsedGeneral.classes = normalizedClasses;
+
+parsedSpells.meta.sorcLevels = normalizedClasses.sorc;
+parsedSpells.meta.wizLevels = normalizedClasses.wiz;
+parsedSpells.meta.umLevels = normalizedClasses.um;
 
     if (!state.skillsEdits.inventoryText) {
       state.skillsEdits.inventoryText = parsedSkills.inventoryLines.join("\n");
