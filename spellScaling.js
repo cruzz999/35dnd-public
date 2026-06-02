@@ -70,55 +70,112 @@
 
     return null;
   }
+/* ----------------------------------------------------------------------
+   RANGE
+   Conservative parsing:
+   - prefer the spell row's own range field if it contains a real range rule
+   - otherwise extract only the actual "Range:" field from source text
+   - do NOT scan the whole spell body for range-like numbers
+---------------------------------------------------------------------- */
 
-  function parseRangeRule(rangeText, sourceText) {
-    const text = cleanText(`${rangeText || ""} | ${sourceText || ""}`);
+function computeStandardRangeFeet(label, cl) {
+  const x = String(label || "").toLowerCase();
+  cl = Math.max(0, num(cl, 0));
 
-    const stdMatch = text.match(/\b(Close|Medium|Long)\b/i);
-    if (stdMatch) {
-      return {
-        kind: "standardRange",
-        label: titleCase(stdMatch[1])
-      };
-    }
-
-    const m = text.match(/(\d+)\s*ft\.?\s*\+\s*(\d+)\s*ft\.?\/\s*(level|caster level|2 levels)/i);
-    if (m) {
-      return {
-        kind: "linearFeet",
-        baseFeet: num(m[1]),
-        feetPerStep: num(m[2]),
-        levelsPerStep: /2 levels/i.test(m[3]) ? 2 : 1
-      };
-    }
-
-    return null;
+  if (x === "close") {
+    return 25 + 5 * Math.floor(cl / 2);
+  }
+  if (x === "medium") {
+    return 100 + 10 * cl;
+  }
+  if (x === "long") {
+    return 400 + 40 * cl;
   }
 
-  function computeRangeText(spell, cl, options = {}) {
-    const raw = cleanText(spell?.range || "");
-    const sourceText = getSourceText(spell, options);
-    const rule = parseRangeRule(raw, sourceText);
+  return null;
+}
 
-    if (!rule) {
-      return raw;
-    }
+function extractRangeFieldFromSourceText(sourceText) {
+  const text = cleanText(sourceText || "");
+  if (!text) return "";
 
-    if (rule.kind === "standardRange") {
-      const feet = computeStandardRangeFeet(rule.label, cl);
-      if (feet != null) {
-        return `${rule.label} (${feet} ft.)`;
-      }
-    }
+  // Try to isolate the actual Range field from the structured spell text.
+  // Stop at the next common field name.
+  const m = text.match(
+    /Range:\s*(.+?)(?=\s+(?:Area:|Effect:|Target:|Targets:|Duration:|Saving Throw:|Spell Resistance:|Description:|You\b))/i
+  );
 
-    if (rule.kind === "linearFeet") {
-      const steps = rule.levelsPerStep === 2 ? Math.floor(cl / 2) : cl;
-      const feet = rule.baseFeet + rule.feetPerStep * steps;
-      return `${feet} ft.`;
-    }
+  return m ? cleanText(m[1]) : "";
+}
 
+function parseRangeRuleFromText(text) {
+  text = cleanText(text || "");
+  if (!text) return null;
+
+  // Standard named ranges
+  const stdMatch = text.match(/\b(Close|Medium|Long)\b/i);
+  if (stdMatch) {
+    return {
+      kind: "standardRange",
+      label: titleCase(stdMatch[1])
+    };
+  }
+
+  // Explicit numeric formulas:
+  // e.g. 400 ft. + 40 ft./level
+  // e.g. 25 ft. + 5 ft./2 levels
+  const m = text.match(/(\d+)\s*ft\.?\s*\+\s*(\d+)\s*ft\.?\/\s*(level|caster level|2 levels)/i);
+  if (m) {
+    return {
+      kind: "linearFeet",
+      baseFeet: num(m[1]),
+      feetPerStep: num(m[2]),
+      levelsPerStep: /2 levels/i.test(m[3]) ? 2 : 1
+    };
+  }
+
+  return null;
+}
+
+function parseRangeRule(rangeText, sourceText) {
+  const raw = cleanText(rangeText || "");
+
+  // First: trust the spell row's range field if it itself contains a scalable rule.
+  let rule = parseRangeRuleFromText(raw);
+  if (rule) return rule;
+
+  // Second: if the row field is flattened (e.g. "800 ft"), try the actual Range: field from source text.
+  const sourceRange = extractRangeFieldFromSourceText(sourceText);
+  rule = parseRangeRuleFromText(sourceRange);
+  if (rule) return rule;
+
+  return null;
+}
+
+function computeRangeText(spell, cl, options = {}) {
+  const raw = cleanText(spell?.range || "");
+  const sourceText = getSourceText(spell, options);
+  const rule = parseRangeRule(raw, sourceText);
+
+  if (!rule) {
     return raw;
   }
+
+  if (rule.kind === "standardRange") {
+    const feet = computeStandardRangeFeet(rule.label, cl);
+    if (feet != null) {
+      return `${rule.label} (${feet} ft.)`;
+    }
+  }
+
+  if (rule.kind === "linearFeet") {
+    const steps = rule.levelsPerStep === 2 ? Math.floor(cl / 2) : cl;
+    const feet = rule.baseFeet + rule.feetPerStep * steps;
+    return `${feet} ft.`;
+  }
+
+  return raw;
+}
 
   /* ----------------------------------------------------------------------
      DAMAGE
