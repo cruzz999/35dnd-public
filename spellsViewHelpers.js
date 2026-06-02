@@ -106,12 +106,14 @@
     return `
       <table class="table">
         <thead>
-          <tr>
-            <th>Spell</th><th>SL</th><th>CL</th><th>DC</th>
-            ${showPrep ? "<th>Prep</th>" : ""}
-            <th>Type</th><th>F</th><th>E</th>
-            <th>Range</th><th>Area</th><th>Damage</th><th>Duration</th>
-          </tr>
+          
+<tr>
+  <th>Spell</th><th>SL</th><th>CL</th><th>DC</th><th>Casting Time</th>
+  ${showPrep ? "<th>Prep</th>" : ""}
+  <th>Type</th><th>F</th><th>E</th>
+  <th>Range</th><th>Area</th><th>Damage</th><th>Duration</th>
+</tr>
+
         </thead>
         <tbody>
           ${rows.map((s) => {
@@ -131,12 +133,13 @@
                   sourceText: s.sourceText || ""
                 })
               : {
-                  rangeText: s.range || "",
-                  areaText: s.area || "",
-                  damageText: s.damage || "",
-                  durationText: s.duration || "",
-                  targetsText: s.targets || ""
-                };
+    castingTimeText: s.castingTime || "Standard Action",
+    rangeText: s.range || "",
+    areaText: s.area || "",
+    damageText: s.damage || "",
+    durationText: s.duration || "",
+    targetsText: s.targets || ""
+  };
 
             const spellCell = renderSpellNameCell(s);
 
@@ -150,11 +153,12 @@
               : "";
 
             return `
-              <tr>
+             <tr>
                 <td>${spellCell}</td>
                 <td>${Number(s.sl) || 0}</td>
                 <td>${cl}</td>
                 <td>${dc}</td>
+                <td>${escapeHtml(scaled.castingTimeText || "Standard Action")}</td>
                 ${prepCell}
                 <td>${escapeHtml(s.type || "")}</td>
                 <td>${s.fire ? "✓" : ""}</td>
