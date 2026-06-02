@@ -1299,49 +1299,47 @@ function getSpellcastingData() {
   const sorcRows = state.data.spells.sorc || [];
   const wizRows = state.data.spells.wiz || [];
 
+  const baseSorc = Number(
+    state.data.currentSorcererLevel ??
+    (g.classes ? g.classes.sorc : undefined) ??
+    meta.sorcLevels ??
+    0
+  ) || 0;
 
+  const baseWiz = Number(
+    state.data.currentWizardLevel ??
+    (g.classes ? g.classes.wiz : undefined) ??
+    meta.wizLevels ??
+    0
+  ) || 0;
 
-const baseSorc = Number(
-  state.data.currentSorcererLevel ??
-  (g.classes ? g.classes.sorc : undefined) ??
-  meta.sorcLevels ??
-  0
-) || 0;
+  const umLevels = Number(
+    state.data.currentUmLevel ??
+    (g.classes ? g.classes.um : undefined) ??
+    meta.umLevels ??
+    0
+  ) || 0;
 
-const baseWiz = Number(
-  state.data.currentWizardLevel ??
-  (g.classes ? g.classes.wiz : undefined) ??
-  meta.wizLevels ??
-  0
-) || 0;
+  const incLevels = Number(
+    state.data.currentIncantatrixLevel ??
+    (g.classes ? g.classes.inc : undefined) ??
+    meta.incLevels ??
+    0
+  ) || 0;
 
-const umLevels = Number(
-  state.data.currentUmLevel ??
-  (g.classes ? g.classes.um : undefined) ??
-  meta.umLevels ??
-  0
-) || 0;
+  const progression = ArcaneMath.computeProgressionFromBuildPlan(
+    BUILD_PLAN,
+    {
+      sorc: baseSorc,
+      wiz: baseWiz,
+      um: umLevels,
+      inc: incLevels
+    },
+    {
+      tieBreaker: "wiz"
+    }
+  );
 
-const incLevels = Number(
-  state.data.currentIncantatrixLevel ??
-  (g.classes ? g.classes.inc : undefined) ??
-  meta.incLevels ??
-  0
-) || 0;
-
-
-const progression = ArcaneMath.computeProgressionFromBuildPlan(
-  BUILD_PLAN,
-  {
-    sorc: baseSorc,
-    wiz: baseWiz,
-    um: umLevels,
-    inc: incLevels
-  },
-  {
-    tieBreaker: "wiz"
-  }
-);
   const calc = (typeof SlotCalculator !== "undefined")
     ? SlotCalculator.computeAllSlots(state, {
         overrides: {
@@ -1363,6 +1361,7 @@ const progression = ArcaneMath.computeProgressionFromBuildPlan(
     sorcRows,
     wizRows,
     calc,
+    progression,
     effSorc: progression.sorc,
     effWiz: progression.wiz
   };
@@ -1627,16 +1626,19 @@ function renderSlots() {
 function renderSpells() {
   ensureSlotsInlineStyles();
 
-  const {
-    meta,
-    chaMod,
-    intMod,
-    sorcRows,
-    wizRows,
-    calc,
-    effSorc,
-    effWiz
-  } = getSpellcastingData();
+
+const {
+  meta,
+  chaMod,
+  intMod,
+  sorcRows,
+  wizRows,
+  calc,
+  progression,
+  effSorc,
+  effWiz
+} = getSpellcastingData();
+
 
   const usedState = loadUsedSlotMarks("Spells");
 
@@ -1665,23 +1667,27 @@ function renderSpells() {
 
         <div class="panel">
           <h3>Sorcerer / UM</h3>
-          ${SpellsViewHelpers.renderSpellTable({
-            rows: sorcRows,
-            meta,
-            castingMod: chaMod,
-            showPrep: false
-          })}
-        </div>
+${SpellsViewHelpers.renderSpellTable({
+  rows: sorcRows,
+  meta,
+  progression,
+  arcaneSpellPower: meta.arcaneSpellpower,
+  castingMod: chaMod,
+  showPrep: false
+})}
+</div>
 
         <div class="panel">
           <h3>Wizard</h3>
-          ${SpellsViewHelpers.renderSpellTable({
-            rows: wizRows,
-            meta,
-            castingMod: intMod,
-            showPrep: true
-          })}
-        </div>
+${SpellsViewHelpers.renderSpellTable({
+  rows: wizRows,
+  meta,
+  progression,
+  arcaneSpellPower: meta.arcaneSpellpower,
+  castingMod: intMod,
+  showPrep: true
+})}
+</div>
       </div>
 
       <div class="hint small">
