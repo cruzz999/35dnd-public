@@ -61,7 +61,7 @@
   }
 
   function extractUsefulTextFromHtml(html) {
-    const doc = new DOMParserString(String(html || ""), "text/html");
+    const doc = new DOMParser().parseFromString(String(html || ""), "text/html");
 
     doc.querySelectorAll("script, style, noscript").forEach((el) => el.remove());
 
