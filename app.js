@@ -1201,6 +1201,7 @@ function getSpellcastingData() {
   const wizRows = state.data.spells.wiz || [];
 
 
+
 const baseSorc = Number(
   state.data.currentSorcererLevel ??
   (g.classes ? g.classes.sorc : undefined) ??
@@ -1222,13 +1223,24 @@ const umLevels = Number(
   0
 ) || 0;
 
+const incLevels = Number(
+  state.data.currentIncantatrixLevel ??
+  (g.classes ? g.classes.inc : undefined) ??
+  meta.incLevels ??
+  0
+) || 0;
 
-  const progression = ArcaneMath.computeProgressionLevels({
-    sorcBase: baseSorc,
-    wizBase: baseWiz,
-    umLevels,
-    tieBreaker: "wiz"
-  });
+const progression = ArcaneMath.computeProgressionLevels({
+  sorcBase: baseSorc,
+  wizBase: baseWiz,
+  umLevels,
+  tieBreaker: "wiz"
+});
+
+// Incantatrix house/app rule:
+// +1 effective sorcerer level per Incantatrix level
+progression.sorc += incLevels;
+
 
   const calc = (typeof SlotCalculator !== "undefined")
     ? SlotCalculator.computeAllSlots(state, {
