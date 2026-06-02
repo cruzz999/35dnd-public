@@ -893,20 +893,47 @@ async function loadFromGoogleSheets(sheetUrl) {
       await SheetLoader.fetchCsvViaProxy(id, gids.skills)
     );
 
-    const parsedSpells = SheetParsers.parseSpellsGrid(spellsGrid);
-    const parsedGeneral = SheetParsers.parseGeneralGrid(generalGrid);
-    const parsedSkills = SheetParsers.parseSkillsGrid(skillsGrid);
+const parsedSpells = SheetParsers.parseSpellsGrid(spellsGrid);
+const parsedGeneral = SheetParsers.parseGeneralGrid(generalGrid);
+const parsedSkills = SheetParsers.parseSkillsGrid(skillsGrid);
 
-    applyGeneralEditsToGeneral(parsedGeneral, state.generalEdits);
+// Normalize class levels once.
+// Prefer structured levels from the Spells sheet, fall back to classLine parsing from General.
+const normalizedClasses = {
+  sorc: parsedSpells.classLevels?.sorc ?? parsedGeneral.classes?.sorc ?? 0,
+  wiz:  parsedSpells.classLevels?.wiz  ?? parsedGeneral.classes?.wiz  ?? 0,
+  um:   parsedSpells.classLevels?.um   ?? parsedGeneral.classes?.um   ?? 0,
+  inc:  parsedSpells.classLevels?.inc  ?? parsedGeneral.classes?.inc  ?? 0
+};
 
-    state.data.general = parsedGeneral;
-    state.data.spells.sorc = parsedSpells.sorc;
-    state.data.spells.wiz = parsedSpells.wiz;
-    state.data.spells.meta = parsedSpells.meta;
+parsedGeneral.classes = normalizedClasses;
 
-    state.data.skills.rows = parsedSkills.rows;
-    state.data.skills.inventoryLines = parsedSkills.inventoryLines;
-      
+// Keep spell meta in sync with the normalized class levels
+parsedSpells.meta = {
+  ...(parsedSpells.meta || {}),
+  sorcLevels: normalizedClasses.sorc,
+  wizLevels: normalizedClasses.wiz,
+  umLevels: normalizedClasses.um,
+  arcaneSpellpower:
+    normalizedClasses.um >= 10 ? 4 :
+    normalizedClasses.um >= 7 ? 3 :
+    normalizedClasses.um >= 4 ? 2 :
+    normalizedClasses.um >= 1 ? 1 : 0
+};
+
+applyGeneralEditsToGeneral(parsedGeneral, state.generalEdits);
+
+state.data.general = parsedGeneral;
+state.data.spells.sorc = parsedSpells.sorc;
+state.data.spells.wiz = parsedSpells.wiz;
+state.data.spells.meta = parsedSpells.meta;
+
+state.data.skills.rows = parsedSkills.rows;
+state.data.skills.inventoryLines = parsedSkills.inventoryLines;
+
+if (!state.skillsEdits.inventoryText) {
+  state.skillsEdits.inventoryText = parsedSkills.inventoryLines.join("\n");
+}   
 const normalizedClasses = {
   sorc: parsedSpells.classLevels?.sorc ?? parsedGeneral.classes?.sorc ?? 0,
   wiz:  parsedSpells.classLevels?.wiz  ?? parsedGeneral.classes?.wiz  ?? 0,
@@ -1141,23 +1168,28 @@ function getSpellcastingData() {
   const sorcRows = state.data.spells.sorc || [];
   const wizRows = state.data.spells.wiz || [];
 
-  const baseSorc = Number(
-    state.data.currentSorcererLevel ??
-    meta.sorcLevels ??
-    (g.classes ? g.classes.sorc : 0)
-  ) || 0;
 
-  const baseWiz = Number(
-    state.data.currentWizardLevel ??
-    meta.wizLevels ??
-    (g.classes ? g.classes.wiz : 0)
-  ) || 0;
+const baseSorc = Number(
+  state.data.currentSorcererLevel ??
+  (g.classes ? g.classes.sorc : undefined) ??
+  meta.sorcLevels ??
+  0
+) || 0;
 
-  const umLevels = Number(
-    state.data.currentUmLevel ??
-    meta.umLevels ??
-    (g.classes ? g.classes.um : 0)
-  ) || 0;
+const baseWiz = Number(
+  state.data.currentWizardLevel ??
+  (g.classes ? g.classes.wiz : undefined) ??
+  meta.wizLevels ??
+  0
+) || 0;
+
+const umLevels = Number(
+  state.data.currentUmLevel ??
+  (g.classes ? g.classes.um : undefined) ??
+  meta.umLevels ??
+  0
+) || 0;
+
 
   const progression = ArcaneMath.computeProgressionLevels({
     sorcBase: baseSorc,
