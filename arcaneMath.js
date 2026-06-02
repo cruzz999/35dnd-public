@@ -29,7 +29,7 @@
         if (sorc < wiz) sorc++;
         else if (wiz < sorc) wiz++;
         else {
-          if (tieBreaker === "sorc") wiz++;
+          if (tieBreaker === "sorc") sorc++;
           else wiz++;
         }
       } else {
