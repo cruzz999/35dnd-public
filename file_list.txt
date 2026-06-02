@@ -6,6 +6,7 @@ sheetLoader.js
 sheetParsers.js
 skillsMath.js
 slotCalculator.js
+spellScaling.js
 spellsViewHelpers.js
 storage.js
 styles.css
