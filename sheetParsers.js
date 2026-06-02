@@ -46,7 +46,7 @@
     return map;
   }
 function parseClassLevelsFromStructuredGrid(grid) {
-  const out = { sorc: 0, wiz: 0, um: 0, inc: 0 };
+  const out = { sorc: null, wiz: null, um: null, inc: null };
 
   const labelMap = [
     { match: "sorcerer", key: "sorc" },
@@ -64,7 +64,7 @@ function parseClassLevelsFromStructuredGrid(grid) {
       for (const entry of labelMap) {
         if (label === entry.match) {
           const n = Number(next);
-          out[entry.key] = Number.isFinite(n) ? n : 0;
+          out[entry.key] = Number.isFinite(n) ? n : null;
         }
       }
     }
@@ -72,6 +72,7 @@ function parseClassLevelsFromStructuredGrid(grid) {
 
   return out;
 }
+
   
 function parseClassesFromClassLine(classLine) {
   const text = String(classLine || "");
@@ -376,16 +377,18 @@ const url = /^https?:\/\//i.test(rawUrl) ? rawUrl : "";
     // If later you want these derived from parsed sheet data instead,
     // we can change this in a separate, deliberate step.
 
+
 const meta = {
-  sorcLevels: classLevels.sorc,
-  wizLevels: classLevels.wiz,
-  umLevels: classLevels.um,
+  sorcLevels: Number.isFinite(Number(classLevels.sorc)) ? Number(classLevels.sorc) : 0,
+  wizLevels: Number.isFinite(Number(classLevels.wiz)) ? Number(classLevels.wiz) : 0,
+  umLevels: Number.isFinite(Number(classLevels.um)) ? Number(classLevels.um) : 0,
   arcaneSpellpower:
-    classLevels.um >= 10 ? 4 :
-    classLevels.um >= 7 ? 3 :
-    classLevels.um >= 4 ? 2 :
-    classLevels.um >= 1 ? 1 : 0
+    Number(classLevels.um) >= 10 ? 4 :
+    Number(classLevels.um) >= 7 ? 3 :
+    Number(classLevels.um) >= 4 ? 2 :
+    Number(classLevels.um) >= 1 ? 1 : 0
 };
+
 
 
     return { sorc, wiz, meta, classLevels };
