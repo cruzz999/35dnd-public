@@ -375,12 +375,18 @@ const url = /^https?:\/\//i.test(rawUrl) ? rawUrl : "";
     // This preserves your CURRENT app behavior.
     // If later you want these derived from parsed sheet data instead,
     // we can change this in a separate, deliberate step.
-    const meta = {
-      sorcLevels: 1,
-      wizLevels: 5,
-      umLevels: 2,
-      arcaneSpellpower: 1
-    };
+
+const meta = {
+  sorcLevels: classLevels.sorc,
+  wizLevels: classLevels.wiz,
+  umLevels: classLevels.um,
+  arcaneSpellpower:
+    classLevels.um >= 10 ? 4 :
+    classLevels.um >= 7 ? 3 :
+    classLevels.um >= 4 ? 2 :
+    classLevels.um >= 1 ? 1 : 0
+};
+
 
     return { sorc, wiz, meta, classLevels };
   }
