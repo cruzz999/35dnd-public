@@ -1021,6 +1021,7 @@ parsedSpells.meta = {
   sorcLevels: normalizedClasses.sorc,
   wizLevels: normalizedClasses.wiz,
   umLevels: normalizedClasses.um,
+  incLevels: normalizedClasses.in
   arcaneSpellpower:
     normalizedClasses.um >= 10 ? 4 :
     normalizedClasses.um >= 7 ? 3 :
