@@ -893,59 +893,43 @@ async function loadFromGoogleSheets(sheetUrl) {
       await SheetLoader.fetchCsvViaProxy(id, gids.skills)
     );
 
-const parsedSpells = SheetParsers.parseSpellsGrid(spellsGrid);
-const parsedGeneral = SheetParsers.parseGeneralGrid(generalGrid);
-const parsedSkills = SheetParsers.parseSkillsGrid(skillsGrid);
+    const parsedSpells = SheetParsers.parseSpellsGrid(spellsGrid);
+    const parsedGeneral = SheetParsers.parseGeneralGrid(generalGrid);
+    const parsedSkills = SheetParsers.parseSkillsGrid(skillsGrid);
 
-// Normalize class levels once.
-// Prefer structured levels from the Spells sheet, fall back to classLine parsing from General.
-const normalizedClasses = {
-  sorc: parsedSpells.classLevels?.sorc ?? parsedGeneral.classes?.sorc ?? 0,
-  wiz:  parsedSpells.classLevels?.wiz  ?? parsedGeneral.classes?.wiz  ?? 0,
-  um:   parsedSpells.classLevels?.um   ?? parsedGeneral.classes?.um   ?? 0,
-  inc:  parsedSpells.classLevels?.inc  ?? parsedGeneral.classes?.inc  ?? 0
-};
+    // Normalize class levels once.
+    // Prefer structured levels from the Spells sheet, fall back to classLine parsing from General.
+    const normalizedClasses = {
+      sorc: parsedSpells.classLevels?.sorc ?? parsedGeneral.classes?.sorc ?? 0,
+      wiz:  parsedSpells.classLevels?.wiz  ?? parsedGeneral.classes?.wiz  ?? 0,
+      um:   parsedSpells.classLevels?.um   ?? parsedGeneral.classes?.um   ?? 0,
+      inc:  parsedSpells.classLevels?.inc  ?? parsedGeneral.classes?.inc  ?? 0
+    };
 
-parsedGeneral.classes = normalizedClasses;
+    parsedGeneral.classes = normalizedClasses;
 
-// Keep spell meta in sync with the normalized class levels
-parsedSpells.meta = {
-  ...(parsedSpells.meta || {}),
-  sorcLevels: normalizedClasses.sorc,
-  wizLevels: normalizedClasses.wiz,
-  umLevels: normalizedClasses.um,
-  arcaneSpellpower:
-    normalizedClasses.um >= 10 ? 4 :
-    normalizedClasses.um >= 7 ? 3 :
-    normalizedClasses.um >= 4 ? 2 :
-    normalizedClasses.um >= 1 ? 1 : 0
-};
+    // Keep spell meta in sync with normalized class levels
+    parsedSpells.meta = {
+      ...(parsedSpells.meta || {}),
+      sorcLevels: normalizedClasses.sorc,
+      wizLevels: normalizedClasses.wiz,
+      umLevels: normalizedClasses.um,
+      arcaneSpellpower:
+        normalizedClasses.um >= 10 ? 4 :
+        normalizedClasses.um >= 7 ? 3 :
+        normalizedClasses.um >= 4 ? 2 :
+        normalizedClasses.um >= 1 ? 1 : 0
+    };
 
-applyGeneralEditsToGeneral(parsedGeneral, state.generalEdits);
+    applyGeneralEditsToGeneral(parsedGeneral, state.generalEdits);
 
-state.data.general = parsedGeneral;
-state.data.spells.sorc = parsedSpells.sorc;
-state.data.spells.wiz = parsedSpells.wiz;
-state.data.spells.meta = parsedSpells.meta;
+    state.data.general = parsedGeneral;
+    state.data.spells.sorc = parsedSpells.sorc;
+    state.data.spells.wiz = parsedSpells.wiz;
+    state.data.spells.meta = parsedSpells.meta;
 
-state.data.skills.rows = parsedSkills.rows;
-state.data.skills.inventoryLines = parsedSkills.inventoryLines;
-
-if (!state.skillsEdits.inventoryText) {
-  state.skillsEdits.inventoryText = parsedSkills.inventoryLines.join("\n");
-}   
-const normalizedClasses = {
-  sorc: parsedSpells.classLevels?.sorc ?? parsedGeneral.classes?.sorc ?? 0,
-  wiz:  parsedSpells.classLevels?.wiz  ?? parsedGeneral.classes?.wiz  ?? 0,
-  um:   parsedSpells.classLevels?.um   ?? parsedGeneral.classes?.um   ?? 0,
-  inc:  parsedSpells.classLevels?.inc  ?? parsedGeneral.classes?.inc  ?? 0
-};
-
-parsedGeneral.classes = normalizedClasses;
-
-parsedSpells.meta.sorcLevels = normalizedClasses.sorc;
-parsedSpells.meta.wizLevels = normalizedClasses.wiz;
-parsedSpells.meta.umLevels = normalizedClasses.um;
+    state.data.skills.rows = parsedSkills.rows;
+    state.data.skills.inventoryLines = parsedSkills.inventoryLines;
 
     if (!state.skillsEdits.inventoryText) {
       state.skillsEdits.inventoryText = parsedSkills.inventoryLines.join("\n");
@@ -982,7 +966,7 @@ function renderGeneral() {
 
   g.ac = g.ac || { armor: 0, shield: 0, size: 0, natural: 0, deflect: 0, misc: 0, miscTouch: 0 };
   g.buffs = g.buffs || { mageArmor: 0, shieldSpell: 0 };
-  g.classes = g.classes || { sorc: 1, wiz: 5, um: 2 };
+  g.classes = g.classes || { sorc: 0, wiz: 0, um: 0, inc: 0 };
   g.saves = g.saves || { fortMisc: 0, refMisc: 0, willMisc: 0 };
   g.attacks = g.attacks || { meleeMisc: 0, rangedMisc: 0, grappleMisc: 0 };
   g.initMisc = g.initMisc || 0;
