@@ -86,6 +86,10 @@ if (typeof TouchGestures === "undefined") {
 if (typeof SpellScaling === "undefined") {
  console.warn("Scaling not loaded. Did you include spellScaling.js before app.js?");
 }
+if (typeof SpellSourceLoader === "undefined") {
+  console.warn("SpellSourceLoader not loaded. Did you include spellSourceLoader.js before app.js?");
+}
+
 
 
 /* ---------------------------- Edit defaults ----------------------------- */
@@ -1008,6 +1012,7 @@ const normalizedClasses = {
   um:   pickLevel(parsedSpells.classLevels?.um,   parsedGeneral.classes?.um,   classLineLevels.um),
   inc:  pickLevel(parsedSpells.classLevels?.inc,  parsedGeneral.classes?.inc,  classLineLevels.inc)
 };
+     
 
 console.log("Class level normalization", {
   spellsClassLevels: parsedSpells.classLevels,
@@ -1032,7 +1037,27 @@ parsedSpells.meta = {
     normalizedClasses.um >= 1 ? 1 : 0
 };
 
+const allSpellRows = [
+  ...(parsedSpells.sorc || []),
+  ...(parsedSpells.wiz || [])
+];
 
+if (typeof SpellSourceLoader !== "undefined") {
+  setProgress(75, "Fetching spell source text…");
+
+  try {
+    await SpellSourceLoader.enrichSpellRows(allSpellRows, {
+      onProgress: (done, total) => {
+        const pct = total > 0
+          ? 75 + Math.round((done / total) * 15)
+          : 90;
+        setProgress(pct, `Fetching spell source text… ${done}/${total}`);
+      }
+    });
+  } catch (e) {
+    console.warn("Spell source enrichment failed", e);
+  }
+}
     applyGeneralEditsToGeneral(parsedGeneral, state.generalEdits);
 
     state.data.general = parsedGeneral;
