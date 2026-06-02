@@ -27,7 +27,49 @@
     return 10 + (Number(spellLevel) || 0) + (Number(castingMod) || 0);
   }
 
-  function computeSpellCL(spell, meta) {
+  function buildSpellSearchUrl(spellName) {
+    const query = `site:dnd.arkalseif.info ${String(spellName || "").trim()}`;
+    return `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+  }
+
+  function renderSpellNameCell(spell) {
+    const name = escapeHtml(spell?.name || "");
+
+    // Prefer a real URL if one exists
+    if (spell?.url) {
+      const href = String(spell.url).replace(/"/g, "&quot;");
+      return `<a href="${href}" target="_blank" rel="noopener noreferrer">${name}</a>`;
+    }
+
+    // Fallback: normal Google search (no "I'm Feeling Lucky" redirect page)
+    const searchUrl = buildSpellSearchUrl(spell?.name || "");
+    return `<a href="${searchUrl}" target="_blank" rel="noopener noreferrer">${name}</a>`;
+  }
+
+  function computeSpellCL(spell, options = {}) {
+    const meta = options.meta || {};
+    const progression = options.progression || null;
+    const arcaneSpellPower = Number(options.arcaneSpellPower) || 0;
+
+    // Prefer the progression-aware model if actual progression is supplied.
+    if (
+      progression &&
+      global.ArcaneMath &&
+      typeof global.ArcaneMath.computeSpellCasterLevel === "function"
+    ) {
+      return global.ArcaneMath.computeSpellCasterLevel(spell, {
+        progression,
+        arcaneSpellPower,
+        bonuses: {
+          allArcane: 0,
+          fire: 0,
+          evocation: 0,
+          fireEvocation: (spell.evo && spell.fire) ? 2 : 0
+        }
+      });
+    }
+
+    // Fallback to legacy behavior if progression wasn't supplied.
     if (
       global.ArcaneMath &&
       typeof global.ArcaneMath.computeLegacySpellCasterLevel === "function"
@@ -49,27 +91,11 @@
     );
   }
 
-  function buildLuckySpellSearchUrl(spellName) {
-    const query = `site:dnd.arkalseif.info ${String(spellName || "").trim()}`;
-    return `https://www.google.com/search?q=${encodeURIComponent(query)}&btnI=I`;
-  }
-
-  function renderSpellNameCell(spell) {
-    const name = escapeHtml(spell?.name || "");
-
-    // Prefer a real URL if one exists
-    if (spell?.url) {
-      return `<a href="${String(spell.url).replace(/"/g, "&quot;")}" target="_blank" rel="noopener noreferrer">${name}</a>`;
-    }
-
-    // Fallback: Google "I'm Feeling Lucky" search
-    const luckyUrl = buildLuckySpellSearchUrl(spell?.name || "");
-    return `<a href="${luckyUrl}" target="_blank" rel="noopener noreferrer">${name}</a>`;
-  }
-
   function renderSpellTable(options = {}) {
     const rows = options.rows || [];
     const meta = options.meta || {};
+    const progression = options.progression || null;
+    const arcaneSpellPower = Number(options.arcaneSpellPower) || 0;
     const castingMod = Number(options.castingMod) || 0;
     const showPrep = !!options.showPrep;
 
@@ -89,7 +115,11 @@
         </thead>
         <tbody>
           ${rows.map((s) => {
-            const cl = computeSpellCL(s, meta);
+            const cl = computeSpellCL(s, {
+              meta,
+              progression,
+              arcaneSpellPower
+            });
             const dc = computeSpellDC(s.sl, castingMod);
 
             const spellCell = renderSpellNameCell(s);
