@@ -251,51 +251,71 @@
     return preferredCol ?? 0;
   }
 
-  function readSpellBlock(grid, headerRow, mode) {
-    if (headerRow < 0) return [];
+function readSpellBlock(grid, headerRow, mode) {
+  if (headerRow < 0) return [];
 
-    const h = headerMap(grid, headerRow);
+  const h = headerMap(grid, headerRow);
 
-    const colSL = h["SL"];
-    const colType = h["Type"];
-    const colEvo = h["Evo?"];
-    const colFire = h["Fire?"];
-    const colRange = h["Range"];
-    const colArea = h["Area"];
-    const colDamage = h["Damage"];
-    const colDuration = h["Duration"];
-    const colNotes = h["Notes"];
-    const colPrep = h["Preparations"];
+  const colSL = h["SL"];
+  const colType = h["Type"];
+  const colEvo = h["Evo?"];
+  const colFire = h["Fire?"];
+  const colRange = h["Range"];
+  const colArea = h["Area"];
+  const colDamage = h["Damage"];
+  const colDuration = h["Duration"];
+  const colNotes = h["Notes"];
+  const colPrep = h["Preparations"];
 
-    const preferredSpellCol =
-      h["Sorcerer"] ?? h["Wizard"] ?? h["  Wizard"] ?? h["Spell"] ?? null;
+  // Spell column label differs between blocks.
+  const preferredSpellCol =
+    h["Sorcerer"] ?? h["Wizard"] ?? h["  Wizard"] ?? h["Spell"] ?? null;
 
-    const colSpell = findSpellColByScanning(grid, headerRow, preferredSpellCol);
+  const colSpell = findSpellColByScanning(grid, headerRow, preferredSpellCol);
 
-    const rows = [];
-    for (let r = headerRow + 1; r < grid.length; r++) {
-      const name = cell(grid, r, colSpell).trim();
-      if (!name) break;
+  // URL handling:
+  // 1) If a URL/Link column exists, use it.
+  // 2) Otherwise, if column 0 of the first data row looks like a URL,
+  //    treat column 0 as the URL column.
+  let colUrl = h["URL"] ?? h["Link"] ?? h["Href"] ?? null;
 
-      rows.push({
-        mode,
-        name,
-        url: "", // CSV mode won't preserve hyperlink targets reliably
-        sl: numStrict(cell(grid, r, colSL), 0),
-        type: cell(grid, r, colType),
-        evo: numStrict(cell(grid, r, colEvo), 0) === 1,
-        fire: numStrict(cell(grid, r, colFire), 0) === 1,
-        range: cell(grid, r, colRange),
-        area: cell(grid, r, colArea),
-        damage: cell(grid, r, colDamage),
-        duration: cell(grid, r, colDuration),
-        notes: cell(grid, r, colNotes),
-        prep: mode === "wiz" ? cell(grid, r, colPrep) : ""
-      });
+  if (colUrl == null) {
+    const firstUrlCandidate = cell(grid, headerRow + 1, 0).trim();
+    if (/^https?:\/\//i.test(firstUrlCandidate)) {
+      colUrl = 0;
     }
-
-    return rows;
   }
+
+  const rows = [];
+  for (let r = headerRow + 1; r < grid.length; r++) {
+    const name = cell(grid, r, colSpell).trim();
+    if (!name) break;
+
+    
+const rawUrl = colUrl != null ? cell(grid, r, colUrl).trim() : "";
+const url = /^https?:\/\//i.test(rawUrl) ? rawUrl : "";
+
+
+    rows.push({
+      mode,
+      name,
+      url,
+      sl: numStrict(cell(grid, r, colSL), 0),
+      type: cell(grid, r, colType),
+      evo: numStrict(cell(grid, r, colEvo), 0) === 1,
+      fire: numStrict(cell(grid, r, colFire), 0) === 1,
+      range: cell(grid, r, colRange),
+      area: cell(grid, r, colArea),
+      damage: cell(grid, r, colDamage),
+      duration: cell(grid, r, colDuration),
+      notes: cell(grid, r, colNotes),
+      prep: mode === "wiz" ? cell(grid, r, colPrep) : ""
+    });
+  }
+
+  return rows;
+}
+
 
   function parseSpellsGrid(grid) {
     const sorcHeader = findRowContaining(grid, "Spell slots (S)");
