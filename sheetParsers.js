@@ -45,6 +45,50 @@
     }
     return map;
   }
+function parseClassLevelsFromStructuredGrid(grid) {
+  const out = { sorc: 0, wiz: 0, um: 0, inc: 0 };
+
+  const labelMap = [
+    { match: "sorcerer", key: "sorc" },
+    { match: "wizard", key: "wiz" },
+    { match: "ultimate magus", key: "um" },
+    { match: "incantatrix", key: "inc" }
+  ];
+
+  for (let r = 0; r < grid.length; r++) {
+    const row = grid[r] || [];
+    for (let c = 0; c < row.length - 1; c++) {
+      const label = String(row[c] ?? "").trim().toLowerCase();
+      const next = row[c + 1];
+
+      for (const entry of labelMap) {
+        if (label === entry.match) {
+          const n = Number(next);
+          out[entry.key] = Number.isFinite(n) ? n : 0;
+        }
+      }
+    }
+  }
+
+  return out;
+}
+  
+function parseClassesFromClassLine(classLine) {
+  const text = String(classLine || "");
+
+  const out = { sorc: 0, wiz: 0, um: 0, inc: 0 };
+
+  const patterns = [
+    { re: /sorcerer\s+(\d+)/i, key: "sorc" },
+    { re: /wizard\s+(\d+)/i, key: "wiz" },
+    { re: /ultimate\s+magus\s+(\d+)/i, key: "um" },
+    { re: /incantatrix\s+(\d+)/i, key: "inc" }
+  ];
+
+  for (const p of patterns) {
+    const m = text.match(p.re);
+    if (m) out[p.key] = Number(m[1]) || 0;
+  }
 
   /* --------------------------- General grid parser -------------------------- */
 
@@ -114,7 +158,7 @@
       // NOTE:
       // These defaults preserve your CURRENT app behavior.
       // If you later want safer generic defaults, these can become 0/0/0.
-      classes: { sorc: 1, wiz: 5, um: 2 },
+     classes: parseClassesFromClassLine(cell(grid, 3, 0)),
 
       abilities: {
         str: { pointBuy: 0, asi: 0, items: 0, buffs: 0 },
@@ -320,7 +364,7 @@ const url = /^https?:\/\//i.test(rawUrl) ? rawUrl : "";
   function parseSpellsGrid(grid) {
     const sorcHeader = findRowContaining(grid, "Spell slots (S)");
     const wizHeader = findRowContaining(grid, "Spell slots (W)");
-
+    const classLevels = parseClassLevelsFromStructuredGrid(grid);
     const sorc = readSpellBlock(grid, sorcHeader, "sorc");
     const wiz = readSpellBlock(grid, wizHeader, "wiz");
 
@@ -335,7 +379,7 @@ const url = /^https?:\/\//i.test(rawUrl) ? rawUrl : "";
       arcaneSpellpower: 1
     };
 
-    return { sorc, wiz, meta };
+    return { sorc, wiz, meta, classLevels };
   }
 
   /* ---------------------------- Skills grid parser --------------------------- */
