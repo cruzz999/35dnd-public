@@ -149,6 +149,12 @@ const state = {
   // Persisted editable overlays
   generalEdits: defaultGeneralEdits(),
   skillsEdits: defaultSkillsEdits(),
+   
+  // Fiery Burst widget selection
+  fieryBurst: {
+    source: null,   // "sorc" | "wiz" | null
+    slotLevel: null // number | null
+  },
 
   lineWidth: 0.5,
   eraserWidth: 18
@@ -227,10 +233,13 @@ function formatClassLineFromClasses(classes) {
 }
 
 /* -------------------- Editable state persistence ----------------------- */
+
 const STORAGE_KEYS = {
   generalEdits: "general.edits.v1",
-  skillsEdits: "skills.edits.v1"
+  skillsEdits: "skills.edits.v1",
+  fieryBurst: "fieryBurst.v1"
 };
+
 
 function normalizeGeneralEdits(raw) {
   const base = defaultGeneralEdits();
@@ -293,11 +302,43 @@ function normalizeSkillsEdits(raw) {
     inventoryText
   };
 }
+function defaultFieryBurstState() {
+  return {
+    source: null,
+    slotLevel: null
+  };
+}
 
+function normalizeFieryBurstState(raw) {
+  const base = defaultFieryBurstState();
+  if (!raw || typeof raw !== "object") return base;
+
+  const source =
+    raw.source === "sorc" || raw.source === "wiz"
+      ? raw.source
+      : null;
+
+  const slotLevel = Number(raw.slotLevel);
+  const normalizedSlotLevel =
+    Number.isInteger(slotLevel) && slotLevel >= 2 && slotLevel <= 9
+      ? slotLevel
+      : null;
+
+  return {
+    source,
+    slotLevel: normalizedSlotLevel
+  };
+}
+
+function saveFieryBurstState() {
+  if (typeof AppStorage === "undefined") return;
+  AppStorage.writeJson(STORAGE_KEYS.fieryBurst, state.fieryBurst);
+}
 function loadEditableState() {
   if (typeof AppStorage === "undefined") {
     state.generalEdits = defaultGeneralEdits();
     state.skillsEdits = defaultSkillsEdits();
+    state.fieryBurst = defaultFieryBurstState();
     return;
   }
 
@@ -307,6 +348,10 @@ function loadEditableState() {
 
   state.skillsEdits = normalizeSkillsEdits(
     AppStorage.readJson(STORAGE_KEYS.skillsEdits, defaultSkillsEdits())
+  );
+
+  state.fieryBurst = normalizeFieryBurstState(
+    AppStorage.readJson(STORAGE_KEYS.fieryBurst, defaultFieryBurstState())
   );
 }
 
@@ -1650,7 +1695,146 @@ function renderSlots() {
   note.textContent = 'Click sorcerer boxes to mark used; marks persist per view. You can also cross out with the pen.';
   container.appendChild(note);
 }
+function getFieryBurstOptions(calc) {
+  const out = {
+    sorcLevels: [],
+    wizLevels: []
+  };
 
+  if (calc?.sorcerer?.final) {
+    for (let lvl = 2; lvl <= 9; lvl++) {
+      if ((Number(calc.sorcerer.final[lvl]) || 0) > 0) {
+        out.sorcLevels.push(lvl);
+      }
+    }
+  }
+
+  const wizSource = calc?.wizardPrepared || calc?.wizard?.final || [];
+  for (let lvl = 2; lvl <= 9; lvl++) {
+    if ((Number(wizSource[lvl]) || 0) > 0) {
+      out.wizLevels.push(lvl);
+    }
+  }
+
+  return out;
+}
+
+function getValidatedFieryBurstSelection(options) {
+  const fb = normalizeFieryBurstState(state.fieryBurst);
+
+  if (!fb.source || fb.slotLevel == null) {
+    return { source: null, slotLevel: null };
+  }
+
+  const allowed =
+    fb.source === "sorc"
+      ? options.sorcLevels
+      : options.wizLevels;
+
+  if (!allowed.includes(fb.slotLevel)) {
+    return { source: null, slotLevel: null };
+  }
+
+  return fb;
+}
+
+function computeFieryBurstDisplay(selection, chaMod, intMod) {
+  if (!selection.source || selection.slotLevel == null) {
+    return {
+      saveText: "Ref — half",
+      damageText: "—"
+    };
+  }
+
+  const mod = selection.source === "sorc"
+    ? (Number(chaMod) || 0)
+    : (Number(intMod) || 0);
+
+  const dc = 10 + selection.slotLevel + mod;
+
+  return {
+    saveText: `Ref ${dc} half`,
+    damageText: `${selection.slotLevel}d6`
+  };
+}
+
+function renderFieryBurstWidgetHtml(calc, chaMod, intMod) {
+  const options = getFieryBurstOptions(calc);
+  const selection = getValidatedFieryBurstSelection(options);
+  const display = computeFieryBurstDisplay(selection, chaMod, intMod);
+
+  function renderSourceRow(sourceKey, label, levels) {
+    if (!levels.length) {
+      return `
+        <div class="fiery-burst-picker-row">
+          <div class="fiery-burst-picker-label">${label}</div>
+          <div class="hint small">(none)</div>
+        </div>
+      `;
+    }
+
+    const radios = levels.map((lvl) => {
+      const checked =
+        selection.source === sourceKey && selection.slotLevel === lvl
+          ? "checked"
+          : "";
+
+      const id = `fb_${sourceKey}_${lvl}`;
+
+      return `
+        <label class="fiery-burst-radio" for="${id}">
+          <input
+            type="radio"
+            name="fieryBurstSelection"
+            id="${id}"
+            data-fb-source="${sourceKey}"
+            data-fb-level="${lvl}"
+            ${checked}
+          >
+          <span>${lvl}</span>
+        </label>
+      `;
+    }).join("");
+
+    return `
+      <div class="fiery-burst-picker-row">
+        <div class="fiery-burst-picker-label">${label}</div>
+        <div class="fiery-burst-radio-wrap">${radios}</div>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="fiery-burst-widget">
+      <div class="fiery-burst-controls">
+        ${renderSourceRow("sorc", "Sorc", options.sorcLevels)}
+        ${renderSourceRow("wiz", "Wiz", options.wizLevels)}
+      </div>
+
+      <div class="fiery-burst-row">
+        Fiery Burst | SA | ${escapeHtml(display.saveText)} | 30 ft | 5 ft burst | ${escapeHtml(display.damageText)}
+      </div>
+    </div>
+  `;
+}
+
+function wireFieryBurstWidget() {
+  document.querySelectorAll('input[name="fieryBurstSelection"][data-fb-source][data-fb-level]').forEach((inp) => {
+    inp.addEventListener("change", () => {
+      const source = inp.getAttribute("data-fb-source");
+      const slotLevel = Number(inp.getAttribute("data-fb-level"));
+
+      state.fieryBurst = normalizeFieryBurstState({
+        source,
+        slotLevel
+      });
+
+      saveFieryBurstState();
+      renderSpells();
+      ink.redraw();
+    });
+  });
+}
 function renderSpells() {
   ensureSlotsInlineStyles();
 
@@ -1680,6 +1864,11 @@ function renderSpells() {
             <div class="sorc-slots-block">
               ${renderSorcererSlotsHtml(calc, usedState)}
             </div>
+
+            <div class="fiery-burst-side">
+              ${renderFieryBurstWidgetHtml(calc, chaMod, intMod)}
+            </div>
+
             <div class="spellfire-side">
               ${renderSpellfireHtml(usedState)}
             </div>
@@ -1717,12 +1906,13 @@ function renderSpells() {
       </div>
 
       <div class="hint small">
-        Top-left: sorcerer slots and Spellfire. Top-right: wizard prepared counts. Bottom row: sorcerer and wizard spell lists.
+        Top-left: sorcerer slots, Fiery Burst, and Spellfire. Top-right: wizard prepared counts. Bottom row: sorcerer and wizard spell lists.
       </div>
     </div>
   `;
 
   wireCombinedSpellcastingSlotClicks();
+  wireFieryBurstWidget();
 }
 function renderSkills() {
   const g = state.data.general;
