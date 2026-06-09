@@ -544,4 +544,57 @@ label > input[type="checkbox"]#buff_shield:checked { background: linear-gradient
   font-family: inherit;
   flex: 1 1 auto;
 }
-``
+.fiery-burst-side {
+  display: flex;
+  align-items: flex-start;
+}
+
+.fiery-burst-widget {
+  border: 2px solid var(--border);
+  border-radius: 6px;
+  padding: 8px;
+  min-width: 180px;
+  background: var(--bg);
+}
+
+.fiery-burst-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.fiery-burst-picker-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.fiery-burst-picker-label {
+  min-width: 34px;
+  font-weight: 600;
+}
+
+.fiery-burst-radio-wrap {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.fiery-burst-radio {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+
+.fiery-burst-radio input {
+  margin: 0;
+}
+
+.fiery-burst-row {
+  font-size: 14px;
+  line-height: 1.35;
+  white-space: nowrap;
+}
