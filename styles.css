@@ -598,3 +598,55 @@ label > input[type="checkbox"]#buff_shield:checked { background: linear-gradient
   line-height: 1.35;
   white-space: nowrap;
 }
+
+/* ---------------- Spell page content-sized layout ---------------- */
+
+/* Outer Spellcasting panel should grow to fit its content */
+.spell-page-panel {
+  width: max-content;
+  max-width: none;
+  overflow: visible;
+}
+
+/* The spells grid should size columns to their actual content,
+   not force everything into 1fr / 1fr columns. */
+.spell-grid {
+  display: grid;
+  grid-template-columns: max-content max-content;
+  gap: 10px;
+  width: max-content;
+  align-items: start;
+  justify-content: start;
+}
+
+/* Let each spell panel size itself to its content */
+.spell-grid > .panel {
+  width: fit-content;
+  max-width: none;
+  overflow: visible;
+}
+
+/* Keep spell tables content-sized inside the spells page */
+.spell-grid .table {
+  width: max-content;
+  min-width: 980px;
+}
+
+/* The upper resource row should avoid wrapping if possible,
+   because wrapped controls can change the panel width oddly */
+.spell-grid .sorc-resources-row {
+  flex-wrap: nowrap;
+  align-items: flex-end;
+}
+
+/* Keep the Fiery Burst widget and Spellfire block from shrinking awkwardly */
+.spell-grid .fiery-burst-side,
+.spell-grid .spellfire-side {
+  flex: 0 0 auto;
+}
+
+/* Upper slot panels should also be allowed to size to content */
+.spell-grid .slot-panel {
+  width: fit-content;
+  min-width: 0;
+}
