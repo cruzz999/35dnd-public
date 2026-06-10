@@ -822,6 +822,11 @@ const ink = (() => {
   const canvas = el.ink;
   const ctx = canvas ? canvas.getContext("2d") : null;
 
+  // Cache current canvas size so we do not resize/recompute on every move
+  let canvasW = 0;
+  let canvasH = 0;
+  let canvasDpr = 0;
+
   function getStrokesForView(view) {
     state.strokesByView[view] ||= [];
     return state.strokesByView[view];
@@ -840,15 +845,32 @@ const ink = (() => {
     } catch {
       state.strokesByView[view] = [];
     }
-    redraw();
+    fullRedraw();
   }
 
-  function ensureCanvasSize() {
-    if (!canvas || !ctx) return;
-
+  function computeCanvasMetrics() {
     const w = Math.max(el.app?.scrollWidth || 0, 1200);
     const h = Math.max(el.app?.scrollHeight || 0, 800);
-    const dpr = window.devicePixelRatio || 1;
+
+    // Important performance tweak:
+    // cap DPR so eink devices do not get a giant high-resolution ink canvas
+    const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+
+    return { w, h, dpr };
+  }
+
+  function ensureCanvasSize(force = false) {
+    if (!canvas || !ctx) return false;
+
+    const { w, h, dpr } = computeCanvasMetrics();
+
+    if (!force && w === canvasW && h === canvasH && dpr === canvasDpr) {
+      return false;
+    }
+
+    canvasW = w;
+    canvasH = h;
+    canvasDpr = dpr;
 
     canvas.style.position = "absolute";
     canvas.style.left = "0px";
@@ -860,7 +882,12 @@ const ink = (() => {
     canvas.height = Math.floor(h * dpr);
 
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+
     canvas.style.touchAction = "none";
+
+    return true;
   }
 
   function screenToWorld(clientX, clientY) {
@@ -874,47 +901,114 @@ const ink = (() => {
     };
   }
 
-  function drawStroke(stroke) {
+  function applyStrokeStyle(stroke) {
     if (!ctx) return;
-    const pts = stroke.pts || [];
-    if (pts.length < 2) return;
 
-    ctx.save();
     if (stroke.erase) {
       ctx.globalCompositeOperation = "destination-out";
       ctx.lineWidth = state.eraserWidth || 18;
       ctx.strokeStyle = "rgba(0,0,0,1)";
+      ctx.fillStyle = "rgba(0,0,0,1)";
     } else {
       ctx.globalCompositeOperation = "source-over";
-      ctx.lineWidth = (stroke.width && Number(stroke.width)) ? Number(stroke.width) : (state.lineWidth || 2);
+      ctx.lineWidth =
+        (stroke.width && Number(stroke.width))
+          ? Number(stroke.width)
+          : (state.lineWidth || 2);
       ctx.strokeStyle = "#000";
+      ctx.fillStyle = "#000";
     }
 
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+  }
+
+  function drawSinglePoint(stroke, pt) {
+    if (!ctx || !pt) return;
+
+    ctx.save();
+    applyStrokeStyle(stroke);
+
+    const r = Math.max(1, ((ctx.lineWidth || 1) / 2));
     ctx.beginPath();
-    ctx.moveTo(pts[0].x, pts[0].y);
-    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
-    ctx.stroke();
+    ctx.arc(pt.x, pt.y, r, 0, Math.PI * 2);
+    ctx.fill();
+
     ctx.restore();
   }
 
-  function redraw() {
+  function drawStroke(stroke) {
+    if (!ctx) return;
+    const pts = stroke.pts || [];
+    if (!pts.length) return;
+
+    if (pts.length === 1) {
+      drawSinglePoint(stroke, pts[0]);
+      return;
+    }
+
+    ctx.save();
+    applyStrokeStyle(stroke);
+
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < pts.length; i++) {
+      ctx.lineTo(pts[i].x, pts[i].y);
+    }
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  function drawLatestStrokeSegment(stroke, fromIndex) {
+    if (!ctx || !stroke) return;
+
+    const pts = stroke.pts || [];
+    if (!pts.length) return;
+
+    // If this is the first point, draw a dot
+    if (pts.length === 1) {
+      drawSinglePoint(stroke, pts[0]);
+      return;
+    }
+
+    const start = Math.max(1, fromIndex);
+    if (start >= pts.length) return;
+
+    ctx.save();
+    applyStrokeStyle(stroke);
+
+    ctx.beginPath();
+    ctx.moveTo(pts[start - 1].x, pts[start - 1].y);
+    for (let i = start; i < pts.length; i++) {
+      ctx.lineTo(pts[i].x, pts[i].y);
+    }
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  function fullRedraw() {
     if (!canvas || !ctx) return;
     ensureCanvasSize();
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+
     const strokes = getStrokesForView(state.view);
-    for (const stroke of strokes) drawStroke(stroke);
+    for (const stroke of strokes) {
+      drawStroke(stroke);
+    }
   }
 
   function clear() {
     state.strokesByView[state.view] = [];
-    redraw();
+    fullRedraw();
     saveForView(state.view);
   }
 
   function undo() {
     const s = getStrokesForView(state.view);
     s.pop();
-    redraw();
+    fullRedraw();
     saveForView(state.view);
   }
 
@@ -922,9 +1016,40 @@ const ink = (() => {
   let currentStroke = null;
   let activePointerId = null;
 
+  // rAF throttling for live drawing
+  let drawScheduled = false;
+  let pendingDrawFromIndex = null;
+
+  function scheduleLiveSegmentDraw(fromIndex = 1) {
+    if (!currentStroke) return;
+
+    if (pendingDrawFromIndex == null) {
+      pendingDrawFromIndex = fromIndex;
+    } else {
+      pendingDrawFromIndex = Math.min(pendingDrawFromIndex, fromIndex);
+    }
+
+    if (drawScheduled) return;
+    drawScheduled = true;
+
+    requestAnimationFrame(() => {
+      drawScheduled = false;
+      if (!currentStroke) {
+        pendingDrawFromIndex = null;
+        return;
+      }
+
+      const start = pendingDrawFromIndex == null ? 1 : pendingDrawFromIndex;
+      pendingDrawFromIndex = null;
+      drawLatestStrokeSegment(currentStroke, start);
+    });
+  }
+
   function pointerDown(e) {
     if (!state.penOn || !canvas) return;
     if (e.pointerType === "touch") return;
+
+    ensureCanvasSize();
 
     drawing = true;
     activePointerId = e.pointerId;
@@ -938,8 +1063,11 @@ const ink = (() => {
     getStrokesForView(state.view).push(currentStroke);
 
     try { canvas.setPointerCapture(e.pointerId); } catch {}
+
     e.preventDefault();
-    redraw();
+
+    // Draw only the first point, not a full redraw
+    drawSinglePoint(currentStroke, p);
   }
 
   function pointerMove(e) {
@@ -947,9 +1075,19 @@ const ink = (() => {
     if (activePointerId !== null && e.pointerId !== activePointerId) return;
     if (e.pointerType === "touch") return;
 
-    currentStroke.pts.push(screenToWorld(e.clientX, e.clientY));
+    const events = typeof e.getCoalescedEvents === "function"
+      ? e.getCoalescedEvents()
+      : [e];
+
+    const startIndex = currentStroke.pts.length;
+
+    for (const ev of events) {
+      currentStroke.pts.push(screenToWorld(ev.clientX, ev.clientY));
+    }
+
     e.preventDefault();
-    redraw();
+
+    scheduleLiveSegmentDraw(startIndex);
   }
 
   function endStroke(e) {
@@ -958,6 +1096,7 @@ const ink = (() => {
 
     drawing = false;
     currentStroke = null;
+    pendingDrawFromIndex = null;
 
     if (canvas && e) {
       try { canvas.releasePointerCapture(e.pointerId); } catch {}
@@ -965,7 +1104,6 @@ const ink = (() => {
     activePointerId = null;
 
     saveForView(state.view);
-    redraw();
   }
 
   if (canvas) {
@@ -988,6 +1126,7 @@ const ink = (() => {
       drawing = false;
       currentStroke = null;
       activePointerId = null;
+      pendingDrawFromIndex = null;
     }
   }
 
@@ -1002,14 +1141,20 @@ const ink = (() => {
   if (el.clearInk) el.clearInk.onclick = clear;
 
   window.addEventListener("resize", () => {
-    ensureCanvasSize();
-    redraw();
+    ensureCanvasSize(true);
+    fullRedraw();
   });
 
-  ensureCanvasSize();
+  ensureCanvasSize(true);
 
-  return { redraw, loadForView, setPenMode, setEraser };
+  return {
+    redraw: fullRedraw,
+    loadForView,
+    setPenMode,
+    setEraser
+  };
 })();
+
 
 /* ---------------------- Google Sheets ingest (CSV) ---------------------- */
 async function loadFromGoogleSheets(sheetUrl) {
