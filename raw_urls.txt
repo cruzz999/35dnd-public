@@ -1,0 +1,15 @@
+https://raw.githubusercontent.com/cruzz999/35dnd-public/30fa34deba27e18de94351933715d65b4d5e289d/app.js
+https://raw.githubusercontent.com/cruzz999/35dnd-public/30fa34deba27e18de94351933715d65b4d5e289d/arcaneMath.js
+https://raw.githubusercontent.com/cruzz999/35dnd-public/30fa34deba27e18de94351933715d65b4d5e289d/generalDerived.js
+https://raw.githubusercontent.com/cruzz999/35dnd-public/30fa34deba27e18de94351933715d65b4d5e289d/index.html
+https://raw.githubusercontent.com/cruzz999/35dnd-public/30fa34deba27e18de94351933715d65b4d5e289d/sheetLoader.js
+https://raw.githubusercontent.com/cruzz999/35dnd-public/30fa34deba27e18de94351933715d65b4d5e289d/sheetParsers.js
+https://raw.githubusercontent.com/cruzz999/35dnd-public/30fa34deba27e18de94351933715d65b4d5e289d/skillsMath.js
+https://raw.githubusercontent.com/cruzz999/35dnd-public/30fa34deba27e18de94351933715d65b4d5e289d/slotCalculator.js
+https://raw.githubusercontent.com/cruzz999/35dnd-public/30fa34deba27e18de94351933715d65b4d5e289d/spellScaling.js
+https://raw.githubusercontent.com/cruzz999/35dnd-public/30fa34deba27e18de94351933715d65b4d5e289d/spellSourceLoader.js
+https://raw.githubusercontent.com/cruzz999/35dnd-public/30fa34deba27e18de94351933715d65b4d5e289d/spellsViewHelpers.js
+https://raw.githubusercontent.com/cruzz999/35dnd-public/30fa34deba27e18de94351933715d65b4d5e289d/storage.js
+https://raw.githubusercontent.com/cruzz999/35dnd-public/30fa34deba27e18de94351933715d65b4d5e289d/styles.css
+https://raw.githubusercontent.com/cruzz999/35dnd-public/30fa34deba27e18de94351933715d65b4d5e289d/touchGestures.js
+https://raw.githubusercontent.com/cruzz999/35dnd-public/30fa34deba27e18de94351933715d65b4d5e289d/xlsx.full.min.js
