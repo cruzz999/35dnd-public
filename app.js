@@ -1853,11 +1853,11 @@ function renderSpells() {
   const usedState = loadUsedSlotMarks("Spells");
 
   el.app.innerHTML = `
-    <div class="panel">
+    <div class="panel spell-page-panel">
       <h2>Spellcasting</h2>
       <div class="hint">Pan/zoom the paper; use Pen to write in prep boxes. Click sorcerer slot boxes to mark them used.</div>
 
-      <div class="grid">
+      <div class="grid spell-grid">
         <div class="panel slot-panel">
           <h3>Sorcerer slots (effective level ${effSorc})</h3>
           <div class="sorc-resources-row">
