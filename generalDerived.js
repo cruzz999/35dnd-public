@@ -65,6 +65,7 @@ function compute(g) {
   const savesSrc = g.saves || {};
   const attacks = g.attacks || {};
   const buffs = g.buffs || {};
+  const speedSrc = g.speed || {};
 
   const abilities = {};
   for (const k of ["str", "dex", "con", "int", "wis", "cha"]) {
@@ -89,6 +90,11 @@ function compute(g) {
   const armorUsed = Math.max(armorItem, mageArmorBonus);
   const shieldUsed = Math.max(shieldItem, shieldSpellBonus);
 
+  const hasted = !!buffs.haste;
+  const hasteAttack = hasted ? 1 : 0;
+  const hasteAc = hasted ? 1 : 0;
+  const hasteRef = hasted ? 1 : 0;
+
   const acTotal =
     10 +
     armorUsed +
@@ -97,14 +103,16 @@ function compute(g) {
     num(ac.size) +
     num(ac.natural) +
     num(ac.deflect) +
-    num(ac.misc);
+    num(ac.misc) +
+    hasteAc;
 
   const touch =
     10 +
     abilities.dex.mod +
     num(ac.size) +
     num(ac.deflect) +
-    num(ac.miscTouch);
+    num(ac.miscTouch) +
+    hasteAc;
 
   const flat =
     10 +
@@ -114,16 +122,14 @@ function compute(g) {
     num(ac.natural) +
     num(ac.deflect) +
     num(ac.misc);
+  // note: dodge bonus from Haste is lost when flat-footed, so not added here
 
-  // BAB: using the same poor progression for all your arcane classes here
   const bab =
     babPoor(cls.sorc) +
     babPoor(cls.wiz) +
     babPoor(cls.um) +
     babPoor(cls.inc);
 
-  // Save progression:
-  // current model = poor Fort / poor Ref / good Will for these classes
   const fortBase =
     savePoor(cls.sorc) +
     savePoor(cls.wiz) +
@@ -143,7 +149,7 @@ function compute(g) {
     saveGood(cls.inc);
 
   const fort = fortBase + abilities.con.mod + num(savesSrc.fortMisc);
-  const ref = refBase + abilities.dex.mod + num(savesSrc.refMisc);
+  const ref = refBase + abilities.dex.mod + num(savesSrc.refMisc) + hasteRef;
   const will = willBase + abilities.wis.mod + num(savesSrc.willMisc);
 
   const saves = {
@@ -153,8 +159,13 @@ function compute(g) {
   };
 
   const init = abilities.dex.mod + num(g.initMisc);
-  const melee = bab + abilities.str.mod + num(attacks.meleeMisc);
-  const ranged = bab + abilities.dex.mod + num(attacks.rangedMisc);
+  const melee = bab + abilities.str.mod + num(attacks.meleeMisc) + hasteAttack;
+  const ranged = bab + abilities.dex.mod + num(attacks.rangedMisc) + hasteAttack;
+
+  const baseSpeed = Math.max(0, num(speedSrc.base, 30));
+  const speed = hasted
+    ? Math.min(baseSpeed + 30, baseSpeed * 2)
+    : baseSpeed;
 
   return {
     lvl,
@@ -170,11 +181,13 @@ function compute(g) {
     saves,
     init,
     melee,
-    ranged
+    ranged,
+    speed,
+    baseSpeed,
+    hasted,
+    hasteExtraAttack: hasted
   };
 }
-
-
   // Public API
   GeneralDerived.compute = compute;
   GeneralDerived.abilityMod = abilityMod;
