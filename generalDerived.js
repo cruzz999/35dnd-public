@@ -27,10 +27,13 @@ function saveGood(level) {
 }
 
 
-  function savePoor(level) {
-    level = num(level);
-    return Math.floor(level / 3);
-  }
+
+function savePoor(level) {
+  level = num(level);
+  if (level <= 0) return 0;
+  return Math.floor(level / 3);
+}
+
 
   function totalLevel(classes) {
     classes = classes || {};
