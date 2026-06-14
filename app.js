@@ -1254,7 +1254,13 @@ if (typeof SpellSourceLoader !== "undefined") {
     console.warn("Spell source enrichment failed", e);
   }
 }
-    applyGeneralEditsToGeneral(parsedGeneral, state.generalEdits);
+    if (state.hasSavedGeneralEdits) {
+  applyGeneralEditsToGeneral(parsedGeneral, state.generalEdits);
+} else {
+  // Fresh device / no saved general edits:
+  // preserve sheet-imported values and use them as the new editable baseline.
+  syncGeneralEditsFromGeneral(parsedGeneral);
+}
 
     state.data.general = parsedGeneral;
     state.data.spells.sorc = parsedSpells.sorc;
