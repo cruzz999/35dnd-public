@@ -1334,10 +1334,11 @@ function renderGeneral() {
   }
 
   g.ac = g.ac || { armor: 0, shield: 0, size: 0, natural: 0, deflect: 0, misc: 0, miscTouch: 0 };
-  g.buffs = g.buffs || { mageArmor: 0, shieldSpell: 0 };
+  g.buffs = g.buffs || { mageArmor: 0, shieldSpell: 0, catGrace: false, haste: false };
   g.classes = g.classes || { sorc: 0, wiz: 0, um: 0, inc: 0 };
   g.saves = g.saves || { fortMisc: 0, refMisc: 0, willMisc: 0 };
   g.attacks = g.attacks || { meleeMisc: 0, rangedMisc: 0, grappleMisc: 0 };
+  g.speed = g.speed || { base: 30 };
   g.initMisc = g.initMisc || 0;
 
   const d = GeneralDerived.compute(g);
@@ -1381,74 +1382,76 @@ function renderGeneral() {
           <div>Race: ${escapeHtml(g.race || "")}</div>
           <div>Class: ${escapeHtml(g.classLine || "")}</div>
 
-<div style="margin-top:8px;">
-  <h4>Class levels</h4>
-  <div class="class-level-grid">
-    <label>
-      Sorc
-      <input type="number" inputmode="numeric" min="0" step="1" data-class-key="sorc" value="${Number(g.classes?.sorc) || 0}">
-    </label>
-    <label>
-      Wiz
-      <input type="number" inputmode="numeric" min="0" step="1" data-class-key="wiz" value="${Number(g.classes?.wiz) || 0}">
-    </label>
-    <label>
-      UM
-      <input type="number" inputmode="numeric" min="0" step="1" data-class-key="um" value="${Number(g.classes?.um) || 0}">
-    </label>
-    <label>
-      Inc
-      <input type="number" inputmode="numeric" min="0" step="1" data-class-key="inc" value="${Number(g.classes?.inc) || 0}">
-    </label>
-  </div>
-</div>
+          <div style="margin-top:8px;">
+            <h4>Class levels</h4>
+            <div class="class-level-grid">
+              <label>
+                Sorc
+                <input type="number" inputmode="numeric" min="0" step="1" data-class-key="sorc" value="${Number(g.classes?.sorc) || 0}">
+              </label>
+              <label>
+                Wiz
+                <input type="number" inputmode="numeric" min="0" step="1" data-class-key="wiz" value="${Number(g.classes?.wiz) || 0}">
+              </label>
+              <label>
+                UM
+                <input type="number" inputmode="numeric" min="0" step="1" data-class-key="um" value="${Number(g.classes?.um) || 0}">
+              </label>
+              <label>
+                Inc
+                <input type="number" inputmode="numeric" min="0" step="1" data-class-key="inc" value="${Number(g.classes?.inc) || 0}">
+              </label>
+            </div>
+          </div>
+
           <div>Level: <strong>${d.lvl}</strong></div>
         </div>
 
-<div class="panel">
-  <h3>Combat</h3>
-  <div>HP (max): <strong>${d.hpMax}</strong></div>
-  <div>AC: <strong>${d.acTotal}</strong> (Touch ${d.touch}, Flat ${d.flat})</div>
-  <div>Init: <strong>${fmtSign(d.init)}</strong></div>
-  <div>BAB: <strong>${fmtSign(d.bab)}</strong></div>
-  <div>Saves: <strong>Fort ${fmtSign(d.fort)}</strong> | <strong>Ref ${fmtSign(d.ref)}</strong> | <strong>Will ${fmtSign(d.will)}</strong></div>
-  <div>Melee: <strong>${fmtSign(d.melee)}</strong> | Ranged: <strong>${fmtSign(d.ranged)}</strong></div>
-  <div>Speed: <strong>${d.speed} ft</strong>${d.hasted ? ` <span class="hint">(base ${d.baseSpeed} ft)</span>` : ""}</div>
-  ${d.hasteExtraAttack ? `<div class="hint">Haste: one extra attack on full attack</div>` : ""}
+        <div class="panel">
+          <h3>Combat</h3>
+          <div>HP (max): <strong>${d.hpMax}</strong></div>
+          <div>AC: <strong>${d.acTotal}</strong> (Touch ${d.touch}, Flat ${d.flat})</div>
+          <div>Init: <strong>${fmtSign(d.init)}</strong></div>
+          <div>BAB: <strong>${fmtSign(d.bab)}</strong></div>
+          <div>Saves: <strong>Fort ${fmtSign(d.fort)}</strong> | <strong>Ref ${fmtSign(d.ref)}</strong> | <strong>Will ${fmtSign(d.will)}</strong></div>
+          <div>Melee: <strong>${fmtSign(d.melee)}</strong> | Ranged: <strong>${fmtSign(d.ranged)}</strong></div>
+          <div>Speed: <strong>${d.speed} ft</strong>${d.hasted ? ` <span class="hint">(base ${d.baseSpeed} ft)</span>` : ""}</div>
+          ${d.hasteExtraAttack ? `<div class="hint">Haste: one extra attack on full attack</div>` : ""}
 
-  <div style="margin-top:8px;">
-    <h4>Active Buffs (Combat)</h4>
-    <label><input id="buff_mage" type="checkbox" ${g.buffs.mageArmor ? "checked" : ""}> Mage Armor (+4)</label><br>
-    <label><input id="buff_shield" type="checkbox" ${g.buffs.shieldSpell ? "checked" : ""}> Shield (+4)</label><br>
-    <label><input id="buff_cat_grace" type="checkbox" ${g.buffs.catGrace ? "checked" : ""}> Cat's Grace (+4 Dex)</label><br>
-    <label><input id="buff_haste" type="checkbox" ${g.buffs.haste ? "checked" : ""}> Haste (+1 atk, +1 AC, +1 Ref, speed)</label><br>
+          <div style="margin-top:8px;">
+            <h4>Active Buffs (Combat)</h4>
+            <label><input id="buff_mage" type="checkbox" ${g.buffs.mageArmor ? "checked" : ""}> Mage Armor (+4)</label><br>
+            <label><input id="buff_shield" type="checkbox" ${g.buffs.shieldSpell ? "checked" : ""}> Shield (+4)</label><br>
+            <label><input id="buff_cat_grace" type="checkbox" ${g.buffs.catGrace ? "checked" : ""}> Cat's Grace (+4 Dex)</label><br>
+            <label><input id="buff_haste" type="checkbox" ${g.buffs.haste ? "checked" : ""}> Haste (+1 atk, +1 AC, +1 Ref, speed)</label><br>
 
-    <div style="margin-top:8px;">
-      <label for="speed_base">Base Speed</label>
-      <input id="speed_base" type="number" min="0" step="5" value="${Number(g.speed?.base) || 30}" style="width:80px; margin-left:8px;"> ft
-    </div>
-  </div>
-</div>
+            <div style="margin-top:8px;">
+              <label for="speed_base">Base Speed</label>
+              <input id="speed_base" type="number" min="0" step="5" value="${Number(g.speed?.base) || 30}" style="width:80px; margin-left:8px;"> ft
+            </div>
+          </div>
+        </div>
 
-      <div class="panel">
-        <h3>Abilities (breakdown)</h3>
-        <div class="hint">Point buy array / ASI / Items / Penalties-buffs → Total → Mod</div>
+        <div class="panel">
+          <h3>Abilities (breakdown)</h3>
+          <div class="hint">Point buy array / ASI / Items / Penalties-buffs → Total → Mod</div>
 
-        <div class="ability-breakdown-grid">
-          <div></div>
-          <div class="hdr">Point buy</div>
-          <div class="hdr">ASI</div>
-          <div class="hdr">Items</div>
-          <div class="hdr">Buffs</div>
-          <div class="hdr">Total</div>
-          <div class="hdr">Mod</div>
+          <div class="ability-breakdown-grid">
+            <div></div>
+            <div class="hdr">Point buy</div>
+            <div class="hdr">ASI</div>
+            <div class="hdr">Items</div>
+            <div class="hdr">Buffs</div>
+            <div class="hdr">Total</div>
+            <div class="hdr">Mod</div>
 
-          ${abilityRow("STR", "str")}
-          ${abilityRow("DEX", "dex")}
-          ${abilityRow("CON", "con")}
-          ${abilityRow("INT", "int")}
-          ${abilityRow("WIS", "wis")}
-          ${abilityRow("CHA", "cha")}
+            ${abilityRow("STR", "str")}
+            ${abilityRow("DEX", "dex")}
+            ${abilityRow("CON", "con")}
+            ${abilityRow("INT", "int")}
+            ${abilityRow("WIS", "wis")}
+            ${abilityRow("CHA", "cha")}
+          </div>
         </div>
       </div>
 
@@ -1467,28 +1470,27 @@ function renderGeneral() {
     </div>
   `;
 
-  
-const mage = $("buff_mage");
-const shield = $("buff_shield");
-const catGrace = $("buff_cat_grace");
-const haste = $("buff_haste");
-const speedBase = $("speed_base");
+  const mage = $("buff_mage");
+  const shield = $("buff_shield");
+  const catGrace = $("buff_cat_grace");
+  const haste = $("buff_haste");
+  const speedBase = $("speed_base");
 
-if (haste) haste.onchange = () => {
-  g.buffs ||= { mageArmor: 0, shieldSpell: 0, catGrace: false, haste: false };
-  g.buffs.haste = !!haste.checked;
-  syncGeneralEditsFromGeneral(g);
-  renderGeneral();
-  ink.redraw();
-};
+  if (haste) haste.onchange = () => {
+    g.buffs ||= { mageArmor: 0, shieldSpell: 0, catGrace: false, haste: false };
+    g.buffs.haste = !!haste.checked;
+    syncGeneralEditsFromGeneral(g);
+    renderGeneral();
+    ink.redraw();
+  };
 
-if (speedBase) speedBase.onchange = () => {
-  g.speed ||= { base: 30 };
-  g.speed.base = Number(speedBase.value) || 30;
-  syncGeneralEditsFromGeneral(g);
-  renderGeneral();
-  ink.redraw();
-};
+  if (speedBase) speedBase.onchange = () => {
+    g.speed ||= { base: 30 };
+    g.speed.base = Number(speedBase.value) || 30;
+    syncGeneralEditsFromGeneral(g);
+    renderGeneral();
+    ink.redraw();
+  };
 
   if (mage) mage.onchange = () => {
     g.buffs.mageArmor = mage.checked ? 4 : 0;
@@ -1499,6 +1501,27 @@ if (speedBase) speedBase.onchange = () => {
 
   if (shield) shield.onchange = () => {
     g.buffs.shieldSpell = shield.checked ? 4 : 0;
+    syncGeneralEditsFromGeneral(g);
+    renderGeneral();
+    ink.redraw();
+  };
+
+  if (catGrace) catGrace.onchange = () => {
+    g.abilities ||= {};
+    g.abilities.dex ||= { pointBuy: 0, asi: 0, items: 0, buffs: 0 };
+    g.buffs ||= { mageArmor: 0, shieldSpell: 0, catGrace: false, haste: false };
+
+    const currentlyOn = !!g.buffs.catGrace;
+    const shouldBeOn = !!catGrace.checked;
+
+    if (shouldBeOn && !currentlyOn) {
+      g.abilities.dex.buffs = (Number(g.abilities.dex.buffs) || 0) + 4;
+      g.buffs.catGrace = true;
+    } else if (!shouldBeOn && currentlyOn) {
+      g.abilities.dex.buffs = (Number(g.abilities.dex.buffs) || 0) - 4;
+      g.buffs.catGrace = false;
+    }
+
     syncGeneralEditsFromGeneral(g);
     renderGeneral();
     ink.redraw();
@@ -1516,23 +1539,25 @@ if (speedBase) speedBase.onchange = () => {
       ink.redraw();
     });
   });
-   document.querySelectorAll('input[data-class-key]').forEach((inp) => {
-  inp.addEventListener('input', () => {
-    const key = inp.getAttribute('data-class-key');
-    const val = Number(inp.value);
 
-    g.classes ||= { sorc: 0, wiz: 0, um: 0, inc: 0 };
-    g.classes[key] = Number.isFinite(val) ? Math.max(0, Math.floor(val)) : 0;
+  document.querySelectorAll('input[data-class-key]').forEach((inp) => {
+    inp.addEventListener('input', () => {
+      const key = inp.getAttribute('data-class-key');
+      const val = Number(inp.value);
 
-    // Keep the human-readable class line in sync
-    g.classLine = formatClassLineFromClasses(g.classes);
+      g.classes ||= { sorc: 0, wiz: 0, um: 0, inc: 0 };
+      g.classes[key] = Number.isFinite(val) ? Math.max(0, Math.floor(val)) : 0;
 
-    syncGeneralEditsFromGeneral(g);
-    renderGeneral();
-    ink.redraw();
+      // Keep the human-readable class line in sync
+      g.classLine = formatClassLineFromClasses(g.classes);
+
+      syncGeneralEditsFromGeneral(g);
+      renderGeneral();
+      ink.redraw();
+    });
   });
-});
 }
+
 
 function ensureSlotsInlineStyles() {
   // Styles moved to styles.css
