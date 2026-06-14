@@ -16,17 +16,6 @@
     return Math.max(min, Math.min(max, n));
   }
 
-function computeCastingTimeText(spell, cl, options = {}) {
-  const raw = cleanText(spell?.castingTime || "");
-
-  // Default for your current spell list
-  if (!raw) {
-    return "Standard Action";
-  }
-
-  return raw;
-}
-
   function cleanText(s) {
     return String(s || "")
       .replace(/\u2013|\u2014/g, "-")
@@ -53,17 +42,157 @@ function computeCastingTimeText(spell, cl, options = {}) {
     return cleanText(parts.join(" | "));
   }
 
+  function extractStructuredField(sourceText, labels) {
+    const text = cleanText(sourceText || "");
+    if (!text) return "";
+
+    const labelPattern = Array.isArray(labels)
+      ? labels.map((x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")
+      : String(labels).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+    // Stop before the next common spell field
+    const stopPattern =
+      "(?:School:|Level:|Components:|Casting Time:|Range:|Area:|Effect:|Target:|Targets:|Duration:|Saving Throw:|Spell Resistance:|Description:|You\\b|Comments\\b|Complete list\\b)";
+
+    const re = new RegExp(`(?:${labelPattern}):\\s*(.+?)(?=\\s+${stopPattern}|$)`, "i");
+    const m = text.match(re);
+    return m ? cleanText(m[1]) : "";
+  }
+
+  function extractLevelField(sourceText) {
+    return extractStructuredField(sourceText, "Level");
+  }
+
+  function extractCastingTimeField(sourceText) {
+    return extractStructuredField(sourceText, "Casting Time");
+  }
+
+  function extractRangeField(sourceText) {
+    return extractStructuredField(sourceText, "Range");
+  }
+
+  function extractAreaField(sourceText) {
+    return extractStructuredField(sourceText, ["Area", "Effect", "Target", "Targets"]);
+  }
+
+  function extractDurationField(sourceText) {
+    return extractStructuredField(sourceText, "Duration");
+  }
+
+  function extractSavingThrowField(sourceText) {
+    return extractStructuredField(sourceText, "Saving Throw");
+  }
+
+  function extractSchoolAndDescriptor(sourceText) {
+    const text = cleanText(sourceText || "");
+    if (!text) {
+      return { school: "", descriptor: "" };
+    }
+
+    const m = text.match(
+      /\b(Abjuration|Conjuration|Divination|Enchantment|Evocation|Illusion|Necromancy|Transmutation|Universal)\b(?:\s*\[([^\]]+)\])?\s+Level:/i
+    );
+
+    return {
+      school: m ? titleCase(m[1]) : "",
+      descriptor: m ? cleanText(m[2] || "") : ""
+    };
+  }
+
+  function inferSpellLevel(spell, options = {}) {
+    const explicit = Number(spell?.sl);
+    if (Number.isFinite(explicit) && explicit > 0) return explicit;
+
+    const sourceText = getSourceText(spell, options);
+    const levelField = extractLevelField(sourceText);
+    if (!levelField) return 0;
+
+    const mode = String(spell?.mode || "").toLowerCase();
+
+    const candidates =
+      mode === "wiz"
+        ? [/wizard\s+(\d+)/i, /sor\/wiz\s+(\d+)/i]
+        : [/sorcerer\s+(\d+)/i, /sor\/wiz\s+(\d+)/i];
+
+    for (const re of candidates) {
+      const m = levelField.match(re);
+      if (m) return num(m[1], 0);
+    }
+
+    return 0;
+  }
+
+  function inferSpellTags(spell, options = {}) {
+    const sourceText = getSourceText(spell, options);
+    const sd = extractSchoolAndDescriptor(sourceText);
+
+    const evo = spell?.evo === true || sd.school.toLowerCase() === "evocation";
+    const fire =
+      spell?.fire === true ||
+      /\bfire\b/i.test(sd.descriptor) ||
+      /\bfire\b/i.test(sourceText);
+
+    return { evo, fire };
+  }
+
+  function inferSpellType(spell, options = {}) {
+    const rawType = cleanText(spell?.type || "");
+    if (rawType) return rawType;
+
+    const sourceText = getSourceText(spell, options);
+    const saveText = extractSavingThrowField(sourceText).toLowerCase();
+    const areaText = extractAreaField(sourceText).toLowerCase();
+
+    if (/\bray\b/i.test(sourceText) || /\bray\b/i.test(areaText)) {
+      return saveText && !saveText.startsWith("none") ? "RAY SAVE" : "RAY";
+    }
+
+    if (areaText) {
+      return saveText && !saveText.startsWith("none") ? "AOE SAVE" : "AOE";
+    }
+
+    if (/target/i.test(sourceText) || /targets/i.test(sourceText)) {
+      return saveText && !saveText.startsWith("none") ? "TARGET SAVE" : "TARGET";
+    }
+
+    return "";
+  }
+
+  function inferFixedDamageTextFromSource(sourceText) {
+    const text = cleanText(sourceText || "");
+    if (!text) return "";
+
+    // Fixed damage e.g. "deals 4d6 points of fire damage"
+    let m = text.match(/deals\s+(\d+d\d+(?:\+\d+)?)\s+points?/i);
+    if (m) return m[1];
+
+    // e.g. "1d6 points of fire damage per caster level (maximum 10d6)"
+    m = text.match(/(\d+d\d+)\s+points?[^|]*?per\s+(?:caster\s+)?level[^|]*?maximum\s+(\d+d\d+)/i);
+    if (m) {
+      return `${m[1]}/level (max ${m[2]})`;
+    }
+
+    return "";
+  }
+
+  /* ----------------------------------------------------------------------
+     CASTING TIME
+  ---------------------------------------------------------------------- */
+
+  function computeCastingTimeText(spell, cl, options = {}) {
+    const raw = cleanText(spell?.castingTime || "");
+    if (raw) return raw;
+
+    const sourceText = getSourceText(spell, options);
+    const sourceField = extractCastingTimeField(sourceText);
+    if (sourceField) return sourceField;
+
+    return "Standard Action";
+  }
+
   /* ----------------------------------------------------------------------
      RANGE
-     Supports:
-     - Close
-     - Medium
-     - Long
-     - explicit formulas like:
-       "400 ft. + 40 ft./level"
-       "100 ft. + 10 ft./level"
-       "25 ft. + 5 ft./2 levels"
-     ---------------------------------------------------------------------- */
+  ---------------------------------------------------------------------- */
 
   function computeStandardRangeFeet(label, cl) {
     const x = String(label || "").toLowerCase();
@@ -81,122 +210,73 @@ function computeCastingTimeText(spell, cl, options = {}) {
 
     return null;
   }
-/* ----------------------------------------------------------------------
-   RANGE
-   Conservative parsing:
-   - prefer the spell row's own range field if it contains a real range rule
-   - otherwise extract only the actual "Range:" field from source text
-   - do NOT scan the whole spell body for range-like numbers
----------------------------------------------------------------------- */
 
-function computeStandardRangeFeet(label, cl) {
-  const x = String(label || "").toLowerCase();
-  cl = Math.max(0, num(cl, 0));
+  function parseRangeRuleFromText(text) {
+    text = cleanText(text || "");
+    if (!text) return null;
 
-  if (x === "close") {
-    return 25 + 5 * Math.floor(cl / 2);
-  }
-  if (x === "medium") {
-    return 100 + 10 * cl;
-  }
-  if (x === "long") {
-    return 400 + 40 * cl;
-  }
-
-  return null;
-}
-
-function extractRangeFieldFromSourceText(sourceText) {
-  const text = cleanText(sourceText || "");
-  if (!text) return "";
-
-  // Try to isolate the actual Range field from the structured spell text.
-  // Stop at the next common field name.
-  const m = text.match(
-    /Range:\s*(.+?)(?=\s+(?:Area:|Effect:|Target:|Targets:|Duration:|Saving Throw:|Spell Resistance:|Description:|You\b))/i
-  );
-
-  return m ? cleanText(m[1]) : "";
-}
-
-function parseRangeRuleFromText(text) {
-  text = cleanText(text || "");
-  if (!text) return null;
-
-  // Standard named ranges
-  const stdMatch = text.match(/\b(Close|Medium|Long)\b/i);
-  if (stdMatch) {
-    return {
-      kind: "standardRange",
-      label: titleCase(stdMatch[1])
-    };
-  }
-
-  // Explicit numeric formulas:
-  // e.g. 400 ft. + 40 ft./level
-  // e.g. 25 ft. + 5 ft./2 levels
-  const m = text.match(/(\d+)\s*ft\.?\s*\+\s*(\d+)\s*ft\.?\/\s*(level|caster level|2 levels)/i);
-  if (m) {
-    return {
-      kind: "linearFeet",
-      baseFeet: num(m[1]),
-      feetPerStep: num(m[2]),
-      levelsPerStep: /2 levels/i.test(m[3]) ? 2 : 1
-    };
-  }
-
-  return null;
-}
-
-function parseRangeRule(rangeText, sourceText) {
-  const raw = cleanText(rangeText || "");
-
-  // First: trust the spell row's range field if it itself contains a scalable rule.
-  let rule = parseRangeRuleFromText(raw);
-  if (rule) return rule;
-
-  // Second: if the row field is flattened (e.g. "800 ft"), try the actual Range: field from source text.
-  const sourceRange = extractRangeFieldFromSourceText(sourceText);
-  rule = parseRangeRuleFromText(sourceRange);
-  if (rule) return rule;
-
-  return null;
-}
-
-function computeRangeText(spell, cl, options = {}) {
-  const raw = cleanText(spell?.range || "");
-  const sourceText = getSourceText(spell, options);
-  const rule = parseRangeRule(raw, sourceText);
-
-  if (!rule) {
-    return raw;
-  }
-
-  if (rule.kind === "standardRange") {
-    const feet = computeStandardRangeFeet(rule.label, cl);
-    if (feet != null) {
-      return `${rule.label} (${feet} ft.)`;
+    const stdMatch = text.match(/\b(Close|Medium|Long)\b/i);
+    if (stdMatch) {
+      return {
+        kind: "standardRange",
+        label: titleCase(stdMatch[1])
+      };
     }
+
+    const m = text.match(/(\d+)\s*ft\.?\s*\+\s*(\d+)\s*ft\.?\/\s*(level|caster level|2 levels)/i);
+    if (m) {
+      return {
+        kind: "linearFeet",
+        baseFeet: num(m[1]),
+        feetPerStep: num(m[2]),
+        levelsPerStep: /2 levels/i.test(m[3]) ? 2 : 1
+      };
+    }
+
+    return null;
   }
 
-  if (rule.kind === "linearFeet") {
-    const steps = rule.levelsPerStep === 2 ? Math.floor(cl / 2) : cl;
-    const feet = rule.baseFeet + rule.feetPerStep * steps;
-    return `${feet} ft.`;
+  function parseRangeRule(rangeText, sourceText) {
+    const raw = cleanText(rangeText || "");
+    let rule = parseRangeRuleFromText(raw);
+    if (rule) return rule;
+
+    const sourceRange = extractRangeField(sourceText);
+    rule = parseRangeRuleFromText(sourceRange);
+    if (rule) return rule;
+
+    return null;
   }
 
-  return raw;
-}
+  function computeRangeText(spell, cl, options = {}) {
+    const raw = cleanText(spell?.range || "");
+    const sourceText = getSourceText(spell, options);
+    const sourceRange = extractRangeField(sourceText);
+    const rule = parseRangeRule(raw, sourceText);
+
+    if (!rule) {
+      return raw || sourceRange;
+    }
+
+    if (rule.kind === "standardRange") {
+      const feet = computeStandardRangeFeet(rule.label, cl);
+      if (feet != null) {
+        return `${rule.label} (${feet} ft.)`;
+      }
+    }
+
+    if (rule.kind === "linearFeet") {
+      const steps = rule.levelsPerStep === 2 ? Math.floor(cl / 2) : cl;
+      const feet = rule.baseFeet + rule.feetPerStep * steps;
+      return `${feet} ft.`;
+    }
+
+    return raw || sourceRange;
+  }
 
   /* ----------------------------------------------------------------------
      DAMAGE
-     Supports:
-     - XdY per caster level (maximum ZdY)
-     - XdY per level (maximum ZdY)
-     - multiplier-based projectile counts in damage box:
-       - Scorching Ray => 1*4d6 / 2*4d6 / 3*4d6
-       - Magic Missile => 1*1d4+1 ... 5*1d4+1
-     ---------------------------------------------------------------------- */
+  ---------------------------------------------------------------------- */
 
   function stripLeadingMultiplier(rawDamage) {
     return cleanText(String(rawDamage || "").replace(/^\s*\d+\s*\*\s*/, ""));
@@ -206,8 +286,6 @@ function computeRangeText(spell, cl, options = {}) {
     const text = cleanText(`${damageText || ""} | ${sourceText || ""}`);
     const rawDamage = cleanText(damageText || "");
 
-    // Fireball-style:
-    // 1d6 points of fire damage per caster level (maximum 10d6)
     let m = text.match(/(\d+)d(\d+)[^|]*?per\s+(?:caster\s+)?level[^|]*?maximum\s+(\d+)d(\d+)/i);
     if (m) {
       return {
@@ -219,8 +297,6 @@ function computeRangeText(spell, cl, options = {}) {
       };
     }
 
-    // Looser version:
-    // 1d6/level (max 10d6)
     m = text.match(/(\d+)d(\d+)\s*\/\s*level[^|]*?max(?:imum)?\s*\(?\s*(\d+)d(\d+)/i);
     if (m) {
       return {
@@ -232,9 +308,6 @@ function computeRangeText(spell, cl, options = {}) {
       };
     }
 
-    // Scorching Ray:
-    // one ray, plus one additional ray for every four levels beyond 3rd
-    // (to a maximum of three rays at 11th level)
     if (/additional ray/i.test(text) && /maximum of three rays at 11th level/i.test(text)) {
       return {
         kind: "multishotDamage",
@@ -243,8 +316,6 @@ function computeRangeText(spell, cl, options = {}) {
       };
     }
 
-    // Magic Missile:
-    // additional missile ... maximum of five missiles at 9th level or higher
     if (/additional missile/i.test(text) && /maximum of five missiles at 9th level/i.test(text)) {
       return {
         kind: "multishotDamage",
@@ -278,7 +349,7 @@ function computeRangeText(spell, cl, options = {}) {
     const rule = parseDamageRule(raw, sourceText);
 
     if (!rule) {
-      return raw;
+      return raw || inferFixedDamageTextFromSource(sourceText);
     }
 
     if (rule.kind === "dicePerLevel") {
@@ -298,13 +369,12 @@ function computeRangeText(spell, cl, options = {}) {
       return `${count}*${rule.baseDamage}`;
     }
 
-    return raw;
+    return raw || inferFixedDamageTextFromSource(sourceText);
   }
 
   /* ----------------------------------------------------------------------
      TARGET / COUNT TEXT
-     First pass still available, but not required for your current UI.
-     ---------------------------------------------------------------------- */
+  ---------------------------------------------------------------------- */
 
   function parseTargetsRule(targetsText, sourceText) {
     const text = cleanText(`${targetsText || ""} | ${sourceText || ""}`);
@@ -337,14 +407,7 @@ function computeRangeText(spell, cl, options = {}) {
 
   /* ----------------------------------------------------------------------
      DURATION
-     Supports:
-     - Instantaneous
-     - N round/level
-     - N rounds/level
-     - N min./level
-     - N minute/level
-     - N hour/level
-     ---------------------------------------------------------------------- */
+  ---------------------------------------------------------------------- */
 
   function parseDurationRule(durationText, sourceText) {
     const text = cleanText(`${durationText || ""} | ${sourceText || ""}`);
@@ -384,10 +447,11 @@ function computeRangeText(spell, cl, options = {}) {
   function computeDurationText(spell, cl, options = {}) {
     const raw = cleanText(spell?.duration || "");
     const sourceText = getSourceText(spell, options);
+    const sourceField = extractDurationField(sourceText);
     const rule = parseDurationRule(raw, sourceText);
 
     if (!rule) {
-      return raw;
+      return raw || sourceField;
     }
 
     if (rule.kind === "fixed") {
@@ -399,13 +463,12 @@ function computeRangeText(spell, cl, options = {}) {
       return normalizeDurationUnit(rule.unit, total);
     }
 
-    return raw;
+    return raw || sourceField;
   }
 
   /* ----------------------------------------------------------------------
      AREA
-     First pass: keep original unless a very simple scaling pattern is found.
-     ---------------------------------------------------------------------- */
+  ---------------------------------------------------------------------- */
 
   function parseAreaRule(areaText, sourceText) {
     const text = cleanText(`${areaText || ""} | ${sourceText || ""}`);
@@ -424,10 +487,11 @@ function computeRangeText(spell, cl, options = {}) {
   function computeAreaText(spell, cl, options = {}) {
     const raw = cleanText(spell?.area || "");
     const sourceText = getSourceText(spell, options);
+    const sourceField = extractAreaField(sourceText);
     const rule = parseAreaRule(raw, sourceText);
 
     if (!rule) {
-      return raw;
+      return raw || sourceField;
     }
 
     if (rule.kind === "radiusPerLevel") {
@@ -435,28 +499,30 @@ function computeRangeText(spell, cl, options = {}) {
       return `${radius}-ft.-radius`;
     }
 
-    return raw;
+    return raw || sourceField;
   }
 
   /* ----------------------------------------------------------------------
-     PUBLIC COMPOSER
-     ---------------------------------------------------------------------- */
+     PUBLIC API
+  ---------------------------------------------------------------------- */
 
-
-function computeDisplayFields(spell, cl, options = {}) {
-  return {
-    cl: num(cl, 0),
-    castingTimeText: computeCastingTimeText(spell, cl, options),
-    rangeText: computeRangeText(spell, cl, options),
-    areaText: computeAreaText(spell, cl, options),
-    damageText: computeDamageText(spell, cl, options),
-    durationText: computeDurationText(spell, cl, options),
-    targetsText: computeTargetsText(spell, cl, options)
-  };
-}
-
+  function computeDisplayFields(spell, cl, options = {}) {
+    return {
+      cl: num(cl, 0),
+      castingTimeText: computeCastingTimeText(spell, cl, options),
+      rangeText: computeRangeText(spell, cl, options),
+      areaText: computeAreaText(spell, cl, options),
+      damageText: computeDamageText(spell, cl, options),
+      durationText: computeDurationText(spell, cl, options),
+      targetsText: computeTargetsText(spell, cl, options)
+    };
+  }
 
   SpellScaling.computeDisplayFields = computeDisplayFields;
+  SpellScaling.inferSpellLevel = inferSpellLevel;
+  SpellScaling.inferSpellTags = inferSpellTags;
+  SpellScaling.inferSpellType = inferSpellType;
+  SpellScaling.extractSavingThrowField = extractSavingThrowField;
 
   global.SpellScaling = SpellScaling;
 })(window);
