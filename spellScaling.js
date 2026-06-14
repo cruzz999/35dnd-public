@@ -282,50 +282,63 @@
     return cleanText(String(rawDamage || "").replace(/^\s*\d+\s*\*\s*/, ""));
   }
 
-  function parseDamageRule(damageText, sourceText) {
-    const text = cleanText(`${damageText || ""} | ${sourceText || ""}`);
-    const rawDamage = cleanText(damageText || "");
+function parseDamageRule(damageText, sourceText) {
+  const text = cleanText(`${damageText || ""} | ${sourceText || ""}`);
+  const rawDamage = cleanText(damageText || "");
 
-    let m = text.match(/(\d+)d(\d+)[^|]*?per\s+(?:caster\s+)?level[^|]*?maximum\s+(\d+)d(\d+)/i);
-    if (m) {
-      return {
-        kind: "dicePerLevel",
-        dicePerLevel: num(m[1]),
-        dieSize: num(m[2]),
-        maxDice: num(m[3]),
-        maxDieSize: num(m[4])
-      };
-    }
-
-    m = text.match(/(\d+)d(\d+)\s*\/\s*level[^|]*?max(?:imum)?\s*\(?\s*(\d+)d(\d+)/i);
-    if (m) {
-      return {
-        kind: "dicePerLevel",
-        dicePerLevel: num(m[1]),
-        dieSize: num(m[2]),
-        maxDice: num(m[3]),
-        maxDieSize: num(m[4])
-      };
-    }
-
-    if (/additional ray/i.test(text) && /maximum of three rays at 11th level/i.test(text)) {
-      return {
-        kind: "multishotDamage",
-        shotType: "scorchingRay",
-        baseDamage: stripLeadingMultiplier(rawDamage) || "4d6"
-      };
-    }
-
-    if (/additional missile/i.test(text) && /maximum of five missiles at 9th level/i.test(text)) {
-      return {
-        kind: "multishotDamage",
-        shotType: "magicMissile",
-        baseDamage: stripLeadingMultiplier(rawDamage) || "1d4+1"
-      };
-    }
-
-    return null;
+  // Fireball-style:
+  let m = text.match(/(\d+)d(\d+)[^|]*?per\s+(?:caster\s+)?level[^|]*?maximum\s+(\d+)d(\d+)/i);
+  if (m) {
+    return {
+      kind: "dicePerLevel",
+      dicePerLevel: num(m[1]),
+      dieSize: num(m[2]),
+      maxDice: num(m[3]),
+      maxDieSize: num(m[4])
+    };
   }
+
+  // Looser version:
+  m = text.match(/(\d+)d(\d+)\s*\/\s*level[^|]*?max(?:imum)?\s*\(?\s*(\d+)d(\d+)/i);
+  if (m) {
+    return {
+      kind: "dicePerLevel",
+      dicePerLevel: num(m[1]),
+      dieSize: num(m[2]),
+      maxDice: num(m[3]),
+      maxDieSize: num(m[4])
+    };
+  }
+
+  // Scorching Ray
+  if (/additional ray/i.test(text) && /maximum of three rays at 11th level/i.test(text)) {
+    return {
+      kind: "multishotDamage",
+      shotType: "scorchingRay",
+      baseDamage: stripLeadingMultiplier(rawDamage) || "4d6"
+    };
+  }
+
+  // Magic Missile
+  if (/additional missile/i.test(text) && /maximum of five missiles at 9th level/i.test(text)) {
+    return {
+      kind: "multishotDamage",
+      shotType: "magicMissile",
+      baseDamage: stripLeadingMultiplier(rawDamage) || "1d4+1"
+    };
+  }
+
+  // Melf's Unicorn Arrow
+  if (/additional unicorn arrow/i.test(text) && /\b1d8\+8\b/i.test(text)) {
+    return {
+      kind: "multishotDamage",
+      shotType: "unicornArrow",
+      baseDamage: stripLeadingMultiplier(rawDamage) || "1d8+8"
+    };
+  }
+
+  return null;
+}
 
   function scorchingRayCount(cl) {
     cl = Math.max(0, num(cl, 0));
@@ -333,6 +346,11 @@
     if (cl >= 7) return 2;
     return 1;
   }
+
+function unicornArrowCount(cl) {
+  cl = Math.max(0, num(cl, 0));
+  return clamp(1 + Math.floor(Math.max(0, cl - 5) / 3), 1, 5);
+}
 
   function magicMissileCount(cl) {
     cl = Math.max(0, num(cl, 0));
@@ -343,34 +361,36 @@
     return 1;
   }
 
-  function computeDamageText(spell, cl, options = {}) {
-    const raw = cleanText(spell?.damage || "");
-    const sourceText = getSourceText(spell, options);
-    const rule = parseDamageRule(raw, sourceText);
+function computeDamageText(spell, cl, options = {}) {
+  const raw = cleanText(spell?.damage || "");
+  const sourceText = getSourceText(spell, options);
+  const rule = parseDamageRule(raw, sourceText);
 
-    if (!rule) {
-      return raw || inferFixedDamageTextFromSource(sourceText);
-    }
-
-    if (rule.kind === "dicePerLevel") {
-      const totalDice = clamp(rule.dicePerLevel * cl, 0, rule.maxDice);
-      return `${totalDice}d${rule.dieSize}`;
-    }
-
-    if (rule.kind === "multishotDamage") {
-      let count = 1;
-
-      if (rule.shotType === "scorchingRay") {
-        count = scorchingRayCount(cl);
-      } else if (rule.shotType === "magicMissile") {
-        count = magicMissileCount(cl);
-      }
-
-      return `${count}*${rule.baseDamage}`;
-    }
-
+  if (!rule) {
     return raw || inferFixedDamageTextFromSource(sourceText);
   }
+
+  if (rule.kind === "dicePerLevel") {
+    const totalDice = clamp(rule.dicePerLevel * cl, 0, rule.maxDice);
+    return `${totalDice}d${rule.dieSize}`;
+  }
+
+  if (rule.kind === "multishotDamage") {
+    let count = 1;
+
+    if (rule.shotType === "scorchingRay") {
+      count = scorchingRayCount(cl);
+    } else if (rule.shotType === "magicMissile") {
+      count = magicMissileCount(cl);
+    } else if (rule.shotType === "unicornArrow") {
+      count = unicornArrowCount(cl);
+    }
+
+    return `${count}*${rule.baseDamage}`;
+  }
+
+  return raw || inferFixedDamageTextFromSource(sourceText);
+}
 
   /* ----------------------------------------------------------------------
      TARGET / COUNT TEXT
