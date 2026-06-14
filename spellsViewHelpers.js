@@ -49,7 +49,6 @@
     const progression = options.progression || null;
     const arcaneSpellPower = Number(options.arcaneSpellPower) || 0;
 
-    // Prefer the progression-aware model if actual progression is supplied.
     if (
       progression &&
       global.ArcaneMath &&
@@ -67,7 +66,6 @@
       });
     }
 
-    // Fallback to legacy behavior if progression wasn't supplied.
     if (
       global.ArcaneMath &&
       typeof global.ArcaneMath.computeLegacySpellCasterLevel === "function"
@@ -97,9 +95,16 @@
   }
 
   function extractSavingThrowText(spell) {
-    // First, if the row ever gets a direct field later, prefer it.
     if (spell?.savingThrow) {
       return cleanText(spell.savingThrow);
+    }
+
+    if (
+      global.SpellScaling &&
+      typeof global.SpellScaling.extractSavingThrowField === "function"
+    ) {
+      const derived = global.SpellScaling.extractSavingThrowField(spell?.sourceText || "");
+      if (derived) return cleanText(derived);
     }
 
     const sourceText = cleanText(spell?.sourceText || "");
@@ -135,6 +140,39 @@
     return `${escapeHtml(saveAbbr)} ${dc}`;
   }
 
+  function enrichSpellForRender(spell, options = {}) {
+    const sourceText = spell?.sourceText || "";
+
+    let inferredLevel = Number(spell?.sl) || 0;
+    let inferredType = cleanText(spell?.type || "");
+    let inferredFire = !!spell?.fire;
+    let inferredEvo = !!spell?.evo;
+
+    if (global.SpellScaling) {
+      if (typeof global.SpellScaling.inferSpellLevel === "function") {
+        inferredLevel = global.SpellScaling.inferSpellLevel(spell, { sourceText }) || inferredLevel;
+      }
+
+      if (typeof global.SpellScaling.inferSpellTags === "function") {
+        const tags = global.SpellScaling.inferSpellTags(spell, { sourceText }) || {};
+        inferredFire = !!tags.fire;
+        inferredEvo = !!tags.evo;
+      }
+
+      if (typeof global.SpellScaling.inferSpellType === "function") {
+        inferredType = global.SpellScaling.inferSpellType(spell, { sourceText }) || inferredType;
+      }
+    }
+
+    return {
+      ...spell,
+      sl: inferredLevel,
+      type: inferredType,
+      fire: inferredFire,
+      evo: inferredEvo
+    };
+  }
+
   function renderSpellTable(options = {}) {
     const rows = options.rows || [];
     const meta = options.meta || {};
@@ -168,33 +206,35 @@
         </thead>
         <tbody>
           ${rows.map((s) => {
-            const cl = computeSpellCL(s, {
+            const enriched = enrichSpellForRender(s, { sourceText: s.sourceText || "" });
+
+            const cl = computeSpellCL(enriched, {
               meta,
               progression,
               arcaneSpellPower
             });
 
-            const dc = computeSpellDC(s.sl, castingMod);
+            const dc = computeSpellDC(enriched.sl, castingMod);
 
             const scaled = (
               global.SpellScaling &&
               typeof global.SpellScaling.computeDisplayFields === "function"
             )
-              ? global.SpellScaling.computeDisplayFields(s, cl, {
-                  sourceText: s.sourceText || ""
+              ? global.SpellScaling.computeDisplayFields(enriched, cl, {
+                  sourceText: enriched.sourceText || ""
                 })
               : {
-                  castingTimeText: s.castingTime || "Standard Action",
-                  rangeText: s.range || "",
-                  areaText: s.area || "",
-                  damageText: s.damage || "",
-                  durationText: s.duration || "",
-                  targetsText: s.targets || ""
+                  castingTimeText: enriched.castingTime || "Standard Action",
+                  rangeText: enriched.range || "",
+                  areaText: enriched.area || "",
+                  damageText: enriched.damage || "",
+                  durationText: enriched.duration || "",
+                  targetsText: enriched.targets || ""
                 };
 
-            const spellCell = renderSpellNameCell(s);
+            const spellCell = renderSpellNameCell(enriched);
 
-            const anchorId = `${s.mode}:${s.name}:prep`
+            const anchorId = `${enriched.mode}:${enriched.name}:prep`
               .toLowerCase()
               .replace(/\s+/g, "_")
               .replace(/[^a-z0-9:_-]/g, "");
@@ -207,12 +247,12 @@
               <tr>
                 ${prepCell}
                 <td>${spellCell}</td>
-                <td>${Number(s.sl) || 0}</td>
+                <td>${Number(enriched.sl) || 0}</td>
                 <td>${cl}</td>
-                <td>${renderDcCell(s, dc)}</td>
-                <td>${escapeHtml(s.type || "")}</td>
-                <td>${s.fire ? "✓" : ""}</td>
-                <td>${s.evo ? "✓" : ""}</td>
+                <td>${renderDcCell(enriched, dc)}</td>
+                <td>${escapeHtml(enriched.type || "")}</td>
+                <td>${enriched.fire ? "✓" : ""}</td>
+                <td>${enriched.evo ? "✓" : ""}</td>
                 <td>${escapeHtml(scaled.rangeText || "")}</td>
                 <td>${escapeHtml(scaled.areaText || "")}</td>
                 <td>${escapeHtml(scaled.damageText || "")}</td>
