@@ -105,17 +105,21 @@ function defaultGeneralEdits() {
     },
     buffs: {
       mageArmor: 0,
-      shieldSpell: 0
+      shieldSpell: 0,
+      catGrace: false,
+      haste: false
     },
     classes: {
       sorc: 0,
       wiz: 0,
       um: 0,
       inc: 0
+    },
+    speed: {
+      base: 30
     }
   };
 }
-
 function defaultSkillsEdits() {
   return {
     bySkillName: {},
@@ -269,10 +273,19 @@ const classes = raw.classes && typeof raw.classes === "object"
     };
   }
 
-  base.buffs = {
-    mageArmor: Number.isFinite(Number(buffs.mageArmor)) ? Number(buffs.mageArmor) : 0,
-    shieldSpell: Number.isFinite(Number(buffs.shieldSpell)) ? Number(buffs.shieldSpell) : 0
-  };
+
+base.buffs = {
+  mageArmor: Number.isFinite(Number(buffs.mageArmor)) ? Number(buffs.mageArmor) : 0,
+  shieldSpell: Number.isFinite(Number(buffs.shieldSpell)) ? Number(buffs.shieldSpell) : 0,
+  catGrace: !!buffs.catGrace,
+  haste: !!buffs.haste
+};
+
+const speed = raw.speed || {};
+base.speed = {
+  base: Number.isFinite(Number(speed.base)) ? Number(speed.base) : 30
+};
+
 
 base.classes = {
   sorc: Number.isFinite(Number(classes.sorc)) ? Number(classes.sorc) : 0,
@@ -602,14 +615,23 @@ function applyGeneralEditsToGeneral(general, edits = state.generalEdits) {
     if (Number.isFinite(Number(src.buffs))) general.abilities[key].buffs = Number(src.buffs);
   }
 
-  general.buffs ||= { mageArmor: 0, shieldSpell: 0 };
+general.buffs ||= { mageArmor: 0, shieldSpell: 0, catGrace: false, haste: false };
 
-  if (Number.isFinite(Number(edits?.buffs?.mageArmor))) {
-    general.buffs.mageArmor = Number(edits.buffs.mageArmor);
-  }
-  if (Number.isFinite(Number(edits?.buffs?.shieldSpell))) {
-    general.buffs.shieldSpell = Number(edits.buffs.shieldSpell);
-  }
+
+if (Number.isFinite(Number(edits?.buffs?.mageArmor))) {
+  general.buffs.mageArmor = Number(edits.buffs.mageArmor);
+}
+if (Number.isFinite(Number(edits?.buffs?.shieldSpell))) {
+  general.buffs.shieldSpell = Number(edits.buffs.shieldSpell);
+}
+general.buffs.catGrace = !!edits?.buffs?.catGrace;
+general.buffs.haste = !!edits?.buffs?.haste;
+
+general.speed ||= { base: 30 };
+if (Number.isFinite(Number(edits?.speed?.base))) {
+  general.speed.base = Number(edits.speed.base);
+}
+
 general.classes ||= { sorc: 0, wiz: 0, um: 0, inc: 0 };
 
 if (Number.isFinite(Number(edits?.classes?.sorc))) {
@@ -641,10 +663,18 @@ function syncGeneralEditsFromGeneral(general) {
     };
   }
 
-  state.generalEdits.buffs = {
-    mageArmor: Number(general.buffs?.mageArmor) || 0,
-    shieldSpell: Number(general.buffs?.shieldSpell) || 0
-  };
+
+state.generalEdits.buffs = {
+  mageArmor: Number(general.buffs?.mageArmor) || 0,
+  shieldSpell: Number(general.buffs?.shieldSpell) || 0,
+  catGrace: !!general.buffs?.catGrace,
+  haste: !!general.buffs?.haste
+};
+
+state.generalEdits.speed = {
+  base: Number(general.speed?.base) || 30
+};
+
    
 state.generalEdits.classes = {
   sorc: Number(general.classes?.sorc) || 0,
