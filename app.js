@@ -1363,20 +1363,22 @@ function renderGeneral() {
           <div>Level: <strong>${d.lvl}</strong></div>
         </div>
 
-        <div class="panel">
-          <h3>Combat</h3>
-          <div>HP (max): <strong>${d.hpMax}</strong></div>
-          <div>AC: <strong>${d.acTotal}</strong> (Touch ${d.touch}, Flat ${d.flat})</div>
-          <div>Init: <strong>${fmtSign(d.init)}</strong></div>
-          <div>BAB: <strong>${fmtSign(d.bab)}</strong></div>
-          <div>Melee: <strong>${fmtSign(d.melee)}</strong> | Ranged: <strong>${fmtSign(d.ranged)}</strong></div>
+<div class="panel">
+  <h3>Combat</h3>
+  <div>HP (max): <strong>${d.hpMax}</strong></div>
+  <div>AC: <strong>${d.acTotal}</strong> (Touch ${d.touch}, Flat ${d.flat})</div>
+  <div>Init: <strong>${fmtSign(d.init)}</strong></div>
+  <div>BAB: <strong>${fmtSign(d.bab)}</strong></div>
+  <div>Saves: <strong>Fort ${fmtSign(d.fort)}</strong> | <strong>Ref ${fmtSign(d.ref)}</strong> | <strong>Will ${fmtSign(d.will)}</strong></div>
+  <div>Melee: <strong>${fmtSign(d.melee)}</strong> | Ranged: <strong>${fmtSign(d.ranged)}</strong></div>
 
-          <div style="margin-top:8px;">
-            <h4>Active Buffs (AC)</h4>
-            <label><input id="buff_mage" type="checkbox" ${g.buffs.mageArmor ? "checked" : ""}> Mage Armor (+4)</label><br>
-            <label><input id="buff_shield" type="checkbox" ${g.buffs.shieldSpell ? "checked" : ""}> Shield (+4)</label>
-          </div>
-        </div>
+  <div style="margin-top:8px;">
+    <h4>Active Buffs (AC)</h4>
+    <label><input id="buff_mage" type="checkbox" ${g.buffs.mageArmor ? "checked" : ""}> Mage Armor (+4)</label><br>
+    <label><input id="buff_shield" type="checkbox" ${g.buffs.shieldSpell ? "checked" : ""}> Shield (+4)</label><br>
+    <label><input id="buff_cat_grace" type="checkbox" ${g.buffs.catGrace ? "checked" : ""}> Cat's Grace (+4 Dex)</label>
+  </div>
+</div>
       </div>
 
       <div class="panel">
