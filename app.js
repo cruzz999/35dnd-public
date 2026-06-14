@@ -164,7 +164,16 @@ const state = {
   lineWidth: 0.5,
   eraserWidth: 18
 };
+function updateViewportMetrics() {
+  const topbarEl = document.querySelector(".topbar");
+  const topbarH = Math.ceil(topbarEl?.getBoundingClientRect().height || 64);
 
+  const vv = window.visualViewport;
+  const visibleH = Math.round(vv?.height || window.innerHeight);
+
+  document.documentElement.style.setProperty("--topbar-h", `${topbarH}px`);
+  document.documentElement.style.setProperty("--vvh", `${visibleH}px`);
+}
 /* ------------------------------ Progress ------------------------------- */
 function setProgress(pct, text) {
   if (el.progressBar) el.progressBar.style.width = `${pct}%`;
@@ -692,7 +701,22 @@ function syncViewportHeight() {
   const h = topbar ? topbar.getBoundingClientRect().height : 64;
   if (el.viewport) el.viewport.style.height = `calc(100vh - ${h}px)`;
 }
+updateViewportMetrics();
 
+window.addEventListener("load", () => {
+  updateViewportMetrics();
+
+  // Some mobile browsers settle their chrome a moment after load/reload.
+  setTimeout(updateViewportMetrics, 50);
+  setTimeout(updateViewportMetrics, 250);
+});
+
+window.addEventListener("resize", updateViewportMetrics);
+
+if (window.visualViewport) {
+  window.visualViewport.addEventListener("resize", updateViewportMetrics);
+  window.visualViewport.addEventListener("scroll", updateViewportMetrics);
+}
 window.addEventListener("resize", () => {
   syncViewportHeight();
   applyWorldTransform();
