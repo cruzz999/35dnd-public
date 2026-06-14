@@ -50,109 +50,124 @@
     };
   }
 
-  function compute(g) {
-    g = g || {};
+function compute(g) {
+  g = g || {};
 
-    const cls = g.classes || {};
-    const abilitiesSrc = g.abilities || {};
-    const ac = g.ac || {};
-    const savesSrc = g.saves || {};
-    const attacks = g.attacks || {};
-    const buffs = g.buffs || {};
+  const cls = g.classes || {};
+  const abilitiesSrc = g.abilities || {};
+  const ac = g.ac || {};
+  const savesSrc = g.saves || {};
+  const attacks = g.attacks || {};
+  const buffs = g.buffs || {};
 
-    const abilities = {};
-    for (const k of ["str", "dex", "con", "int", "wis", "cha"]) {
-      const a = defaultAbilityBreakdown(abilitiesSrc[k]);
-      const base = a.pointBuy + a.asi;
-      const total = base + a.items + a.buffs;
-      abilities[k] = {
-        total,
-        mod: abilityMod(total)
-      };
-    }
-
-    const lvl = totalLevel(cls);
-    const hpBase = hpAverageD4(lvl);
-    const hpMax = hpBase + abilities.con.mod * lvl;
-
-    const armorItem = num(ac.armor);
-    const shieldItem = num(ac.shield);
-    const mageArmorBonus = num(buffs.mageArmor);
-    const shieldSpellBonus = num(buffs.shieldSpell);
-
-    const armorUsed = Math.max(armorItem, mageArmorBonus);
-    const shieldUsed = Math.max(shieldItem, shieldSpellBonus);
-
-    const acTotal =
-      10 +
-      armorUsed +
-      shieldUsed +
-      abilities.dex.mod +
-      num(ac.size) +
-      num(ac.natural) +
-      num(ac.deflect) +
-      num(ac.misc);
-
-    const touch =
-      10 +
-      abilities.dex.mod +
-      num(ac.size) +
-      num(ac.deflect) +
-      num(ac.miscTouch);
-
-    const flat =
-      10 +
-      armorUsed +
-      shieldUsed +
-      num(ac.size) +
-      num(ac.natural) +
-      num(ac.deflect) +
-      num(ac.misc);
-
-    const bab =
-      babPoor(cls.sorc) +
-      babPoor(cls.wiz) +
-      babPoor(cls.um);
-
-    const fortBase =
-      savePoor(cls.sorc) +
-      savePoor(cls.wiz) +
-      savePoor(cls.um);
-
-    const refBase =
-      savePoor(cls.sorc) +
-      savePoor(cls.wiz) +
-      savePoor(cls.um);
-
-    const willBase =
-      saveGood(cls.sorc) +
-      saveGood(cls.wiz) +
-      saveGood(cls.um);
-
-    const saves = {
-      fort: fortBase + abilities.con.mod + num(savesSrc.fortMisc),
-      ref: refBase + abilities.dex.mod + num(savesSrc.refMisc),
-      will: willBase + abilities.wis.mod + num(savesSrc.willMisc)
-    };
-
-    const init = abilities.dex.mod + num(g.initMisc);
-    const melee = bab + abilities.str.mod + num(attacks.meleeMisc);
-    const ranged = bab + abilities.dex.mod + num(attacks.rangedMisc);
-
-    return {
-      lvl,
-      abilities,
-      hpMax,
-      acTotal,
-      touch,
-      flat,
-      bab,
-      saves,
-      init,
-      melee,
-      ranged
+  const abilities = {};
+  for (const k of ["str", "dex", "con", "int", "wis", "cha"]) {
+    const a = defaultAbilityBreakdown(abilitiesSrc[k]);
+    const base = a.pointBuy + a.asi;
+    const total = base + a.items + a.buffs;
+    abilities[k] = {
+      total,
+      mod: abilityMod(total)
     };
   }
+
+  const lvl = totalLevel(cls);
+  const hpBase = hpAverageD4(lvl);
+  const hpMax = hpBase + abilities.con.mod * lvl;
+
+  const armorItem = num(ac.armor);
+  const shieldItem = num(ac.shield);
+  const mageArmorBonus = num(buffs.mageArmor);
+  const shieldSpellBonus = num(buffs.shieldSpell);
+
+  const armorUsed = Math.max(armorItem, mageArmorBonus);
+  const shieldUsed = Math.max(shieldItem, shieldSpellBonus);
+
+  const acTotal =
+    10 +
+    armorUsed +
+    shieldUsed +
+    abilities.dex.mod +
+    num(ac.size) +
+    num(ac.natural) +
+    num(ac.deflect) +
+    num(ac.misc);
+
+  const touch =
+    10 +
+    abilities.dex.mod +
+    num(ac.size) +
+    num(ac.deflect) +
+    num(ac.miscTouch);
+
+  const flat =
+    10 +
+    armorUsed +
+    shieldUsed +
+    num(ac.size) +
+    num(ac.natural) +
+    num(ac.deflect) +
+    num(ac.misc);
+
+  // BAB: using the same poor progression for all your arcane classes here
+  const bab =
+    babPoor(cls.sorc) +
+    babPoor(cls.wiz) +
+    babPoor(cls.um) +
+    babPoor(cls.inc);
+
+  // Save progression:
+  // current model = poor Fort / poor Ref / good Will for these classes
+  const fortBase =
+    savePoor(cls.sorc) +
+    savePoor(cls.wiz) +
+    savePoor(cls.um) +
+    savePoor(cls.inc);
+
+  const refBase =
+    savePoor(cls.sorc) +
+    savePoor(cls.wiz) +
+    savePoor(cls.um) +
+    savePoor(cls.inc);
+
+  const willBase =
+    saveGood(cls.sorc) +
+    saveGood(cls.wiz) +
+    saveGood(cls.um) +
+    saveGood(cls.inc);
+
+  const fort = fortBase + abilities.con.mod + num(savesSrc.fortMisc);
+  const ref = refBase + abilities.dex.mod + num(savesSrc.refMisc);
+  const will = willBase + abilities.wis.mod + num(savesSrc.willMisc);
+
+  const saves = {
+    fort,
+    ref,
+    will
+  };
+
+  const init = abilities.dex.mod + num(g.initMisc);
+  const melee = bab + abilities.str.mod + num(attacks.meleeMisc);
+  const ranged = bab + abilities.dex.mod + num(attacks.rangedMisc);
+
+  return {
+    lvl,
+    abilities,
+    hpMax,
+    acTotal,
+    touch,
+    flat,
+    bab,
+    fort,
+    ref,
+    will,
+    saves,
+    init,
+    melee,
+    ranged
+  };
+}
+
 
   // Public API
   GeneralDerived.compute = compute;
