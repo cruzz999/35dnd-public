@@ -1413,15 +1413,22 @@ function renderGeneral() {
   <div>BAB: <strong>${fmtSign(d.bab)}</strong></div>
   <div>Saves: <strong>Fort ${fmtSign(d.fort)}</strong> | <strong>Ref ${fmtSign(d.ref)}</strong> | <strong>Will ${fmtSign(d.will)}</strong></div>
   <div>Melee: <strong>${fmtSign(d.melee)}</strong> | Ranged: <strong>${fmtSign(d.ranged)}</strong></div>
+  <div>Speed: <strong>${d.speed} ft</strong>${d.hasted ? ` <span class="hint">(base ${d.baseSpeed} ft)</span>` : ""}</div>
+  ${d.hasteExtraAttack ? `<div class="hint">Haste: one extra attack on full attack</div>` : ""}
 
   <div style="margin-top:8px;">
-    <h4>Active Buffs (AC)</h4>
+    <h4>Active Buffs (Combat)</h4>
     <label><input id="buff_mage" type="checkbox" ${g.buffs.mageArmor ? "checked" : ""}> Mage Armor (+4)</label><br>
     <label><input id="buff_shield" type="checkbox" ${g.buffs.shieldSpell ? "checked" : ""}> Shield (+4)</label><br>
-    <label><input id="buff_cat_grace" type="checkbox" ${g.buffs.catGrace ? "checked" : ""}> Cat's Grace (+4 Dex)</label>
+    <label><input id="buff_cat_grace" type="checkbox" ${g.buffs.catGrace ? "checked" : ""}> Cat's Grace (+4 Dex)</label><br>
+    <label><input id="buff_haste" type="checkbox" ${g.buffs.haste ? "checked" : ""}> Haste (+1 atk, +1 AC, +1 Ref, speed)</label><br>
+
+    <div style="margin-top:8px;">
+      <label for="speed_base">Base Speed</label>
+      <input id="speed_base" type="number" min="0" step="5" value="${Number(g.speed?.base) || 30}" style="width:80px; margin-left:8px;"> ft
+    </div>
   </div>
 </div>
-      </div>
 
       <div class="panel">
         <h3>Abilities (breakdown)</h3>
