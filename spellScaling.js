@@ -503,24 +503,46 @@ function computeDamageText(spell, cl, options = {}) {
 
     return null;
   }
+function compactTargetLikeText(text, cl) {
+  text = cleanText(text || "");
+  if (!text) return "";
 
-  function computeAreaText(spell, cl, options = {}) {
-    const raw = cleanText(spell?.area || "");
-    const sourceText = getSourceText(spell, options);
-    const sourceField = extractAreaField(sourceText);
-    const rule = parseAreaRule(raw, sourceText);
-
-    if (!rule) {
-      return raw || sourceField;
-    }
-
-    if (rule.kind === "radiusPerLevel") {
-      const radius = rule.feetPerLevel * Math.max(0, num(cl, 0));
-      return `${radius}-ft.-radius`;
-    }
-
-    return raw || sourceField;
+  // Haste:
+  // "One creature/level, no two of which can be more than 30 ft. apart"
+  let m = text.match(/One creature\/level,\s*no two of which can be more than (\d+)\s*ft\.?\s*apart/i);
+  if (m) {
+    const count = Math.max(1, num(cl, 0));
+    return `${count} targets, <-> ${m[1]} ft`;
   }
+
+  // Melf's Unicorn Arrow:
+  // "One creature or up to five creatures, no two of which are more than 15 ft. apart"
+  m = text.match(/One creature or up to five creatures,\s*no two of which are more than (\d+)\s*ft\.?\s*apart/i);
+  if (m) {
+    const count = unicornArrowCount(cl);
+    return `1-${count} targets, <-> ${m[1]} ft`;
+  }
+
+  return text;
+}
+
+function computeAreaText(spell, cl, options = {}) {
+  const raw = cleanText(spell?.area || "");
+  const sourceText = getSourceText(spell, options);
+  const sourceField = extractAreaField(sourceText);
+  const rule = parseAreaRule(raw, sourceText);
+
+  if (!rule) {
+    return compactTargetLikeText(raw || sourceField, cl);
+  }
+
+  if (rule.kind === "radiusPerLevel") {
+    const radius = rule.feetPerLevel * Math.max(0, num(cl, 0));
+    return `${radius}-ft.-radius`;
+  }
+
+  return compactTargetLikeText(raw || sourceField, cl);
+}
 
   /* ----------------------------------------------------------------------
      PUBLIC API
