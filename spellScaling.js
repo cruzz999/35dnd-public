@@ -515,9 +515,19 @@ function compactTargetLikeText(text, cl) {
     return `${count} targets, <-> ${m[1]} ft`;
   }
 
+  // Magic Missile:
+  // usually target text like:
+  // "Up to five creatures, no two of which can be more than 15 ft. apart"
+  // or similar variants
+  m = text.match(/(?:One or more creatures|Up to five creatures),\s*no two of which can be more than (\d+)\s*ft\.?\s*apart/i);
+  if (m) {
+    const count = magicMissileCount(cl);
+    return `${count} targets, <-> ${m[1]} ft`;
+  }
+
   // Melf's Unicorn Arrow:
   // "One creature or up to five creatures, no two of which are more than 15 ft. apart"
-  m = text.match(/One creature or up to five creatures,\s*no two of which are more than (\d+)\s*ft\.?\s*apart/i);
+  m = text.match(/One creature or up to five creatures,\s*no two of which (?:are|can be) more than (\d+)\s*ft\.?\s*apart/i);
   if (m) {
     const count = unicornArrowCount(cl);
     return `1-${count} targets, <-> ${m[1]} ft`;
@@ -525,6 +535,7 @@ function compactTargetLikeText(text, cl) {
 
   return text;
 }
+
 
 function computeAreaText(spell, cl, options = {}) {
   const raw = cleanText(spell?.area || "");
