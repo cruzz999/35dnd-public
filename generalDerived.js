@@ -19,10 +19,13 @@
     return Math.floor(level / 2);
   }
 
-  function saveGood(level) {
-    level = num(level);
-    return 2 + Math.floor(level / 2);
-  }
+
+function saveGood(level) {
+  level = num(level);
+  if (level <= 0) return 0;
+  return 2 + Math.floor(level / 2);
+}
+
 
   function savePoor(level) {
     level = num(level);
