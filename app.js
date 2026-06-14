@@ -149,11 +149,12 @@ const state = {
   // Persisted editable overlays
   generalEdits: defaultGeneralEdits(),
   skillsEdits: defaultSkillsEdits(),
-   
+  hasSavedGeneralEdits: false,
+
   // Fiery Burst widget selection
   fieryBurst: {
-    source: null,   // "sorc" | "wiz" | null
-    slotLevel: null // number | null
+    source: null,
+    slotLevel: null
   },
 
   lineWidth: 0.5,
@@ -338,21 +339,26 @@ function loadEditableState() {
   if (typeof AppStorage === "undefined") {
     state.generalEdits = defaultGeneralEdits();
     state.skillsEdits = defaultSkillsEdits();
-    state.fieryBurst = defaultFieryBurstState();
+    state.fieryBurst = defaultFieryBurstState ? defaultFieryBurstState() : { source: null, slotLevel: null };
+    state.hasSavedGeneralEdits = false;
     return;
   }
 
-  state.generalEdits = normalizeGeneralEdits(
-    AppStorage.readJson(STORAGE_KEYS.generalEdits, defaultGeneralEdits())
-  );
+  const rawGeneralEdits = AppStorage.readJson(STORAGE_KEYS.generalEdits, null);
+  state.hasSavedGeneralEdits = !!rawGeneralEdits;
+  state.generalEdits = rawGeneralEdits
+    ? normalizeGeneralEdits(rawGeneralEdits)
+    : defaultGeneralEdits();
 
   state.skillsEdits = normalizeSkillsEdits(
     AppStorage.readJson(STORAGE_KEYS.skillsEdits, defaultSkillsEdits())
   );
 
-  state.fieryBurst = normalizeFieryBurstState(
-    AppStorage.readJson(STORAGE_KEYS.fieryBurst, defaultFieryBurstState())
-  );
+  if (typeof normalizeFieryBurstState === "function" && typeof defaultFieryBurstState === "function") {
+    state.fieryBurst = normalizeFieryBurstState(
+      AppStorage.readJson(STORAGE_KEYS.fieryBurst, defaultFieryBurstState())
+    );
+  }
 }
 
 function saveGeneralEdits() {
