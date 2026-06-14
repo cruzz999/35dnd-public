@@ -322,27 +322,34 @@ function readSpellBlock(grid, headerRow, mode) {
   const colSpell = findSpellColByScanning(grid, headerRow, preferredSpellCol);
 
   // URL handling:
-  // 1) If a URL/Link column exists, use it.
-  // 2) Otherwise, if column 0 of the first data row looks like a URL,
-  //    treat column 0 as the URL column.
-  let colUrl = h["URL"] ?? h["Link"] ?? h["Href"] ?? null;
-
-  if (colUrl == null) {
-    const firstUrlCandidate = cell(grid, headerRow + 1, 0).trim();
-    if (/^https?:\/\//i.test(firstUrlCandidate)) {
-      colUrl = 0;
-    }
-  }
+  // 1) Prefer explicit URL-ish headers if present.
+  // 2) Otherwise, for each row, search the whole row for the first http(s) cell.
+  let colUrl = h["URL"] ?? h["Link"] ?? h["Href"] ?? h["Url"] ?? h["url"] ?? null;
 
   const rows = [];
   for (let r = headerRow + 1; r < grid.length; r++) {
     const name = cell(grid, r, colSpell).trim();
     if (!name) break;
 
-    
-const rawUrl = colUrl != null ? cell(grid, r, colUrl).trim() : "";
-const url = /^https?:\/\//i.test(rawUrl) ? rawUrl : "";
+    let rawUrl = "";
 
+    if (colUrl != null) {
+      rawUrl = cell(grid, r, colUrl).trim();
+    }
+
+    // Fallback: search the whole row for a URL if the expected URL column is empty
+    if (!/^https?:\/\//i.test(rawUrl)) {
+      const row = grid[r] || [];
+      for (let c = 0; c < row.length; c++) {
+        const candidate = String(row[c] ?? "").trim();
+        if (/^https?:\/\//i.test(candidate)) {
+          rawUrl = candidate;
+          break;
+        }
+      }
+    }
+
+    const url = /^https?:\/\//i.test(rawUrl) ? rawUrl : "";
 
     rows.push({
       mode,
@@ -363,6 +370,7 @@ const url = /^https?:\/\//i.test(rawUrl) ? rawUrl : "";
 
   return rows;
 }
+
 
 
   function parseSpellsGrid(grid) {
