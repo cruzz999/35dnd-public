@@ -1467,8 +1467,28 @@ function renderGeneral() {
     </div>
   `;
 
-  const mage = $("buff_mage");
-  const shield = $("buff_shield");
+  
+const mage = $("buff_mage");
+const shield = $("buff_shield");
+const catGrace = $("buff_cat_grace");
+const haste = $("buff_haste");
+const speedBase = $("speed_base");
+
+if (haste) haste.onchange = () => {
+  g.buffs ||= { mageArmor: 0, shieldSpell: 0, catGrace: false, haste: false };
+  g.buffs.haste = !!haste.checked;
+  syncGeneralEditsFromGeneral(g);
+  renderGeneral();
+  ink.redraw();
+};
+
+if (speedBase) speedBase.onchange = () => {
+  g.speed ||= { base: 30 };
+  g.speed.base = Number(speedBase.value) || 30;
+  syncGeneralEditsFromGeneral(g);
+  renderGeneral();
+  ink.redraw();
+};
 
   if (mage) mage.onchange = () => {
     g.buffs.mageArmor = mage.checked ? 4 : 0;
